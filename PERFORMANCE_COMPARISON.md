@@ -10,6 +10,22 @@ Comprehensive evaluation of DeepSequence with TabNet encoders and unit normaliza
 
 ## Models Compared
 
+### ⚖️ Feature Parity
+
+**IMPORTANT**: Both DeepSequence and LightGBM use **identical input features** for fair comparison:
+
+| Feature Category | Features Used | Both Models |
+|-----------------|---------------|-------------|
+| **Seasonality** | year, week_no, week-of-month | ✅ |
+| **Lags** | lag-1, lag-4, lag-52 weeks | ✅ |
+| **Intermittent** | average_distance, cumulative_distance | ✅ |
+| **Clustering** | GMM cluster (n=40) | ✅ |
+| **SKU Encoding** | StockCode (categorical) | ✅ |
+
+The difference is **how** models process these features, not **what** features they use.
+
+---
+
 ### 1. **DeepSequence with TabNet + UnitNorm** ⭐ (New Implementation)
 - **Architecture**: 
   - TabNet encoders (3 attention steps) for seasonal and regressor paths
@@ -23,9 +39,17 @@ Comprehensive evaluation of DeepSequence with TabNet encoders and unit normaliza
   - End-to-end differentiable architecture
 
 ### 2. **LightGBM Baselines**
-- **Cluster-based**: Groups similar SKUs by clustering
-- **Distance-based**: Uses distance-to-zero features for intermittent demand
-- **Note**: LightGBM results from existing implementations
+- **Architecture**:
+  - Gradient boosting trees with manual feature engineering
+  - Same features as DeepSequence: seasonality (week_no, wom, year), lags (1, 4, 52), intermittent features (average distance, cumdist)
+  - Cluster-based: GMM clustering (optimal n=40) + all features
+  - Distance-based: Average distance to zero + all features
+- **Feature Engineering** (identical to DeepSequence inputs):
+  - Time features: year, week_no, week-of-month
+  - Lag features: lag-1, lag-4, lag-52 (weekly, monthly, yearly)
+  - Intermittent features: average distance, cumulative distance
+  - Cluster assignment (for cluster-based variant)
+- **Note**: LightGBM results from existing implementations on same data
 
 ### 3. **Naive Baseline**
 - **Type**: 7-day lag (shift-7)
@@ -75,32 +99,47 @@ Comprehensive evaluation of DeepSequence with TabNet encoders and unit normaliza
 - Evaluated on: 2,878 SKUs
 - Method: Distance-to-zero features for intermittent demand
 
-### Why DeepSequence Outperforms LightGBM
+### Architecture Comparison (Same Input Features)
+
+**IMPORTANT**: Both models use **identical input features**:
+- ✅ Seasonality: year, week_no, week-of-month
+- ✅ Lags: 1, 4, 52 weeks (short-term, monthly, yearly)
+- ✅ Intermittent features: average distance, cumulative distance
+- ✅ Clustering: GMM cluster assignments (for cluster variants)
 
 | Advantage | DeepSequence | LightGBM |
 |-----------|--------------|----------|
-| **Intermittent Handling** | Explicit probability network (95.43% accuracy) | Heuristic features (distance-based) |
-| **Seasonality** | Multi-level learned patterns (weekly/monthly/yearly) | Manual lag features only |
-| **Feature Engineering** | Automatic via TabNet attention | Manual feature creation required |
-| **Zero Prediction** | 87% better (MAE 0.056) | Struggles with MAPE on zeros |
-| **Architecture** | Unified end-to-end model | Separate models per approach |
+| **Input Features** | Same as LightGBM | Same as DeepSequence |
+| **Feature Processing** | Automatic selection via TabNet attention | All features used directly |
+| **Intermittent Handling** | Explicit probability network (95.43% accuracy) | Distance features as regressors |
+| **Seasonality** | Learned multi-level patterns from time features | Tree splits on time features |
+| **Non-linearity** | TabNet GLU + attention + neural nets | GBDT tree splits |
+| **Zero Prediction** | 87% better MAE (0.056) on zeros | MAPE-optimized (ignores zeros) |
+| **Architecture** | Unified end-to-end differentiable | Separate models per approach |
 | **Stability** | Unit normalization ensures convergence | Boosting can overfit intermittent data |
 
-### Key Technical Differences
+### Key Technical Differences (Given Same Features)
 
 **DeepSequence Advantages:**
-1. **Explicit Zero Modeling**: Separate probability network for intermittent demand
-2. **Attention Mechanism**: TabNet automatically selects relevant features per SKU
+1. **Explicit Zero Modeling**: Separate probability network for intermittent demand (95.43% accuracy)
+2. **Attention Mechanism**: TabNet automatically selects relevant features per SKU/timestep
 3. **Gradient Flow**: Unit normalization prevents vanishing/exploding gradients
 4. **Unified Architecture**: Single model learns all patterns simultaneously
 5. **Bounded Predictions**: Unit norm constrains activations, preventing extreme values
+6. **Feature Interactions**: Neural nets learn complex non-linear interactions automatically
+
+**LightGBM Advantages:**
+1. **Non-Zero MAPE**: 75-77% MAPE on non-zero actuals (better than DeepSequence ~96%)
+2. **Tree-Based**: Naturally handles missing values and categorical features
+3. **Interpretability**: Feature importance scores, tree visualization
+4. **Fast Training**: Gradient boosting typically faster than deep learning
+5. **Robust**: Less sensitive to hyperparameters than neural networks
 
 **LightGBM Limitations for Intermittent Demand:**
-1. **MAPE Sensitivity**: 75-77% MAPE typical for intermittent data (many near-zero values)
-2. **Feature Dependency**: Requires manual lag/rolling features 
-3. **No Explicit Zero Handling**: Treats zeros as regular values
-4. **Separate Models**: Cluster vs non-zero approaches need selection logic
-5. **Boosting Challenges**: Can overfit on sparse demand patterns
+1. **MAPE Focus**: Optimizes non-zero MAPE (ignores 95.5% of zero data)
+2. **No Explicit Zero Handling**: Treats zeros as regression targets, not classification
+3. **Separate Models**: Cluster vs distance approaches need selection logic
+4. **Feature Engineering**: Same manual lag/distance features as DeepSequence uses
 
 ### Performance Summary (Fair Comparison - Same Method)
 
@@ -135,7 +174,8 @@ On the **same metric** (non-zero MAPE only), **DeepSequence is comparable to Lig
 | **Zero MAE** | **0.056** | Unknown | 87% better than naive when wrong |
 | **Overall MAE** | **0.1936** | Unknown | 28% better than naive |
 | **Architecture** | Unified | Ensemble | Simpler deployment |
-| **Feature Engineering** | Automatic | Manual | No lag feature tuning |
+| **Feature Selection** | Automatic (TabNet) | All features | Attention-based vs all |
+| **Input Features** | Same | Same | Both use time/lag/intermittent |
 
 ### The Real Story
 
