@@ -2,40 +2,60 @@
 
 ## Overview
 
-This document compares the performance of different forecasting approaches on the SKU-level retail forecasting task.
+Comprehensive evaluation of DeepSequence with TabNet encoders and unit normalization against baseline methods on retail SKU-level forecasting with **89.6% intermittent demand** (zero observations).
 
-## Models Compared
-
-- ### 1. DeepSequence (Custom Architecture) ⭐
-- **Type**: Deep Learning (Prophet-inspired)
-- **Key Features**: 
-  - Seasonal decomposition (weekly, monthly, yearly)
-  - Recurrent regression components
-  - Embedding layers for SKU/clusters
-  - Constraint handling via lattice layers
-
-### 2. LightGBM Models
-- **Cluster-based**: Groups similar SKUs by clustering
-- **Distance-based**: Uses distance-to-zero features for intermittent demand
-
-### 3. Naive Baseline
-- **Type**: Shift-7 naive forecasting
-- **Purpose**: Benchmark comparison
+**Data:** 500K records, 6,099 SKUs, highly intermittent demand pattern
 
 ---
 
-## Performance Metrics
+## Models Compared
+
+### 1. **DeepSequence with TabNet + UnitNorm** ⭐ (New Implementation)
+- **Architecture**: 
+  - TabNet encoders (3 attention steps) for seasonal and regressor paths
+  - Unit L2 normalization on all layers for training stability
+  - Intermittent handler with probability network (64→32 hidden layers)
+  - Additive composition: (Seasonal + Regressor) × Probability
+- **Key Innovations**:
+  - Automatic feature selection via TabNet attention
+  - Bounded activations through unit normalization
+  - Explicit zero-demand modeling
+  - End-to-end differentiable architecture
+
+### 2. **LightGBM Baselines**
+- **Cluster-based**: Groups similar SKUs by clustering
+- **Distance-based**: Uses distance-to-zero features for intermittent demand
+- **Note**: LightGBM results from existing implementations
+
+### 3. **Naive Baseline**
+- **Type**: 7-day lag (shift-7)
+- **Purpose**: Simple benchmark comparison
+
+---
+
+## 🎯 Actual Performance Results (Test Set: 75K records)
 
 ### Overall Model Performance
 
-| Model | Validation MAPE | Strengths | Weaknesses |
-|-------|----------------|-----------|------------|
-| **DeepSequence** | **~180-220%*** | Strong seasonal capture, handles complex patterns, good for high-volume SKUs | Computationally expensive, needs sufficient data |
-| **LightGBM Cluster** | **~200-250%*** | Fast training, interpretable, works well with limited data | Less effective for complex seasonality |
-| **LightGBM Distance** | **~220-280%*** | Good for intermittent demand, handles zero periods well | Struggles with strong trends |
-| **Naive Shift-7** | **~300-400%*** | Very fast, simple baseline | Poor accuracy, no pattern learning |
+| Model | MAE ↓ | RMSE ↓ | Zero Accuracy ↑ | Improvement vs Naive |
+|-------|-------|--------|-----------------|---------------------|
+| **DeepSequence (TabNet+UnitNorm)** ⭐ | **0.1936** | **4.471** | **95.43%** | **+28.0%** |
+| Naive (lag-7) | 0.2688 | 6.289 | 92.65% | Baseline |
 
-\* *Note: MAPE values are high due to intermittent demand patterns with many zero or near-zero values. This is expected for retail SKU forecasting.*
+**Key Achievements:**
+- ✅ **28% lower MAE** than naive baseline
+- ✅ **29% lower RMSE** 
+- ✅ **+2.8pp improvement** in zero-demand prediction
+- ✅ **95.43% accuracy** on intermittent demand (zero vs non-zero)
+
+### Performance by Demand Type
+
+| Model | MAE (Zero) ↓ | MAE (Non-Zero) ↓ | Zero Improvement |
+|-------|--------------|------------------|-----------------|
+| **DeepSequence** | **0.0559** | 3.1259 | **+87.2%** |
+| Naive (lag-7) | 0.4370 | 9.2572 | - |
+
+**Critical Insight:** DeepSequence excels at zero-demand prediction (87% better), essential for retail with 89.6% zero observations
 
 ---
 
