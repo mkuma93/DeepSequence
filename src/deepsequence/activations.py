@@ -1,5 +1,11 @@
 """
-Custom activation functions for DeepFuture Net.
+Custom activation functions for DeepSequence.
+
+Available activations:
+- swish: x * sigmoid(x)
+- mish: x * tanh(softplus(x))
+- listh: x * tanh(x)
+- intermittent: x / (e^(-x)) - designed for sparse/intermittent data
 """
 
 import tensorflow as tf
@@ -45,11 +51,28 @@ def mish(x):
     return x * K.tanh(K.softplus(x))
 
 
+def intermittent(x):
+    """
+    Intermittent activation function: x / (e^(-x))
+    
+    Designed for intermittent demand forecasting where values can be zero or sparse.
+    This function provides smooth gradients even for small values.
+    
+    Args:
+        x: Input tensor
+        
+    Returns:
+        Activated tensor
+    """
+    return x / (K.exp(-x))
+
+
 # Dictionary of custom activations
 CUSTOM_ACTIVATIONS = {
     'swish': swish,
     'mish': mish,
     'listh': listh,
+    'intermittent': intermittent,
     'sigmoid': 'sigmoid',
     'relu': 'relu',
     'tanh': 'tanh'
