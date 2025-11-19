@@ -1,5 +1,5 @@
 """
-Seasonal Component for DeepFuture Net.
+Seasonal Component for DeepSequence.
 Captures multiple seasonality patterns (weekly, monthly, yearly).
 """
 

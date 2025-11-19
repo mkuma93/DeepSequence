@@ -1,5 +1,5 @@
 """
-Regressor Component for DeepFuture Net.
+Regressor Component for DeepSequence.
 Handles trend, exogenous variables, and contextual features.
 """
 

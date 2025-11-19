@@ -89,7 +89,7 @@ graph TB
 
 ```
 forecasting/
-├── src/deepfuture/              # Core DeepFuture Net package
+├── src/deepsequence/            # Core DeepSequence package
 │   ├── __init__.py
 │   ├── model.py                 # Main model class
 │   ├── seasonal_component.py   # Seasonal decomposition
@@ -99,7 +99,7 @@ forecasting/
 │   └── config.py               # Configuration
 │
 ├── notebooks/
-│   └── DeepFuture_Demo.ipynb   # End-to-end demo
+│   └── DeepSequence_Demo.ipynb # End-to-end demo
 │
 ├── scripts/
 │   └── fix_notebooks.py        # Notebook utility scripts
@@ -150,10 +150,10 @@ pip install -r requirements.txt
 ### Quick Start with Demo Notebook
 
 ```bash
-jupyter notebook notebooks/DeepFuture_Demo.ipynb
+jupyter notebook notebooks/DeepSequence_Demo.ipynb
 ```
 
-### Using DeepFuture Net in Your Code
+### Using DeepSequence in Your Code
 
 ```python
 import sys
@@ -191,12 +191,13 @@ predictions = model.predict(test_input)
 
 ## Models
 
-### DeepFuture Net (Custom Architecture) ⭐
+### DeepSequence (Custom Architecture) ⭐
 **Original contribution** - A Prophet-inspired deep learning architecture featuring:
 - Seasonal decomposition modules (weekly, monthly, yearly)
 - Recurrent regression components with LSTM/GRU
-- Embedding layers for categorical features (StockCode, clusters)
-- Constraint handling for business logic
+- Embedding layers for categorical features (SKU identifiers, clusters)
+- TabNet encoder for feature selection
+- Cross-layer attention for feature interactions
 - Multi-horizon forecasting capability
 
 **Architecture Highlights**:
@@ -219,30 +220,21 @@ predictions = model.predict(test_input)
 
 ### Performance Summary
 
-An **ensemble approach** combining all three models achieves the best overall performance by selecting the optimal model for each SKU based on validation MAPE.
+DeepSequence with TabNet and Cross-Layer integration achieves superior performance on highly intermittent demand patterns.
 
-| Model | Typical Use Case | Validation MAPE Range |
-|-------|-----------------|---------------------|
-| **DeepFuture Net** | High-volume, complex seasonality | 145-310% |
-| **LightGBM Cluster** | Medium-volume, stable patterns | 195-275% |
-| **LightGBM Distance** | Low-volume, intermittent demand | 240-280% |
-| **Ensemble** | All SKUs (best per-SKU selection) | **~180-220%** |
-
-*Note: MAPE values are high due to intermittent demand with many zero/near-zero values - expected for retail SKU forecasting.*
+| Model | Typical Use Case | Test MAE |
+|-------|-----------------|----------|
+| **DeepSequence** | High-volume, intermittent demand | 0.1312 |
+| **LightGBM** | Standard forecasting | 0.5580 |
 
 **📊 Detailed Comparison**: See [PERFORMANCE_COMPARISON.md](PERFORMANCE_COMPARISON.md) for comprehensive analysis.
 
-### Output Files
-- Final forecasts: `final_forecast.csv` (ensemble predictions)
-- Per-model MAPE: `lgb_cluster_mape.csv`, `lgbnon-zerointerval_mape.csv`, `non-zero-mean_df.csv`
-- Individual forecasts: `deep_future_forecast.csv`, `lgb_clusterdistanceforecast.csv`, `lgb_zerodistanceforecast.csv`
-
 ## Data
 
-**Note**: Data files are not included in this repository. 
+**Note**: Sample data files are not included in this repository. 
 
 To use this project with your own data:
-1. Prepare your time series data with columns: `ds` (date), `StockCode` (SKU ID), `Quantity` (target)
+1. Prepare your time series data with columns: `ds` (date), `SKU_ID` (SKU identifier), `Quantity` (target)
 2. Add exogenous variables (optional): price, clusters, holidays, etc.
 3. Follow the demo notebook for complete workflow
 4. See `ARCHITECTURE.md` for detailed data requirements
@@ -261,12 +253,12 @@ Mritunjay Kumar - [GitHub](https://github.com/mkuma93)
 
 ## Citation
 
-If you use DeepFuture Net or find this work helpful, please cite:
+If you use DeepSequence or find this work helpful, please cite:
 
 ```
-@misc{deepfuture_net,
+@misc{deepsequence,
   author = {Mritunjay Kumar},
-  title = {DeepFuture Net: A Prophet-Inspired Deep Learning Architecture for SKU-Level Forecasting},
+  title = {DeepSequence: A Prophet-Inspired Deep Learning Architecture with TabNet and Cross-Layer Attention for SKU-Level Forecasting},
   year = {2025},
   publisher = {GitHub},
   url = {https://github.com/mkuma93/forecasting}
@@ -275,6 +267,7 @@ If you use DeepFuture Net or find this work helpful, please cite:
 
 ## Acknowledgments
 
-- **DeepFuture Net**: Original architecture designed by Mritunjay Kumar, inspired by Facebook's Prophet
+- **DeepSequence**: Original architecture designed by Mritunjay Kumar, inspired by Facebook's Prophet
 - Built for retail SKU-level forecasting with intermittent demand patterns
 - Combines deep learning with seasonal decomposition methodology
+- Enhanced with TabNet feature selection and Cross-Layer attention mechanisms

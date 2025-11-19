@@ -1,4 +1,4 @@
-# DeepFuture Net Architecture Diagram
+# DeepSequence Architecture Diagram
 
 ## High-Level Architecture
 
@@ -220,7 +220,7 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    subgraph Formula["DeepFuture Net Formula"]
+    subgraph Formula["DeepSequence Formula"]
         EQ1["ŷ = f(σ_s, τ_r | α)"]
         EQ2["σ_s = g_seasonal(t, embed_temporal)"]
         EQ3["τ_r = g_regressor(x, embed_context)"]
@@ -251,7 +251,7 @@ graph TD
 
 ```mermaid
 mindmap
-  root((DeepFuture Net))
+  root((DeepSequence))
     Prophet Inspired
       Seasonal Decomposition
       Additive Model

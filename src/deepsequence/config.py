@@ -1,5 +1,5 @@
 """
-Configuration file for DeepFuture Net.
+Configuration file for DeepSequence.
 Contains default parameters and path configurations.
 """
 

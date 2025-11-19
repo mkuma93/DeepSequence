@@ -116,8 +116,8 @@ Seasonal Output + Regression Output → Final Forecast
 
 ## Comparison with Prophet
 
-| Aspect | Prophet | DeepFuture Net |
-|--------|---------|----------------|
+| Aspect | Prophet | DeepSequence |
+|--------|---------|--------------|
 | Seasonality | Fourier series | Neural networks |
 | Trend | Piecewise linear | Recurrent layers |
 | Exogenous | Limited | Full integration |
@@ -134,11 +134,9 @@ Seasonal Output + Regression Output → Final Forecast
 - NumPy, Pandas for data handling
 
 ### Custom Modules
-The implementation uses custom classes:
-- `SC.seasonal`: Seasonal component builder
-- `RC.Regressor`: Regression component builder
-
-These modules are in the `DeepFuture_v2.ipynb` notebook.
+The implementation uses custom classes from `src/deepsequence/`:
+- `SeasonalComponent`: Seasonal component builder
+- `RegressorComponent`: Regression component builder
 
 ## Future Enhancements
 
