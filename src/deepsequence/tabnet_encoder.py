@@ -194,18 +194,19 @@ class TabNetEncoder(layers.Layer):
             feature_part = hidden[:, :self.feature_dim]
             output_part = hidden[:, self.feature_dim:]
             
-            # Apply unit normalization to output part
+            # Apply ReLU to decision output
+            output_part_relu = tf.nn.relu(output_part)
+            
+            # Apply unit normalization to decision output
             output_part_norm = UnitNorm(
                 name=f"{self.name}_step_{step}_unit_norm"
-            )(output_part)
+            )(output_part_relu)
             
-            # Aggregate output (decision part)
+            # Aggregate decision output
             aggregated_output = aggregated_output + output_part_norm
             
-            # Transform feature_part back to input dimension for next step
-            features = self.feature_transform(
-                tf.nn.relu(feature_part)
-            )
+            # Transform feature_part for next step with sqrt(0.5) scaling
+            features = self.feature_transform(feature_part) * tf.sqrt(0.5)
             
             # Add sparsity loss (entropy of attention weights)
             if training and self.sparsity_coefficient > 0:
