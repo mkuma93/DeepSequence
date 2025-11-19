@@ -156,7 +156,7 @@ class TabNetEncoder(layers.Layer):
         batch_size = tf.shape(inputs)[0]
         
         # Batch normalization on input
-        x = self.bn_input(inputs, training=training)
+        features = self.bn_input(inputs, training=training)
         
         # Initialize prior scale (for attention)
         prior_scales = tf.ones([batch_size, tf.shape(inputs)[1]])
@@ -168,7 +168,7 @@ class TabNetEncoder(layers.Layer):
         for step in range(self.n_steps):
             # Feature selection via attention
             masked_features, attention_weights = self.attention_layers[step](
-                x, prior_scales, training=training
+                features, prior_scales, training=training
             )
             
             # Update prior scales (discourage reusing same features)
@@ -183,12 +183,13 @@ class TabNetEncoder(layers.Layer):
             for step_layer in self.step_layers[step]:
                 hidden = step_layer(hidden, training=training)
             
-            # Split into feature and output parts
-            feature_part = hidden[:, :self.feature_dim]
+            # Split output part (feature_part not used in aggregation)
             output_part = hidden[:, self.feature_dim:]
             
             # Apply unit normalization to output part
-            output_part_norm = UnitNorm(name=f"{self.name}_step_{step}_unit_norm")(output_part)
+            output_part_norm = UnitNorm(
+                name=f"{self.name}_step_{step}_unit_norm"
+            )(output_part)
             
             # Aggregate output
             aggregated_output = aggregated_output + output_part_norm
