@@ -82,7 +82,7 @@ class TabNetEncoder(layers.Layer):
         
         # Will be built in build()
         self.feature_transform = None
-        self.shared_layers = []
+        self.shared_block = None
         self.step_layers = []
         self.attention_layers = []
         
@@ -97,19 +97,16 @@ class TabNetEncoder(layers.Layer):
             name=f"{self.name}_bn_input"
         )
         
-        # Shared GLU layers (used across all steps)
-        self.shared_layers = []
-        for i in range(self.n_shared):
-            self.shared_layers.append(
-                GLULayer(
-                    units=self.feature_dim + self.output_dim,
-                    bn_momentum=self.bn_momentum,
-                    bn_epsilon=self.bn_epsilon,
-                    l1_reg=self.l1_reg,
-                    l2_reg=self.l2_reg,
-                    name=f"{self.name}_shared_glu_{i}"
-                )
-            )
+        # Shared GLU block (used across all steps)
+        self.shared_block = SharedGLUBlock(
+            n_layers=self.n_shared,
+            units=self.feature_dim + self.output_dim,
+            bn_momentum=self.bn_momentum,
+            bn_epsilon=self.bn_epsilon,
+            l1_reg=self.l1_reg,
+            l2_reg=self.l2_reg,
+            name=f"{self.name}_shared_block"
+        )
         
         # Step-dependent layers
         self.step_layers = []
@@ -179,10 +176,8 @@ class TabNetEncoder(layers.Layer):
                 self.relaxation_factor - attention_weights
             )
             
-            # Process through shared layers
-            hidden = masked_features
-            for shared_layer in self.shared_layers:
-                hidden = shared_layer(hidden, training=training)
+            # Process through shared GLU block
+            hidden = self.shared_block(masked_features, training=training)
             
             # Process through step-specific layers
             for step_layer in self.step_layers[step]:
@@ -223,6 +218,79 @@ class TabNetEncoder(layers.Layer):
             'bn_momentum': self.bn_momentum,
             'bn_epsilon': self.bn_epsilon,
             'sparsity_coefficient': self.sparsity_coefficient,
+            'l1_reg': self.l1_reg,
+            'l2_reg': self.l2_reg,
+        })
+        return config
+
+
+class SharedGLUBlock(layers.Layer):
+    """
+    Shared GLU block containing multiple GLU layers.
+    
+    This encapsulates the shared feature transformer that is reused
+    across all TabNet decision steps.
+    
+    Args:
+        n_layers: Number of GLU layers in the block
+        units: Output units for each GLU layer
+        bn_momentum: Batch normalization momentum
+        bn_epsilon: Batch normalization epsilon
+        l1_reg: L1 regularization strength
+        l2_reg: L2 regularization strength
+        name: Layer name
+    """
+    
+    def __init__(
+        self,
+        n_layers: int,
+        units: int,
+        bn_momentum: float = 0.98,
+        bn_epsilon: float = 1e-3,
+        l1_reg: float = 0.0,
+        l2_reg: float = 0.0,
+        name: str = "shared_glu_block",
+        **kwargs
+    ):
+        super(SharedGLUBlock, self).__init__(name=name, **kwargs)
+        self.n_layers = n_layers
+        self.units = units
+        self.bn_momentum = bn_momentum
+        self.bn_epsilon = bn_epsilon
+        self.l1_reg = l1_reg
+        self.l2_reg = l2_reg
+        self.glu_layers = []
+        
+    def build(self, input_shape):
+        """Build the stacked GLU layers."""
+        for i in range(self.n_layers):
+            self.glu_layers.append(
+                GLULayer(
+                    units=self.units,
+                    bn_momentum=self.bn_momentum,
+                    bn_epsilon=self.bn_epsilon,
+                    l1_reg=self.l1_reg,
+                    l2_reg=self.l2_reg,
+                    name=f"{self.name}_glu_{i}"
+                )
+            )
+        super(SharedGLUBlock, self).build(input_shape)
+    
+    def call(self, inputs, training=None):
+        """Forward pass through all GLU layers."""
+        x = inputs
+        for glu_layer in self.glu_layers:
+            x = glu_layer(x, training=training)
+        return x
+    
+    def get_config(self):
+        """Get layer configuration for serialization."""
+        config = super(SharedGLUBlock, self).get_config()
+        config.update({
+            'n_layers': self.n_layers,
+            'units': self.units,
+            'bn_momentum': self.bn_momentum,
+            'bn_epsilon': self.bn_epsilon,
             'l1_reg': self.l1_reg,
             'l2_reg': self.l2_reg,
         })
