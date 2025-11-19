@@ -151,7 +151,7 @@ Potential improvements:
 
 ## Performance
 
-On the jubilant retail dataset:
+On retail SKU forecasting datasets:
 - Competitive MAPE against LightGBM models
 - Better performance on SKUs with strong seasonal patterns
 - Model selection based on per-SKU validation performance

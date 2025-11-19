@@ -68,5 +68,6 @@ backup/
 GITHUB_READY_REPORT.md
 TEST_REPORT.md
 
-# Proprietary data from Jubilant (do not upload)
-jubilant/
+# Proprietary data (do not upload)
+data/raw/
+notebooks/exploratory/

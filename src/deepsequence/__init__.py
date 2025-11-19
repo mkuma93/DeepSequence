@@ -16,6 +16,7 @@ from .regressor_component import RegressorComponent
 from .intermittent_handler import IntermittentHandler, apply_intermittent_mask
 from .tabnet_encoder import TabNetEncoder, create_tabnet_encoder
 from .unit_norm import UnitNorm, UnitNormDense, apply_unit_norm
+from .cross_layer import CrossLayer, CrossNetwork, apply_cross_network
 from .model import DeepSequenceModel
 from .utils import create_time_features, prepare_data
 
@@ -29,6 +30,9 @@ __all__ = [
     'UnitNorm',
     'UnitNormDense',
     'apply_unit_norm',
+    'CrossLayer',
+    'CrossNetwork',
+    'apply_cross_network',
     'DeepSequenceModel',
     'create_time_features',
     'prepare_data'

@@ -16,7 +16,7 @@ print("="*80)
 
 # Load data
 print("\n📊 Loading data...")
-data = pd.read_csv('jubilant/cleaned_data_week.csv')
+data = pd.read_csv('data/cleaned_data_week.csv')
 print(f"   Total records: {len(data):,}")
 
 # Data analysis
@@ -111,13 +111,13 @@ print("="*80)
 
 print("\n🏗️  Building model with TabNet encoders and unit normalization...")
 
-from src.deepsequence import TabNetEncoder, UnitNorm
+from src.deepsequence import TabNetEncoder, UnitNorm, CrossNetwork
 
 # Input layers
 seasonal_input = layers.Input(shape=(len(seasonal_features),), name='seasonal_input')
 regressor_input = layers.Input(shape=(len(regressor_features),), name='regressor_input')
 
-# Seasonal path with TabNet
+# Seasonal path with TabNet + Cross Layer
 seasonal_tabnet = TabNetEncoder(
     feature_dim=32,
     output_dim=32,
@@ -125,10 +125,12 @@ seasonal_tabnet = TabNetEncoder(
     relaxation_factor=1.5,
     name='seasonal_tabnet'
 )(seasonal_input)
+# Add cross layer for feature interactions
+seasonal_tabnet = CrossNetwork(num_layers=2, name='seasonal_cross')(seasonal_tabnet)
 seasonal_tabnet = UnitNorm(name='seasonal_unit_norm')(seasonal_tabnet)
 seasonal_output = layers.Dense(1, activation='linear', name='seasonal_dense')(seasonal_tabnet)
 
-# Regressor path with TabNet
+# Regressor path with TabNet + Cross Layer
 regressor_tabnet = TabNetEncoder(
     feature_dim=32,
     output_dim=32,
@@ -136,6 +138,8 @@ regressor_tabnet = TabNetEncoder(
     relaxation_factor=1.5,
     name='regressor_tabnet'
 )(regressor_input)
+# Add cross layer for feature interactions
+regressor_tabnet = CrossNetwork(num_layers=2, name='regressor_cross')(regressor_tabnet)
 regressor_tabnet = UnitNorm(name='regressor_unit_norm')(regressor_tabnet)
 regressor_output = layers.Dense(1, activation='linear', name='regressor_dense')(regressor_tabnet)
 
@@ -143,9 +147,15 @@ regressor_output = layers.Dense(1, activation='linear', name='regressor_dense')(
 combined_forecast = layers.Add(name='combined_forecast')([seasonal_output, regressor_output])
 
 # Intermittent handler (probability network)
-concat_features = layers.Concatenate(name='concat_features')([seasonal_tabnet, regressor_tabnet])
+concat_features = layers.Concatenate(name='concat_features')(
+    [seasonal_tabnet, regressor_tabnet])
 
-prob_hidden = layers.Dense(64, activation='relu', name='prob_hidden_1')(concat_features)
+# Add cross layer for seasonal-regressor interactions
+concat_features = CrossNetwork(num_layers=2, name='intermittent_cross')(
+    concat_features)
+
+prob_hidden = layers.Dense(64, activation='relu', name='prob_hidden_1')(
+    concat_features)
 prob_hidden = UnitNorm(name='intermittent_unit_norm_1')(prob_hidden)
 prob_hidden = layers.Dropout(0.3, name='prob_dropout_1')(prob_hidden)
 

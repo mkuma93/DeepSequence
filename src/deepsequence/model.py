@@ -14,6 +14,7 @@ from .regressor_component import RegressorComponent
 from .intermittent_handler import IntermittentHandler, apply_intermittent_mask
 from .tabnet_encoder import TabNetEncoder
 from .unit_norm import UnitNorm
+from .cross_layer import CrossNetwork
 from .config import DEFAULT_LEARNING_RATE, TRAINING_PARAMS
 
 
@@ -61,6 +62,13 @@ class DeepSequenceModel:
             )
             seasonal_output = self.seasonal_tabnet(seasonal_output)
             
+            # Apply cross layer for feature interactions
+            seasonal_output = CrossNetwork(
+                num_layers=tabnet_config.get('cross_layers', 2),
+                use_bias=True,
+                name='seasonal_cross'
+            )(seasonal_output)
+            
             # Apply unit normalization
             seasonal_output = UnitNorm(name='seasonal_unit_norm')(seasonal_output)
             
@@ -79,12 +87,21 @@ class DeepSequenceModel:
             )
             regressor_output = self.regressor_tabnet(regressor_output)
             
+            # Apply cross layer for feature interactions
+            regressor_output = CrossNetwork(
+                num_layers=tabnet_config.get('cross_layers', 2),
+                use_bias=True,
+                name='regressor_cross'
+            )(regressor_output)
+            
             # Apply unit normalization
-            regressor_output = UnitNorm(name='regressor_unit_norm')(regressor_output)
+            regressor_output = UnitNorm(name='regressor_unit_norm')(
+                regressor_output)
             
             # Final projection to forecast dimension
-            regressor_output = layers.Dense(1, activation='linear',
-                                           name='regressor_tabnet_output')(regressor_output)
+            regressor_output = layers.Dense(
+                1, activation='linear',
+                name='regressor_tabnet_output')(regressor_output)
 
         # Combine seasonal and regressor outputs
         if self.mode == 'additive':
@@ -122,6 +139,13 @@ class DeepSequenceModel:
             intermittent_input = layers.Concatenate(name='intermittent_concat')([
                 seasonal_for_intermittent, regressor_for_intermittent
             ])
+            
+            # Apply cross layer for seasonal-regressor interactions
+            intermittent_input = CrossNetwork(
+                num_layers=intermittent_config.get('cross_layers', 2),
+                use_bias=True,
+                name='intermittent_cross'
+            )(intermittent_input)
             
             # Build probability prediction network with unit norm
             prob_hidden = intermittent_input
