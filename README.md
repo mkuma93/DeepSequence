@@ -14,7 +14,7 @@ This project aims to forecast stock demand at the SKU level using historical dat
 
 DeepSequence is an original deep learning architecture that combines:
 - **Seasonal Components**: Inspired by Prophet's additive model for capturing weekly, monthly, and yearly seasonality
-- **Recurrent Components**: LSTM/GRU layers for temporal dependencies
+- **Trend Components**: Temporal pattern learning with attention mechanisms
 - **Contextual Features**: Cluster-based and exogenous variables integration
 - **Multi-horizon Forecasting**: Direct prediction of multiple future time steps
 
@@ -81,8 +81,16 @@ graph TB
     style Combine fill:#e1ffe1
 ```
 
-**Formula**: `ŷ = f(σ_seasonal, τ_trend)` where the combination mode can be additive (`ŷ = σ_s + τ_r`) or multiplicative (`ŷ = σ_s × τ_r`)
+**Formula**: `ŷ = f(σ_seasonal, τ_trend, τ_impact)` 
 
+**Flexible Combination Modes**:
+- **Additive**: `ŷ = σ_s + τ_r` (default, most stable)
+- **Multiplicative**: `ŷ = σ_s × τ_r` (for scaling seasonality)
+- **Hybrid**: `ŷ = σ_s × τ_i + τ_r` (seasonal scaled by impact + trend)
+- **Learnable**: `ŷ = w₁σ_s + w₂τ_r + bias` (adaptive weights)
+- **Custom**: Define your own combination function
+
+📖 **[View combination modes guide →](COMBINATION_MODES_GUIDE.md)**  
 📖 **[View detailed architecture diagrams →](docs/architecture_diagram.md)**
 
 ## Project Structure
@@ -94,7 +102,12 @@ forecasting/
 │   ├── model.py                 # Main model class
 │   ├── seasonal_component.py   # Seasonal decomposition
 │   ├── regressor_component.py  # Regression component
-│   ├── utils.py                 # Utility functions
+│   ├── combination_layer.py    # Flexible combinations ✨ NEW
+│   ├── tabnet_encoder.py       # TabNet integration
+│   ├── intermittent_handler.py # Zero demand handling
+│   ├── unit_norm.py            # Normalization layer
+│   ├── cross_layer.py          # Feature interactions
+│   ├── utils.py                # Utility functions
 │   ├── activations.py          # Custom activations
 │   └── config.py               # Configuration
 │
@@ -194,11 +207,11 @@ predictions = model.predict(test_input)
 ### DeepSequence (Custom Architecture) ⭐
 **Original contribution** - A Prophet-inspired deep learning architecture featuring:
 - Seasonal decomposition modules (weekly, monthly, yearly)
-- Recurrent regression components with LSTM/GRU
+- Trend, regressor, and holiday components with attention mechanisms
 - Embedding layers for categorical features (SKU identifiers, clusters)
 - TabNet encoder for feature selection
 - Cross-layer attention for feature interactions
-- Multi-horizon forecasting capability
+- Intermittent demand handler for sparse forecasting
 
 **Architecture Highlights**:
 - Modular design with separate seasonal and regression components

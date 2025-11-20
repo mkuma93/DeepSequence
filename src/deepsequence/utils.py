@@ -61,7 +61,8 @@ def inverse_transform(predictions: np.ndarray, mean: float, std: float) -> np.nd
     return predictions * std + mean
 
 
-def calculate_mape(y_true: np.ndarray, y_pred: np.ndarray, epsilon: float = 1e-10) -> float:
+def calculate_mape(y_true: np.ndarray, y_pred: np.ndarray, epsilon: float = 1e-7) -> float:
+    """Calculate MAPE with epsilon to prevent division by zero."""
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     return np.mean(np.abs((y_true - y_pred) / (y_true + epsilon))) * 100
 

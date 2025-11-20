@@ -35,7 +35,7 @@ class UnitNorm(layers.Layer):
     def __init__(
         self,
         axis: int = -1,
-        epsilon: float = 1e-12,
+        epsilon: float = 1e-7,
         name: str = "unit_norm",
         **kwargs
     ):
@@ -44,7 +44,7 @@ class UnitNorm(layers.Layer):
         
         Args:
             axis: Axis along which to normalize (default: -1, feature axis)
-            epsilon: Small constant for numerical stability
+            epsilon: Small constant for numerical stability (1e-7 is robust)
             name: Layer name
         """
         super(UnitNorm, self).__init__(name=name, **kwargs)
@@ -141,14 +141,14 @@ class UnitNormDense(layers.Layer):
         return config
 
 
-def apply_unit_norm(x, axis=-1, epsilon=1e-12):
+def apply_unit_norm(x, axis=-1, epsilon=1e-7):
     """
     Functional API for unit normalization.
     
     Args:
         x: Input tensor
         axis: Axis along which to normalize
-        epsilon: Numerical stability constant
+        epsilon: Small constant for numerical stability (1e-7 is robust)
         
     Returns:
         Unit-normalized tensor

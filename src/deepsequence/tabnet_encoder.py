@@ -186,6 +186,10 @@ class TabNetEncoder(layers.Layer):
             # Process through shared GLU block
             hidden = self.shared_block(masked_features, training=training)
             
+            # Scale by sqrt(0.5) when transitioning to step-specific layers
+            # This maintains gradient stability across blocks
+            hidden = hidden * tf.sqrt(0.5)
+            
             # Process through step-specific layers
             for step_layer in self.step_layers[step]:
                 hidden = step_layer(hidden, training=training)
@@ -210,9 +214,10 @@ class TabNetEncoder(layers.Layer):
             
             # Add sparsity loss (entropy of attention weights)
             if training and self.sparsity_coefficient > 0:
+                # Use epsilon to prevent log(0) - 1e-7 is numerically stable
                 entropy = -tf.reduce_mean(
                     tf.reduce_sum(
-                        attention_weights * tf.math.log(attention_weights + 1e-10),
+                        attention_weights * tf.math.log(attention_weights + 1e-7),
                         axis=1
                     )
                 )

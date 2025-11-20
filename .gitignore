@@ -1,0 +1,144 @@
+# Data files
+*.csv
+*.xlsx
+*.xls
+
+# Model files
+saved_model.pb
+variables/
+*.h5
+*.pkl
+*.joblib
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation files (if you want to version control these, remove this section)
+*.pptx
+*.docx
+*.pdf
+
+# Large output files
+*.png
+*.jpg
+*.jpeg
+
+# Logs
+*.log
+
+# Test files and intermediate scripts
+test_*.py
+*_test.py
+*comparison*.py
+*eval*.py
+setup_environment.py
+calculate_*.py
+evaluate_*.py
+train_and_*.py
+verify_*.py
+apple_to_apple_comparison.py
+multiplicative_vs_additive.py
+multiplicative_with_offset.py
+performance_evaluation.py
+comprehensive_mape_evaluation.py
+*_output.log
+
+# Output files
+quick_performance_results.csv
+*_forecast.csv
+*forecast.csv
+
+# Old/backup files
+*.old
+*.backup
+*.bak
+*_old.*
+*_backup.*
+old/
+backup/
+
+# Internal reports (for personal use only)
+GITHUB_READY_REPORT.md
+TEST_REPORT.md
+
+# Proprietary data (do not upload)
+data/raw/
+notebooks/exploratory/
+jubilant/
+
+# Test files (not needed for production)
+test_*.py
+calculate_*.py
+evaluate_*.py
+apple_to_apple_comparison.py
+comprehensive_mape_evaluation.py
+multiplicative_vs_additive.py
+multiplicative_with_offset.py
+performance_evaluation.py
+setup_environment.py
+train_and_evaluate_mape.py
+verify_tabnet_paper.py
+
+# Intermediate folders (keep only src/)
+published_model_main/
+scripts/
+outputs/
+assets/
+
+# Temporary comparison results
+*_comparison.csv
+*_results.csv
+model_comparison.csv
+tabnet_cross_layer_comparison.csv
+
+# Documentation markdown (keeping only README and LICENSE)
+*_COMPARISON*.md
+*_SUMMARY.md
+*_ANALYSIS.md
+*_COMPONENT*.md
+*_PERFORMANCE*.md
+*_REPORT.md
+*_CHECKLIST.md
+ARCHITECTURE*.md
+BASELINE*.md
+COMBINATION*.md
+CROSS_LAYER*.md
+DEEPSEQUENCE*.md
+EPSILON*.md
+FLEXIBLE*.md
+GITHUB_*.md
+MAPE_*.md
+MULTIPLICATIVE*.md
+ORIGINAL*.md
+PUBLISHED*.md
+PWL_*.md
+SANITIZATION*.md
+SEASONAL*.md
+SEQUENTIAL*.md
+SHARED_*.md
+TABNET_*.md
+TEST_*.md
+TREND_*.md

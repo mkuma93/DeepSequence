@@ -65,6 +65,22 @@ class CrossLayer(layers.Layer):
         else:
             # Single input case
             feature_dim = input_shape[-1]
+        
+        # Convert TensorShape/Dimension to int (Keras 2.x compatibility)
+        # Handle TensorShape objects
+        from tensorflow.python.framework import tensor_shape
+        if isinstance(feature_dim, tensor_shape.TensorShape):
+            # TensorShape object - get its dimensions list
+            feature_dim = feature_dim.as_list()[-1]
+        elif hasattr(feature_dim, 'value'):
+            # Dimension object with .value attribute
+            feature_dim = feature_dim.value
+        elif not isinstance(feature_dim, int):
+            # Try direct conversion for other types
+            try:
+                feature_dim = int(feature_dim)
+            except (TypeError, ValueError):
+                raise TypeError(f"Cannot convert feature_dim type {type(feature_dim)} to int")
             
         self.kernel = self.add_weight(
             name='kernel',

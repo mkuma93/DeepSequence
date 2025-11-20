@@ -96,18 +96,30 @@ class RegressorComponent:
         inputs = []
         embeddings = []
         
-        # ID embedding (shared or new)
+        # ID input: use shared from Trend or create new
+        n_ids = self.ts[self.id_var].nunique()
+        embed_dim = min(self.embed_size, n_ids // 2 + 1)
+        
         if id_input is None:
-            n_ids = self.ts[self.id_var].nunique()
-            id_in = Input(shape=(1,), name=f'{self.id_var}_regressor')
-            id_embed = Embedding(n_ids + 1, self.embed_size, 
-                                name=f'{self.id_var}_reg_embed')(id_in)
-            id_embed = Flatten()(id_embed)
-            inputs.append(id_in)
-            self.input_names.append(f'{self.id_var}_regressor')
-            embeddings.append(id_embed)
+            # Create new ID input
+            id_in = Input(shape=(1,), name='id')
+            self.input_names.append('id')
         else:
-            embeddings.append(id_input)
+            # Use shared ID input from Trend component
+            id_in = id_input
+        
+        # Always add to inputs (needed for Model graph tracing)
+        inputs.append(id_in)
+        
+        # Create ID embedding
+        id_embed = Embedding(
+            n_ids + 1,
+            embed_dim,
+            input_length=1,
+            name='regressor_id_embed'
+        )(id_in)
+        id_embed = Flatten()(id_embed)
+        embeddings.append(id_embed)
         
         # Categorical variable embeddings
         for cat_var in self.categorical_var:
@@ -163,3 +175,29 @@ class RegressorComponent:
                                         name='regressor_component')
         
         return self.combined_reg_model
+    
+    def get_input_data(self, ts: pd.DataFrame, exog: pd.DataFrame) -> dict:
+        """
+        Prepare input data for the regressor model.
+        
+        Args:
+            ts: Time series DataFrame with id_var column
+            exog: Exogenous variables DataFrame
+            
+        Returns:
+            Dictionary mapping input names to numpy arrays
+        """
+        input_dict = {}
+        
+        # Get all input names from the model
+        for input_layer in self.combined_reg_model.inputs:
+            input_name = input_layer.name.split(':')[0]  # Remove ':0' suffix
+            
+            if input_name == f'{self.id_var}_regressor':
+                input_dict[input_name] = ts[self.id_var].values
+            elif input_name in self.categorical_var:
+                input_dict[input_name] = exog[input_name].values
+            elif input_name in self.context_variable:
+                input_dict[input_name] = exog[input_name].values
+        
+        return input_dict
