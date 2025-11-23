@@ -256,12 +256,22 @@ class DeepSequencePWL:
         self.holiday_model = None
         self.regressor_model = None
     
-    def build_model(self, holiday_feature_index: int = 8) -> Tuple[Model, Model, Model, Model, Model]:
+    def build_model(self, 
+                    trend_feature_indices: list = None,
+                    seasonal_feature_indices: list = None,
+                    holiday_feature_index: int = None,
+                    regressor_feature_indices: list = None) -> Tuple[Model, Model, Model, Model, Model]:
         """
-        Build the full model architecture.
+        Build the full model architecture with proper feature separation.
         
         Args:
-            holiday_feature_index: Index of holiday_distance feature in input (default 8)
+            trend_feature_indices: Indices for trend-related features (time, lag features, etc.)
+                                  If None, uses all features except holiday
+            seasonal_feature_indices: Indices for seasonal features (day_of_week, month, etc.)
+                                     If None, uses all features except holiday
+            holiday_feature_index: Index of holiday_distance feature (required for holiday component)
+            regressor_feature_indices: Indices for external regressors (price, promo, etc.)
+                                      If None, uses all features except holiday
         
         Returns:
             Tuple of (main_model, trend_model, seasonal_model, holiday_model, regressor_model)
@@ -271,6 +281,25 @@ class DeepSequencePWL:
         print(f"  Activation: {self.activation}")
         print(f"  ID embedding: {self.id_embedding_dim}D")
         print(f"  Component hidden: {self.component_hidden_units}")
+        
+        # Default: use all features except holiday for each component
+        all_indices = list(range(self.n_features))
+        if holiday_feature_index is not None:
+            non_holiday_indices = [i for i in all_indices if i != holiday_feature_index]
+        else:
+            non_holiday_indices = all_indices
+            
+        if trend_feature_indices is None:
+            trend_feature_indices = non_holiday_indices
+        if seasonal_feature_indices is None:
+            seasonal_feature_indices = non_holiday_indices
+        if regressor_feature_indices is None:
+            regressor_feature_indices = non_holiday_indices
+            
+        print(f"  Trend features: {len(trend_feature_indices)} indices")
+        print(f"  Seasonal features: {len(seasonal_feature_indices)} indices")
+        print(f"  Holiday feature: {holiday_feature_index if holiday_feature_index is not None else 'None'}")
+        print(f"  Regressor features: {len(regressor_feature_indices)} indices")
         
         # ====================================================================
         # INPUTS
@@ -292,12 +321,18 @@ class DeepSequencePWL:
         # ====================================================================
         # TREND COMPONENT (base forecast with bias)
         # ====================================================================
+        # Extract trend-specific features
+        trend_input = Lambda(
+            lambda x: tf.gather(x, trend_feature_indices, axis=1),
+            name='trend_features'
+        )(main_input)
+        
         trend_out = Dense(
-            self.component_hidden_units, 
-            activation=self.activation_fn, 
+            self.component_hidden_units,
+            activation=self.activation_fn,
             use_bias=True,
             name='trend_hidden'
-        )(main_input)
+        )(trend_input)
         
         # ID-specific scaling via element-wise multiplication
         id_trend_scale = Dense(
@@ -316,14 +351,20 @@ class DeepSequencePWL:
         )(trend_out)
         
         # ====================================================================
-        # SEASONAL COMPONENT (deviation from trend, no bias)
+        # SEASONAL COMPONENT (periodic patterns, no bias)
         # ====================================================================
+        # Extract seasonal-specific features
+        seasonal_input = Lambda(
+            lambda x: tf.gather(x, seasonal_feature_indices, axis=1),
+            name='seasonal_features'
+        )(main_input)
+        
         seasonal_out = Dense(
-            self.component_hidden_units, 
-            activation=self.activation_fn, 
+            self.component_hidden_units,
+            activation=self.activation_fn,
             use_bias=False,
             name='seasonal_hidden'
-        )(main_input)
+        )(seasonal_input)
         
         # ID-specific seasonal residual: output = feature + α*embedding
         id_seasonal_residual = Dense(
@@ -392,16 +433,13 @@ class DeepSequencePWL:
             name='holiday_lattice'
         )(holiday_pwl)
         
-        # Combine with other features through dense layer + ID interaction
-        holiday_combined = Concatenate(name='holiday_combined')([
-            main_input, holiday_lattice
-        ])
+        # Use only the holiday lattice output (no other features)
         holiday_out = Dense(
-            self.component_hidden_units, 
+            self.component_hidden_units,
             activation=self.activation_fn,
-            use_bias=False, 
+            use_bias=False,
             name='holiday_hidden'
-        )(holiday_combined)
+        )(holiday_lattice)
         
         # ID-specific holiday residual
         id_holiday_residual = Dense(
@@ -424,12 +462,18 @@ class DeepSequencePWL:
         # ====================================================================
         # REGRESSOR COMPONENT (deviation from trend, no bias)
         # ====================================================================
+        # Extract regressor-specific features
+        regressor_input = Lambda(
+            lambda x: tf.gather(x, regressor_feature_indices, axis=1),
+            name='regressor_features'
+        )(main_input)
+        
         regressor_out = Dense(
-            self.component_hidden_units, 
+            self.component_hidden_units,
             activation=self.activation_fn,
             use_bias=False,
             name='regressor_hidden'
-        )(main_input)
+        )(regressor_input)
         
         # ID-specific regressor residual
         id_regressor_residual = Dense(
