@@ -14,15 +14,39 @@ A general-purpose time series forecasting model with optional intermittent deman
 ## Installation
 
 ```bash
+# Install from GitHub
+pip install git+https://github.com/mkuma93/DeepSequence.git
+
+# Or clone and install in development mode
 git clone https://github.com/mkuma93/DeepSequence.git
 cd DeepSequence
-pip install -r requirements.txt
+pip install -e .
+```
+
+## Project Structure
+
+```
+DeepSequence/
+├── src/
+│   └── deepsequence_pwl/     # Main package
+│       ├── model.py           # Core model
+│       ├── trend_component.py
+│       ├── seasonal_component.py
+│       ├── holiday_component.py
+│       ├── regressor_component.py
+│       └── ...
+├── examples/
+│   └── DeepSequence_PWL_Demo.ipynb  # Complete demo
+├── tests/                     # Unit tests (coming soon)
+├── setup.py                   # Package setup
+├── pyproject.toml            # Modern Python packaging
+└── requirements.txt          # Dependencies
 ```
 
 ## Quick Start
 
 ```python
-from deepsequence.deepsequence_pwl import DeepSequencePWL
+from deepsequence_pwl import DeepSequencePWL
 
 # For sparse/intermittent demand (default)
 model = DeepSequencePWL(
@@ -46,9 +70,23 @@ main_model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=32)
 
 ## Documentation
 
-See `deepsequence/deepsequence_pwl/README.md` for detailed documentation.
+- **Package Documentation**: `src/deepsequence_pwl/README.md`
+- **Demo Notebook**: `examples/DeepSequence_PWL_Demo.ipynb`
+- **API Reference**: See docstrings in source code
 
 ## Development
+
+```bash
+# Clone repository
+git clone https://github.com/mkuma93/DeepSequence.git
+cd DeepSequence
+
+# Install in development mode with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests (coming soon)
+pytest tests/
+```
 
 All experimental work and additional features are maintained in the `develop` branch.
 
