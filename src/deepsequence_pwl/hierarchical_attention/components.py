@@ -235,27 +235,13 @@ class TrendComponentBuilder(ComponentBuilder):
                 )(time_feature)
             # trend_pwl shape: [batch, hidden_units]
             
-            # Feature-level attention on PWL outputs
-            # Learn which changepoint features are important for this SKU
-            pwl_attention_logits = Dense(
-                self.hidden_units,
-                kernel_regularizer=regularizers.l1_l2(l1=1e-4, l2=1e-4),
-                name='trend_pwl_attention_logits'
-            )(trend_pwl)
-            
-            pwl_feature_weights = Entmax15(name='trend_pwl_attention')(pwl_attention_logits)
-            # pwl_feature_weights: [batch, hidden_units] - sparse weights per changepoint
-            
-            # Apply attention: mask less important changepoints
-            trend_pwl_masked = Multiply(name='trend_pwl_masked')([trend_pwl, pwl_feature_weights])
-            
-            # Dense layer on attention-masked PWL features
+            # Dense layer on PWL features (attention applied later in intermittent handler)
             trend_hidden = Dense(
                 self.hidden_units,
                 activation=self.get_activation_fn(),
                 kernel_regularizer=regularizers.l1_l2(l1=1e-4, l2=1e-4),
                 name='trend_hidden'
-            )(trend_pwl_masked)
+            )(trend_pwl)
         else:
             # Fallback: regular Dense layer
             trend_hidden = Dense(
@@ -419,27 +405,13 @@ class HolidayComponentBuilder(ComponentBuilder):
                 )(holiday_feature)
             # holiday_pwl shape: [batch, hidden_units]
             
-            # Feature-level attention on PWL outputs
-            # Learn which distance ranges (near/far from holiday) matter for this SKU
-            pwl_attention_logits = Dense(
-                self.hidden_units,
-                kernel_regularizer=regularizers.l1_l2(l1=1e-4, l2=1e-4),
-                name='holiday_pwl_attention_logits'
-            )(holiday_pwl)
-            
-            pwl_feature_weights = Entmax15(name='holiday_pwl_attention')(pwl_attention_logits)
-            # pwl_feature_weights: [batch, hidden_units] - sparse weights per distance range
-            
-            # Apply attention: mask less important distance ranges
-            holiday_pwl_masked = Multiply(name='holiday_pwl_masked')([holiday_pwl, pwl_feature_weights])
-            
-            # Dense layer on attention-masked PWL features
+            # Dense layer on PWL features (attention applied later in intermittent handler)
             holiday_hidden = Dense(
                 self.hidden_units,
                 activation=self.get_activation_fn(),
                 kernel_regularizer=regularizers.l1_l2(l1=1e-4, l2=1e-4),
                 name='holiday_hidden'
-            )(holiday_pwl_masked)
+            )(holiday_pwl)
         else:
             # Fallback: regular Dense layer
             holiday_hidden = Dense(

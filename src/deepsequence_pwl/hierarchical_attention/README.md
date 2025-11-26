@@ -4,35 +4,40 @@ This directory contains the hierarchical attention architecture for intermittent
 
 ## Architecture Overview
 
-The hierarchical attention mechanism operates at three levels:
+The hierarchical attention mechanism operates at two levels:
 
-### Level 1: PWL-Level Attention
-- **Trend Component**: Attention on changepoint features from PWL calibration
+### Level 1: Feature-Level Attention
+Applied to component outputs to select which features matter within each component:
+
+- **Trend Component**: Attention on PWL-calibrated changepoint features
   - Learns which time regions (changepoints) are important for each SKU
   - Example: "SKU uses changepoints 1, 5, 8 for early growth phase"
   
-- **Holiday Component**: Attention on distance range features from PWL calibration
+- **Seasonal Component**: Attention on Dense layer outputs
+  - Learns which seasonal pattern features matter for each SKU
+  - Example: "SKU uses weekly and monthly patterns, ignores quarterly"
+
+- **Holiday Component**: Attention on PWL-calibrated distance features
   - Learns which distances from holidays matter for each SKU
   - Example: "SKU sensitive only 7-14 days before Christmas"
+  
+- **Regressor Component**: Attention on Dense layer outputs
+  - Learns which regressor features are important for each SKU
+  - Example: "SKU responds to price changes but not promotions"
 
-### Level 2: Feature-Level Attention
-- Applied to hidden features within each component
-- All 4 components (trend, seasonal, holiday, regressor) get feature-level attention
-- Selects which hidden dimensions are important per SKU
-- Example: "In seasonal component, features 5, 12, 19 matter; others ignored"
-
-### Level 3: Component-Level Attention
+### Level 2: Component-Level Attention
 - Attention across all components (trend/seasonal/holiday/regressor)
 - Learns the importance of each component for different SKUs
 - Example: "Trend=60%, Seasonal=30%, Holiday=10%, Regressor=0%"
 
 ## Key Features
 
+- **Two-Level Hierarchy**: Feature-level (which features within component) + Component-level (which components)
 - **Sparse Attention**: Uses sparsemax activation (TensorFlow-native) that can output exact zeros
-- **PWL Calibration**: Piecewise linear calibration for flexible non-linear transformations
+- **PWL Calibration**: Piecewise linear calibration for trend and holiday components
 - **SKU-Specific**: All attention is conditioned on SKU embeddings
-- **Interpretable**: Can analyze attention weights at each level to understand model decisions
-- **Efficient**: Only 25,337 parameters for 50 SKUs, 10 features
+- **Interpretable**: Can analyze attention weights at both levels to understand model decisions
+- **Efficient**: Lightweight architecture with minimal parameters
 
 ## Files
 
