@@ -45,10 +45,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mkuma93/deepsequence-hierarchical-attention"
-Documentation = "https://github.com/mkuma93/deepsequence-hierarchical-attention"
-Repository = "https://github.com/mkuma93/deepsequence-hierarchical-attention"
-"Bug Tracker" = "https://github.com/mkuma93/deepsequence-hierarchical-attention/issues"
+Homepage = "https://github.com/mkuma93/DeepSequence"
+Documentation = "https://github.com/mkuma93/DeepSequence/tree/main/deepsequence_hierarchical_attention"
+Repository = "https://github.com/mkuma93/DeepSequence"
+"Bug Tracker" = "https://github.com/mkuma93/DeepSequence/issues"
 
 [tool.setuptools]
 packages = ["deepsequence_hierarchical_attention"]

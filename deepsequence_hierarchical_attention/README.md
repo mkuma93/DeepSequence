@@ -43,14 +43,17 @@ A production-ready deep learning framework for time series forecasting with **hi
 
 ```bash
 # Clone repository
-git clone https://github.com/mkuma93/deepsequence-hierarchical-attention.git
-cd deepsequence-hierarchical-attention
+git clone https://github.com/mkuma93/DeepSequence.git
+cd DeepSequence/deepsequence_hierarchical_attention
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Install package
 pip install -e .
+
+# Or install directly from GitHub
+pip install "git+https://github.com/mkuma93/DeepSequence.git#subdirectory=deepsequence_hierarchical_attention"
 ```
 
 ---
