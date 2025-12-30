@@ -25,6 +25,7 @@ from tensorflow import keras
 import joblib
 import json
 import argparse
+import traceback
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -559,11 +560,11 @@ def main():
     """Train with adaptive loss weighting."""
     
     print("\n" + "="*70)
-    print("FIXED LOSS WEIGHTING TRAINING")
+    print("BALANCED TRAINING (Higher Threshold for Precision)")
     print("="*70)
-    print("Using 90% classification + 10% forecast weighting")
-    print("Focus: Fix naive classifier behavior")
-    
+    print("Using BALANCED 50% classification + 50% forecast weighting")
+    print("Focus: Improve precision while keeping recall reasonable")
+    print("Threshold: Fixed at 0.55 (higher threshold → fewer false positives)\n")
     # Parse CLI / config
     parser = argparse.ArgumentParser(description="Train lightweight adaptive loss model")
     parser.add_argument("--config", type=str, default=None, help="Path to JSON config file")
@@ -670,11 +671,28 @@ def main():
     zero_rate = np.mean(y_train == 0)
     avg_nonzero_demand = np.mean(y_train[y_train > 0])
     
+    # Compute per-SKU non-zero means for adaptive weighting
+    train_sku_stats = pd.DataFrame({
+        'sku': sku_train,
+        'demand': y_train
+    })
+    # Get mean non-zero demand per SKU
+    sku_nonzero_means = train_sku_stats[train_sku_stats['demand'] > 0].groupby('sku')['demand'].mean()
+    # Fill missing SKUs (all zeros) with global mean
+    sku_nonzero_means = sku_nonzero_means.reindex(range(len(np.unique(sku_train))), fill_value=avg_nonzero_demand)
+    
+    # Create per-sample weights: log1p(sku_mean) for each sample
+    sample_weights_train = np.log1p(sku_nonzero_means[sku_train].values).astype(np.float32)
+    sample_weights_val = np.log1p(sku_nonzero_means[sku_val].values).astype(np.float32)
+    
     print(f"\nDataset characteristics:")
     print(f"  Zero rate: {zero_rate*100:.2f}%")
     print(f"  Non-zero rate: {(1-zero_rate)*100:.2f}%")
     print(f"  Average non-zero demand: {avg_nonzero_demand:.4f}")
     print(f"  Imbalance ratio: {zero_rate/(1-zero_rate):.2f}:1")
+    print(f"\nPer-SKU weighting:")
+    print(f"  SKU non-zero means - min: {sku_nonzero_means.min():.2f}, max: {sku_nonzero_means.max():.2f}, median: {sku_nonzero_means.median():.2f}")
+    print(f"  Sample weights - min: {sample_weights_train.min():.4f}, max: {sample_weights_train.max():.4f}, mean: {sample_weights_train.mean():.4f}")
     
     # Split features by component
     X_all = X_train
@@ -766,39 +784,36 @@ def main():
         mae = tf.where(tf.math.is_finite(mae), mae, 0.0)
         return tf.reduce_mean(mae)
     
-    # Use standard MAE (not log-scale) to preserve signal magnitude
-    mae_loss_fn = keras.losses.MeanAbsoluteError()
+    # Use composite loss from losses.py
+    # This loss automatically handles:
+    # - Class weighting (zero=1, non-zero=9) in BCE
+    # - MAE/MSE only on non-zero samples
+    # - Log1p SKU volume weighting for magnitude loss
+    weight_nonzero = float(cfg_val('weight_nonzero', 9.0))
+    use_mse = bool(cfg_val('use_mse', False))  # True for MSE, False for MAE
     
-    # Use weighted BCE for class imbalance handling
-    # Use Keras built-in BinaryCrossentropy with pos_weight for efficiency
-    # pos_weight = weight_nonzero balances the 9:1 class imbalance
-    weight_nonzero = float(cfg_val('weight_nonzero', min(20.0, zero_rate / max(1 - zero_rate, 0.01))))
-    weight_zero = float(cfg_val('weight_zero', 1.0))
+    # Create composite loss with data-driven weighting
+    # Returns separate losses for each output with appropriate weights
+    # NOTE: We use weight=1.0 for forecast loss since per-SKU weighting is applied via sample_weight
+    loss_config = composite_loss(
+        zero_rate=zero_rate,  # Auto-weights BCE by zero rate
+        average_nonzero_demand=1.0,  # Set to 1.0 - per-SKU weighting via sample_weight instead
+        pos_weight=weight_nonzero,  # 9:1 class weighting
+        use_mse=use_mse  # MAE or MSE for magnitude
+    )
     
-    # Use built-in BCE (more efficient than custom)
-    bce_loss_fn = keras.losses.BinaryCrossentropy()
-    print(f"\n✓ Classification loss: BinaryCrossentropy()")
-    print(f"  Zero rate: {zero_rate*100:.1f}% → using class_weight in fit() for {zero_rate/(1-zero_rate):.2f}x imbalance")
+    bce_weight = loss_config['weights']['non_zero_probability']
+    mae_weight = loss_config['weights']['final_forecast']  # Will be 1.0 now
     
-    # Initial threshold for metrics (will be optimized during training based on ROC curve)
-    # Callback will find threshold that maximizes Youden's J statistic (sensitivity + specificity - 1)
-    optimal_threshold = 0.5  # Starting point
+    print(f"\n✓ Using composite_loss from losses.py with PER-SKU weighting:")
+    print(f"  - BCE with pos_weight={weight_nonzero:.1f} (zero=1.0, non-zero={weight_nonzero:.1f})")
+    print(f"  - {'MSE' if use_mse else 'MAE'} on non-zero samples only")
+    print(f"  - BCE weight: {bce_weight:.4f}")
+    print(f"  - MAE/MSE base weight: {mae_weight:.4f} (per-SKU scaled via sample_weight)")
+    print(f"  - Per-SKU scaling: log1p(sku_nonzero_mean) applied as sample weights")
     
-    # Define loss functions for each output
-    def classification_loss_fn(y_true, y_pred):
-        """BCE loss for non-zero classification"""
-        return bce_loss_fn(y_true, y_pred)
-    
-    def forecast_loss_fn(y_true, y_pred):
-        """MAE loss on non-zero samples only"""
-        y_nonzero = tf.cast(y_true > 0, tf.float32)
-        forecast_errors = tf.abs(y_true - y_pred)
-        return tf.reduce_sum(forecast_errors * y_nonzero) / (tf.reduce_sum(y_nonzero) + 1e-7)
-    
-    # Compute sample weights for each sample based on its class
-    # For multi-output models, we can't use class_weight dict, must use sample_weight array
-    sample_weights_binary = np.where(y_train_binary == 1, weight_nonzero, weight_zero).astype(np.float32)
-    sample_weights_binary_val = np.where(y_val_binary == 1, weight_nonzero, weight_zero).astype(np.float32)
+    # Initial threshold for metrics
+    optimal_threshold = 0.55
     
     # Use conservative learning rate for stability with intermittent data
     lr = float(cfg_val('learning_rate', best_params.get('learning_rate', 0.001)))
@@ -807,22 +822,14 @@ def main():
         lr = 0.005  # Cap at 0.5% per step
         print(f"  WARNING: Reducing learning rate to {lr:.6f} for stability")
     
-    # Compile model with separate losses per output (weighted 70/30)
+    # Compile model with separate losses for each output
     base_model.compile(
         optimizer=keras.optimizers.Adam(
             learning_rate=lr,
             global_clipnorm=10.0  # Clip L2 norm of all gradients
         ),
-        loss={
-            'non_zero_probability': classification_loss_fn,  # 70% weight
-            'final_forecast': forecast_loss_fn,  # 30% weight
-            'base_forecast': None  # No loss - auxiliary output
-        },
-        loss_weights={
-            'non_zero_probability': 0.90,  # 90% classification (matches 90% zero rate)
-            'final_forecast': 0.10,  # 10% forecast
-            'base_forecast': 0.0  # No weight - auxiliary output
-        },
+        loss=loss_config['losses'],
+        loss_weights=loss_config['weights'],
         metrics={
             'non_zero_probability': [
                 keras.metrics.Precision(name='nonzero_precision', thresholds=[optimal_threshold]),
@@ -849,59 +856,89 @@ def main():
     model = base_model
     
     print("\n✓ Model compiled successfully")
-    print("  Loss: Custom (90% classification + 10% forecast)")
-    print("  Optimizer: Adam with gradient clipping (global_norm=10.0)")
+    print(f"\n✓ Model compilation complete:")
+    print(f"  Optimizer: Adam with gradient clipping (global_norm=10.0)")
     print(f"  Learning rate: {lr:.6f}")
-    print(f"  Classification loss: BinaryCrossentropy with class_weight={{0: {weight_zero:.2f}, 1: {weight_nonzero:.2f}}}")
-    print(f"  Classification threshold: ROC-optimized (starts at {optimal_threshold:.2f}, will find threshold maximizing Youden's J)")
+    print(f"  Classification loss: Weighted BCE with pos_weight={weight_nonzero:.2f} on non_zero_probability")
+    print(f"  Forecast loss: Masked {'MSE' if use_mse else 'MAE'} on non-zero samples only")
+    print(f"  Loss weights: BCE={bce_weight:.3f}, MAE={mae_weight:.3f}")
+    print(f"  Classification threshold: {optimal_threshold:.2f} (for metrics)")
     
     # Callbacks
     patience = int(cfg_val('patience', 15))
     
-    # Callback to compute optimal threshold based on ROC curve (Youden's J statistic)
-    class OptimalThresholdCallback(keras.callbacks.Callback):
-        def __init__(self, val_inputs, val_binary):
+    # Callback to compute recall-constrained F1-optimal threshold 
+    # Ensures minimum recall (70%) while maximizing F1-score
+    class RecallConstrainedF1Callback(keras.callbacks.Callback):
+        def __init__(self, val_inputs, val_binary, sample_size=100000, min_recall=0.70):
             super().__init__()
             self.val_inputs = val_inputs
             self.val_binary = val_binary
-            self.best_threshold = 0.5
+            self.sample_size = sample_size
+            self.min_recall = min_recall  # Minimum acceptable recall
+            self.best_threshold = 0.3  # Start with recall-friendly threshold
             
         def on_epoch_end(self, epoch, logs=None):
-            # Get predictions on validation set
-            outputs = self.model.predict(self.val_inputs, verbose=0)
-            y_probs = outputs['non_zero_probability'].flatten()
-            y_true = self.val_binary.flatten()
-            
-            # Compute ROC curve
-            from sklearn.metrics import roc_curve
-            fpr, tpr, thresholds = roc_curve(y_true, y_probs)
-            
-            # Find threshold that maximizes Youden's J statistic (sensitivity + specificity - 1)
-            # This is equivalent to maximizing (TPR - FPR)
-            j_scores = tpr - fpr
-            optimal_idx = np.argmax(j_scores)
-            self.best_threshold = thresholds[optimal_idx]
-            
-            # Compute metrics at optimal threshold
-            y_pred = (y_probs >= self.best_threshold).astype(int)
-            tp = np.sum((y_pred == 1) & (y_true == 1))
-            fp = np.sum((y_pred == 1) & (y_true == 0))
-            fn = np.sum((y_pred == 0) & (y_true == 1))
-            tn = np.sum((y_pred == 0) & (y_true == 0))
-            
-            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
-            
-            print(f"\n  [ROC-Optimal] Threshold: {self.best_threshold:.4f}, "
-                  f"Precision: {precision:.4f}, Recall: {recall:.4f}, "
-                  f"Specificity: {specificity:.4f}, Youden's J: {j_scores[optimal_idx]:.4f}")
+            try:
+                # Sample validation data to avoid memory issues
+                n_samples = len(self.val_binary)
+                if n_samples > self.sample_size:
+                    indices = np.random.choice(n_samples, self.sample_size, replace=False)
+                    val_inputs_sample = [x[indices] for x in self.val_inputs]
+                    val_binary_sample = self.val_binary[indices]
+                else:
+                    val_inputs_sample = self.val_inputs
+                    val_binary_sample = self.val_binary
+                
+                # Get predictions
+                outputs = self.model.predict(val_inputs_sample, verbose=0)
+                y_probs = outputs['non_zero_probability'].flatten()
+                y_true = val_binary_sample.flatten()
+                
+                from sklearn.metrics import precision_recall_curve, f1_score
+                precisions, recalls, thresholds = precision_recall_curve(y_true, y_probs)
+                
+                # Compute F1 score for each threshold
+                f1_scores = 2 * (precisions[:-1] * recalls[:-1]) / (precisions[:-1] + recalls[:-1] + 1e-10)
+                
+                # Find thresholds where recall >= min_recall
+                valid_mask = recalls[:-1] >= self.min_recall
+                
+                if np.any(valid_mask):
+                    # Among thresholds with sufficient recall, pick best F1
+                    valid_f1 = np.where(valid_mask, f1_scores, -np.inf)
+                    best_idx = np.argmax(valid_f1)
+                    constraint_met = True
+                else:
+                    # If no threshold meets min_recall, pick highest recall
+                    best_idx = np.argmax(recalls[:-1])
+                    constraint_met = False
+                
+                self.best_threshold = thresholds[best_idx]
+                
+                # Compute metrics at selected threshold
+                y_pred = (y_probs >= self.best_threshold).astype(int)
+                tp = np.sum((y_pred == 1) & (y_true == 1))
+                fp = np.sum((y_pred == 1) & (y_true == 0))
+                fn = np.sum((y_pred == 0) & (y_true == 1))
+                
+                precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                f1 = f1_scores[best_idx]
+                
+                status = "✓ MET" if constraint_met else "✗ NOT MET"
+                print(f"\n  [Recall-Constrained F1] Threshold: {self.best_threshold:.4f}")
+                print(f"    Constraint: Recall >= {self.min_recall*100:.0f}% {status}")
+                print(f"    Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
+                print(f"    (Sampled {len(y_true):,} validation examples)")
+            except Exception as e:
+                print(f"\n  [F1-Optimal] Threshold optimization failed: {e}")
+    
+    # Simple callback that just monitors validation metrics without prediction
+    # No on_epoch_end callback to avoid prediction issues
     
     callbacks = [
-        OptimalThresholdCallback(
-            val_inputs=[X_val_trend, X_val_seasonal, X_val_holiday, X_val_regressor, sku_val],
-            val_binary=y_val_binary
-        ),
+        # No custom callback - just use standard Keras callbacks
         # AdaptiveThresholdCallback disabled - using fixed threshold=0.90 for high precision
         # AdaptiveThresholdCallback(
         #     val_inputs=[X_val_trend, X_val_seasonal, X_val_holiday, X_val_regressor, sku_val],
@@ -960,9 +997,8 @@ def main():
     ramp_epochs = int(os.environ.get('RAMP_EPOCHS', '10'))
     callbacks.append(ScheduledStopRampCallback(total_epochs=ramp_epochs))
     
-    print("\nStarting training with FIXED loss weighting...")
-    print("Classification gets 90% weight to strongly prioritize learning discrimination!")
-    print("Threshold will be optimized each epoch based on ROC curve (maximizing Youden's J statistic)")
+    print("\nStarting training with BALANCED loss weighting (50/50) and FIXED threshold (0.55)...")
+    print("Balanced loss prevents zero over-prediction; higher threshold cuts false positives.")
     start_time = time.time()
     
     batch_size = int(cfg_val('batch_size', best_params['batch_size']))
@@ -972,27 +1008,22 @@ def main():
         [X_train_trend, X_train_seasonal, X_train_holiday,
          X_train_regressor, sku_train],
         {
-            'non_zero_probability': y_train_binary,  # Binary classification target
-            'final_forecast': y_train,  # Final forecast target (decision * base)
-            'base_forecast': y_train  # Base forecast target (before decision)
+            'non_zero_probability': y_train_binary,  # Binary classification target (for metrics only)
+            'final_forecast': y_train,  # Final forecast target - composite loss handles both tasks
+            'base_forecast': y_train  # Base forecast target (no loss)
         },
         sample_weight={
-            'non_zero_probability': sample_weights_binary,  # Apply sample weights to classification
-            'final_forecast': None,  # No sample weights for final forecast
-            'base_forecast': None  # No sample weights for base forecast
+            'non_zero_probability': None,  # No sample weighting for classification
+            'final_forecast': sample_weights_train,  # Per-SKU weighting for forecast loss
+            'base_forecast': None  # No loss on base_forecast
         },
         validation_data=(
             [X_val_trend, X_val_seasonal, X_val_holiday,
              X_val_regressor, sku_val],
             {
-                'non_zero_probability': y_val_binary,  # Binary classification target
+                'non_zero_probability': y_val_binary,  # Binary classification target (for metrics only)
                 'final_forecast': y_val,  # Final forecast target
-                'base_forecast': y_val  # Base forecast target
-            },
-            {
-                'non_zero_probability': sample_weights_binary_val,  # Validation sample weights
-                'final_forecast': None,  # No sample weights
-                'base_forecast': None  # No sample weights
+                'base_forecast': y_val  # Base forecast target (no loss)
             }
         ),
         epochs=epochs,
@@ -1003,6 +1034,72 @@ def main():
     
     training_time = time.time() - start_time
     print(f"\nTraining completed in {training_time:.1f} seconds")
+
+    # ------------------------------------------------------------------
+    # Post-training threshold sweep (validation) to suggest a better cut
+    # ------------------------------------------------------------------
+    try:
+        from sklearn.metrics import precision_recall_curve
+
+        sweep_cap = int(os.environ.get('THRESH_SWEEP_MAX_SAMPLES', '120000'))
+        val_count = len(y_val_binary)
+        if val_count > sweep_cap:
+            idx = np.random.choice(val_count, sweep_cap, replace=False)
+            val_inputs_sample = [
+                X_val_trend[idx],
+                X_val_seasonal[idx],
+                X_val_holiday[idx],
+                X_val_regressor[idx],
+                sku_val[idx]
+            ]
+            y_val_sample = y_val_binary[idx]
+        else:
+            val_inputs_sample = [
+                X_val_trend,
+                X_val_seasonal,
+                X_val_holiday,
+                X_val_regressor,
+                sku_val
+            ]
+            y_val_sample = y_val_binary
+
+        print(f"\nRunning validation threshold sweep on {len(y_val_sample):,} samples (cap {sweep_cap:,})...")
+        preds = model.predict(val_inputs_sample, batch_size=batch_size, verbose=0)
+        y_probs = preds['non_zero_probability'].flatten()
+
+        precisions, recalls, thresholds = precision_recall_curve(y_val_sample, y_probs)
+        f1_scores = 2 * (precisions[:-1] * recalls[:-1]) / (precisions[:-1] + recalls[:-1] + 1e-9)
+        best_idx = np.argmax(f1_scores)
+        best_threshold = thresholds[best_idx]
+        best_precision = precisions[best_idx]
+        best_recall = recalls[best_idx]
+        best_f1 = f1_scores[best_idx]
+
+        # Also capture threshold that meets a recall floor if possible
+        recall_floor = float(os.environ.get('THRESH_RECALL_FLOOR', '0.70'))
+        meets_floor = recalls[:-1] >= recall_floor
+        if np.any(meets_floor):
+            floor_idx = np.argmax(f1_scores * meets_floor)
+            floor_threshold = thresholds[floor_idx]
+            floor_precision = precisions[floor_idx]
+            floor_recall = recalls[floor_idx]
+            floor_f1 = f1_scores[floor_idx]
+        else:
+            floor_threshold = None
+            floor_precision = None
+            floor_recall = None
+            floor_f1 = None
+
+        print("Threshold sweep suggestions (validation):")
+        print(f"  Best F1 threshold: {best_threshold:.4f} | P={best_precision:.4f}, R={best_recall:.4f}, F1={best_f1:.4f}")
+        if floor_threshold is not None:
+            print(f"  Recall≥{recall_floor:.0%} threshold: {floor_threshold:.4f} | P={floor_precision:.4f}, R={floor_recall:.4f}, F1={floor_f1:.4f}")
+        else:
+            print(f"  No threshold met recall floor {recall_floor:.0%}; best recall was {recalls.max():.4f}")
+        print("  (Use these thresholds for inference instead of the fixed 0.55 if desired.)")
+    except Exception:
+        print("\nThreshold sweep failed; keeping fixed threshold. Trace:")
+        print(traceback.format_exc())
     
     # Fixed weight summary
     print("\n" + "="*70)

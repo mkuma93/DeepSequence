@@ -1832,10 +1832,13 @@ def build_hierarchical_model_lightweight(
     )(component_attention_hidden)
     
     # Compute attention logits for each of 4 components
+    # Add L2 regularization to prevent logits from exploding
     component_attention_logits = Dense(
         4,  # trend, seasonal, holiday, regressor
         activation=None,
         use_bias=True,
+        kernel_regularizer=keras.regularizers.l2(0.001),
+        bias_regularizer=keras.regularizers.l2(0.001),
         name='component_attention_logits'
     )(component_attention_norm)  # [batch, 4]
     

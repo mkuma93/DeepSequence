@@ -7,131 +7,171 @@ Includes composite loss optimized for intermittent demand forecasting.
 import tensorflow as tf
 
 
-def composite_loss(alpha=0.5, bce_weight=None, zero_rate=None, average_nonzero_demand=None, 
-                   false_negative_weight=5.0):
+def composite_loss_forecast_only(alpha=0.5, bce_weight=None, zero_rate=None, average_nonzero_demand=None, 
+                   pos_weight=9.0, use_mse=False):
     """
-    Composite loss with data-driven dynamic weighting and costly false negatives.
+    DEPRECATED: This version incorrectly assumes y_pred contains both probability and magnitude.
+    Use weighted_bce_loss + masked_mae_loss instead.
     
-    Optimized for intermittent demand with automatic weight balancing:
-    - BCE weight: zero_rate (e.g., 0.90 for 90% zeros)
-    - MAE weight: (1 - zero_rate) * log1p(avg_nonzero) - scales by demand magnitude
-    - False negative penalty: Make predicting zero for non-zero costly
+    For backward compatibility only - does not work correctly with multi-output models.
+    """
+    raise NotImplementedError(
+        "composite_loss_forecast_only is deprecated. "
+        "Use separate losses: weighted_bce_loss on 'non_zero_probability' + "
+        "masked_mae_loss on 'final_forecast'"
+    )
+
+
+def weighted_bce_loss(pos_weight=9.0):
+    """
+    Weighted binary cross-entropy loss for intermittent demand classification.
     
-    The log1p scaling ensures MAE weight increases with demand magnitude:
-    - Low avg demand (e.g., 2): log1p(2) = 1.10 → modest MAE weight
-    - Medium avg demand (e.g., 6.53): log1p(6.53) = 2.02 → ~2x MAE weight
-    - High avg demand (e.g., 50): log1p(50) = 3.93 → ~4x MAE weight
+    Class weighting:
+    - Zero class weight: 1.0
+    - Non-zero class weight: pos_weight (default 9.0)
     
-    This automatically balances zero classification vs magnitude prediction
-    based on both sparsity AND magnitude of the data.
+    This gives 9x penalty for false negatives (predicting zero when demand is non-zero).
     
     Args:
-        alpha: Not used, kept for backward compatibility
-        bce_weight: If provided, overrides zero_rate for BCE weight
-        zero_rate: Fraction of zeros in training data (e.g., 0.90)
-        average_nonzero_demand: Average of non-zero demand values (e.g., 6.53)
-            Used to scale MAE weight by demand magnitude via log1p
-        false_negative_weight: Weight for false negatives (default 5.0)
-            Higher = more penalty for predicting zero when actual is non-zero
+        pos_weight: Positive class weight (default 9.0)
+            Higher = more penalty for false negatives
     
     Returns:
-        Loss function compatible with Keras model.compile()
-    
-    Example:
-        >>> zero_rate = (train_df['Quantity'] == 0).mean()  # e.g., 0.90
-        >>> avg_nonzero = train_df[train_df['Quantity'] > 0]['Quantity'].mean()  # e.g., 6.53
-        >>> model.compile(
-        ...     optimizer='adam',
-        ...     loss={'final_forecast': composite_loss(
-        ...         zero_rate=zero_rate,
-        ...         average_nonzero_demand=avg_nonzero,
-        ...         false_negative_weight=5.0  # Penalize false negatives
-        ...     )},
-        ...     metrics=['mae']
-        ... )
+        Loss function for non_zero_probability output (expects probabilities in [0,1])
     """
-    # Compute weights from data statistics (cast to float32 for TensorFlow)
-    if bce_weight is not None:
-        # Use provided BCE weight
-        final_bce_weight = tf.cast(bce_weight, tf.float32)
-        final_mae_weight = tf.cast(1.0 - bce_weight, tf.float32)
-        # Apply log1p scaling if avg_nonzero provided
-        if average_nonzero_demand is not None:
-            log_scale = tf.math.log1p(tf.cast(average_nonzero_demand, tf.float32))
-            final_mae_weight = final_mae_weight * log_scale
-    elif zero_rate is not None:
-        # Data-driven weighting based on zero rate
-        # BCE weight = % zeros, MAE weight = % non-zeros * log1p(avg_nonzero)
-        final_bce_weight = tf.cast(zero_rate, tf.float32)
-        final_mae_weight = tf.cast(1.0 - zero_rate, tf.float32)
-        # Apply log1p scaling if avg_nonzero provided
-        if average_nonzero_demand is not None:
-            log_scale = tf.math.log1p(tf.cast(average_nonzero_demand, tf.float32))
-            final_mae_weight = final_mae_weight * log_scale
-    else:
-        # Fallback to defaults
-        final_bce_weight = tf.constant(0.90, dtype=tf.float32)
-        final_mae_weight = tf.constant(0.10, dtype=tf.float32)
+    pos_weight_tensor = tf.constant(pos_weight, dtype=tf.float32)
     
     def loss_fn(y_true, y_pred):
         """
-        Compute composite loss with static weighting.
-        
-        BCE and MAE are weighted by predefined constants.
-        MAE is computed only on non-zero demand samples.
-        
         Args:
-            y_true: True demand values (shape: [batch_size,] or [batch_size, 1])
-            y_pred: Predicted demand values (shape: [batch_size,] or [batch_size, 1])
-        
-        Returns:
-            Scalar loss value
+            y_true: True demand values (will be converted to binary)
+            y_pred: Predicted non-zero probability in [0, 1]
         """
-        # Flatten inputs to ensure consistent shapes
         y_true = tf.reshape(y_true, [-1])
         y_pred = tf.reshape(y_pred, [-1])
         
         # Binary target: 1 if demand > 0, else 0
         y_binary = tf.cast(y_true > 0, tf.float32)
         
-        # Count non-zero samples
-        n_nonzero = tf.reduce_sum(y_binary)
-        
-        # y_pred is already a probability (0-1) from model's sigmoid output
         # Clip to avoid log(0) errors
         epsilon = 1e-7
-        y_pred_binary = tf.clip_by_value(y_pred, epsilon, 1.0 - epsilon)
+        y_pred_safe = tf.clip_by_value(y_pred, epsilon, 1.0 - epsilon)
         
-        # Weighted binary cross-entropy loss
-        # Penalize false negatives (predicting zero when actual is non-zero)
-        # pos_weight > 1: higher penalty for missing non-zero samples
-        fn_weight = tf.constant(false_negative_weight, dtype=tf.float32)
-        
-        # Compute weighted BCE manually
-        # Loss = -(y*log(p)*fn_weight + (1-y)*log(1-p))
-        # epsilon already applied via clip_by_value above
-        bce_loss = -(
-            y_binary * tf.math.log(y_pred_binary) * fn_weight +
-            (1 - y_binary) * tf.math.log(1 - y_pred_binary)
+        # Weighted BCE: -(y*log(p)*pos_weight + (1-y)*log(1-p))
+        bce = -(
+            y_binary * tf.math.log(y_pred_safe) * pos_weight_tensor +
+            (1 - y_binary) * tf.math.log(1 - y_pred_safe)
         )
         
-        # Mean absolute error loss (magnitude prediction)
-        # MASKED: Only compute MAE on non-zero samples
-        non_zero_mask = y_binary
-        
-        # Extract non-zero predictions and targets for MAE
-        # y_pred should represent base_forecast (before zero probability adjustment)
-        mae_loss = tf.abs(y_true - y_pred) * non_zero_mask
-        
-        # Average MAE only over non-zero samples
-        mae_loss_avg = tf.reduce_sum(mae_loss) / (n_nonzero + 1e-7)
-        
-        # Combined loss: bce_weight * BCE + mae_weight * MAE_nonzero
-        combined = final_bce_weight * tf.reduce_mean(bce_loss) + final_mae_weight * mae_loss_avg
-        
-        return combined
+        return tf.reduce_mean(bce)
     
     return loss_fn
+
+
+def masked_mae_loss(use_mse=False, use_log_scale=False):
+    """
+    Masked MAE/MSE loss that only penalizes non-zero demand samples.
+    
+    This allows the model to learn magnitude prediction independently from
+    zero classification, focusing forecast quality where demand actually exists.
+    
+    Args:
+        use_mse: If True, use MSE instead of MAE (default False)
+        use_log_scale: If True, compute on log1p scale (default False)
+    
+    Returns:
+        Loss function for final_forecast output (expects demand values >= 0)
+    """
+    def loss_fn(y_true, y_pred):
+        """
+        Args:
+            y_true: True demand values
+            y_pred: Predicted demand values
+        """
+        y_true = tf.reshape(y_true, [-1])
+        y_pred = tf.reshape(y_pred, [-1])
+        
+        # Mask: only compute loss on non-zero samples
+        non_zero_mask = tf.cast(y_true > 0, tf.float32)
+        n_nonzero = tf.reduce_sum(non_zero_mask)
+        
+        if use_log_scale:
+            # Log scale for better balance with BCE
+            epsilon = 1e-7
+            y_true_log = tf.math.log1p(tf.maximum(y_true, epsilon))
+            y_pred_log = tf.math.log1p(tf.maximum(y_pred, epsilon))
+            
+            if use_mse:
+                magnitude_loss = tf.square(y_true_log - y_pred_log) * non_zero_mask
+            else:
+                magnitude_loss = tf.abs(y_true_log - y_pred_log) * non_zero_mask
+        else:
+            # Original scale
+            if use_mse:
+                magnitude_loss = tf.square(y_true - y_pred) * non_zero_mask
+            else:
+                magnitude_loss = tf.abs(y_true - y_pred) * non_zero_mask
+        
+        # Average over non-zero samples only
+        return tf.reduce_sum(magnitude_loss) / (n_nonzero + 1e-7)
+    
+    return loss_fn
+
+
+def composite_loss(alpha=0.5, bce_weight=None, zero_rate=None, average_nonzero_demand=None, 
+                   pos_weight=9.0, use_mse=False):
+    """
+    Factory function that returns SEPARATE losses for multi-output model.
+    
+    Returns a dictionary of losses:
+    - 'non_zero_probability': weighted_bce_loss with pos_weight
+    - 'final_forecast': masked_mae_loss (MAE/MSE on non-zero only)
+    
+    Use like this:
+        losses = composite_loss(zero_rate=0.9, average_nonzero_demand=6.53, pos_weight=9.0)
+        model.compile(
+            optimizer='adam',
+            loss=losses['losses'],
+            loss_weights=losses['weights']
+        )
+    
+    Args:
+        zero_rate: Fraction of zeros (e.g., 0.90) - used to balance loss weights
+        average_nonzero_demand: Average non-zero demand - used to scale MAE weight
+        pos_weight: Class weight for non-zero samples in BCE (default 9.0)
+        use_mse: Use MSE instead of MAE for forecast loss (default False)
+    
+    Returns:
+        Dictionary with 'losses' and 'weights' for model.compile()
+    """
+    # Compute loss weights from data statistics
+    if zero_rate is not None:
+        # BCE weight: 1.0 (classification)
+        # MAE weight: log1p(avg) for magnitude scaling
+        bce_w = 1.0
+        if average_nonzero_demand is not None:
+            # Scale MAE by demand magnitude using log1p
+            import numpy as np
+            mae_w = float(np.log1p(average_nonzero_demand))
+        else:
+            mae_w = 1.0
+    else:
+        # Default balanced weighting
+        bce_w = 0.5
+        mae_w = 0.5
+    
+    return {
+        'losses': {
+            'non_zero_probability': weighted_bce_loss(pos_weight=pos_weight),
+            'final_forecast': masked_mae_loss(use_mse=use_mse, use_log_scale=False),
+            'base_forecast': None  # Auxiliary output, no loss
+        },
+        'weights': {
+            'non_zero_probability': bce_w,
+            'final_forecast': mae_w,
+            'base_forecast': 0.0
+        }
+    }
 
 
 def base_forecast_mse(weight=0.4):
