@@ -1,5 +1,13 @@
 # DeepSequence: Hierarchical Attention Time Series Forecasting
 
+**Temporal Forecasting & Interpretability**
+
+## 🎯 Business Outcome
+
+**Improve planning reliability and shorten the path from model experimentation to operational use** by combining TabNet feature extraction, hierarchical attention mechanisms, and flexible decomposition strategies for multi-horizon predictions across diverse time series domains.
+
+---
+
 A production-ready deep learning framework for time series forecasting with **hierarchical sparse attention**, **TabNet encoders**, **flexible component ensemble**, and **intermittent demand handling**.
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
