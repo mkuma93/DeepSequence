@@ -171,7 +171,10 @@ class AdaptiveWeightedModel(keras.Model):
         return self.base_model(inputs, training=training)
     
     def train_step(self, data):
-        x, y = data
+        if isinstance(data, (tuple, list)) and len(data) == 3:
+            x, y, _sample_weight = data
+        else:
+            x, y = data
         y_true = y['base_forecast']  # True demand values
         y_binary = y['non_zero_binary']
         
@@ -210,9 +213,6 @@ class AdaptiveWeightedModel(keras.Model):
             if self.base_model.losses:
                 regularization_loss = tf.add_n(self.base_model.losses)
                 total_loss = total_loss + regularization_loss
-            
-            # Clip loss to prevent explosion (can happen with intermittent data spikes)
-            total_loss = tf.minimum(total_loss, tf.constant(100.0, dtype=total_loss.dtype))
         
         # Compute gradients and update weights
         trainable_vars = self.base_model.trainable_variables
@@ -221,6 +221,8 @@ class AdaptiveWeightedModel(keras.Model):
         gradients = tape.gradient(total_loss, trainable_vars)
         
         # CRITICAL: Fix NaN/Inf in gradients (pure tensor ops, no Python control flow)
+        # and clip global norm so spiky intermittent batches still train (do NOT clip
+        # the loss scalar before backprop — that zeros gradients when loss > threshold).
         fixed_gradients = []
         for grad in gradients:
             if grad is None:
@@ -229,6 +231,7 @@ class AdaptiveWeightedModel(keras.Model):
                 # Use tf.where to replace NaN/Inf with zeros (tensor-safe, no Python bool)
                 fixed_grad = tf.where(tf.math.is_finite(grad), grad, tf.zeros_like(grad))
                 fixed_gradients.append(fixed_grad)
+        fixed_gradients, _ = tf.clip_by_global_norm(fixed_gradients, 5.0)
         
         self.optimizer.apply_gradients(zip(fixed_gradients, trainable_vars))
         
@@ -258,7 +261,10 @@ class AdaptiveWeightedModel(keras.Model):
         }
     
     def test_step(self, data):
-        x, y = data
+        if isinstance(data, (tuple, list)) and len(data) == 3:
+            x, y, _sample_weight = data
+        else:
+            x, y = data
         y_true = y['base_forecast']  # True demand values
         y_binary = y['non_zero_binary']
         

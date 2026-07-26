@@ -20,7 +20,17 @@ import tensorflow_recommenders as tfrs
 
 
 
-# Removed: InvertProbability layer (now predicting non_zero_probability directly)
+# InvertProbability restores a named 1-p head (bare 1-x becomes 'subtract' in Keras 3)
+@keras.saving.register_keras_serializable(package='DeepSequenceHierarchical')
+class InvertProbability(keras.layers.Layer):
+    """Named 1 - p transform so Model.output_names keep 'non_zero_probability'."""
+
+    def call(self, inputs):
+        return 1.0 - inputs
+
+    def get_config(self):
+        return super().get_config()
+
 
 # Small serializable layer to clip by value (avoids Lambda for model saving)
 class ClipByValue(keras.layers.Layer):
@@ -62,19 +72,6 @@ class StackComponentsLayer(keras.layers.Layer):
     
     def get_config(self):
         return {}
-
-
-class TemperatureSoftmax(keras.layers.Layer):
-    """Apply temperature-scaled softmax for component attention"""
-    def __init__(self, temperature=0.7, name=None):
-        super().__init__(name=name)
-        self.temperature = float(temperature)
-    
-    def call(self, inputs):
-        return tf.nn.softmax(inputs / self.temperature, axis=-1)
-    
-    def get_config(self):
-        return {"temperature": self.temperature}
 
 
 class ComponentEntropy(keras.layers.Layer):
@@ -390,11 +387,11 @@ class GatherLayer(tf.keras.layers.Layer):
 
 @keras.saving.register_keras_serializable(package='DeepSequence')
 class TemperatureSoftmax(tf.keras.layers.Layer):
-    """Serializable layer for temperature-controlled softmax."""
+    """Serializable temperature-scaled softmax for component attention."""
     
-    def __init__(self, temperature=1.0, **kwargs):
+    def __init__(self, temperature=0.7, **kwargs):
         super(TemperatureSoftmax, self).__init__(**kwargs)
-        self.temperature = temperature
+        self.temperature = float(temperature)
     
     def call(self, inputs):
         return tf.nn.softmax(inputs / self.temperature, axis=-1)
@@ -1948,9 +1945,11 @@ def build_hierarchical_model_lightweight(
             )(intermittent_components)
         # IntermittentHandler directly predicts zero_probability ∈ (0,1)
         # Convert to non-zero probability for gating and metrics: p_nonzero = 1 - p_zero
+        # Named layer required so Model.output_names keeps 'non_zero_probability'
+        # (bare `1.0 - x` becomes an anonymous 'subtract' output in Keras 3).
         epsilon = 1e-7
         zero_prob_safe = ClipByValue(epsilon, 1.0 - epsilon, name='zero_prob_clip')(zero_prob)
-        non_zero_prob = 1.0 - zero_prob_safe
+        non_zero_prob = InvertProbability(name='non_zero_probability')(zero_prob_safe)
         
         # Use continuous probability P for differentiable gating
         # Final forecast = P * base_forecast (P = non_zero_probability)
@@ -2058,9 +2057,11 @@ def create_model_from_features(
         use_cross_layers: Whether to use cross-layer interactions
         use_intermittent: Whether to use intermittent handling
         learning_rate: Learning rate for Adam optimizer
-        loss_weights: Dict with 'base_forecast' and 'zero_probability' weights
-                     If None, uses data-driven weights
-    
+        loss_weights: Optional override for output loss weights. If None, uses
+                     data-driven weights from composite_loss().
+        zero_rate: Optional known zero rate; estimated from y_train when omitted
+        y_train: Optional targets used to estimate zero_rate / avg non-zero demand
+
     Returns:
         model: Compiled Keras model ready for training
         split_fn: Function to split input features for model.fit()
@@ -2096,20 +2097,7 @@ def create_model_from_features(
         X_lag = X[:, feature_indices['regressor']]
         return [X_temporal, X_fourier, X_holiday, X_lag, sku]
     
-    # Calculate data-driven loss weights if not provided
-    if loss_weights is None:
-        # Assume y is available for weight calculation
-        # For now, use default balanced weights
-        loss_weights = {
-            'base_forecast': 0.5,
-            'non_zero_probability': 0.5
-        }
-    
-    # Define base loss functions
-    def base_mae(y_true, y_pred):
-        return tf.reduce_mean(tf.abs(y_true - y_pred))
-    
-    from deepsequence_hierarchical_attention.losses import composite_loss
+    from .losses import composite_loss
     
     # Calculate zero rate for composite loss (allow override)
     if zero_rate is None and y_train is not None:
@@ -2120,33 +2108,46 @@ def create_model_from_features(
         print(f"[create_model_from_features] Estimated zero_rate from y_train: {zero_rate_value:.4f}")
     else:
         zero_rate_value = 0.9 if zero_rate is None else zero_rate
-    
-    zero_prob_loss = composite_loss(
-        zero_rate=zero_rate_value,
-        false_negative_weight=3.0
-    )
-    
-    # Wrap losses with learned uncertainty weights if available
-    def weighted_base_mae(y_true, y_pred):
-        loss_val = base_mae(y_true, y_pred)
-        if hasattr(model, 'forecast_uncertainty'):
-            loss_val = model.forecast_uncertainty(loss_val)
-        return loss_val
 
-    def weighted_zero_prob(y_true, y_pred):
-        loss_val = zero_prob_loss(y_true, y_pred)
+    avg_nonzero = None
+    if y_train is not None:
+        nonzero = y_train[~np.isclose(y_train, 0.0)]
+        if len(nonzero) > 0:
+            avg_nonzero = float(np.mean(nonzero))
+
+    # composite_loss returns separate callables + weights for multi-output compile
+    loss_config = composite_loss(
+        zero_rate=zero_rate_value,
+        average_nonzero_demand=avg_nonzero,
+        pos_weight=3.0,
+    )
+    compile_losses = dict(loss_config['losses'])
+    compile_weights = dict(loss_config['weights']) if loss_weights is None else loss_weights
+
+    # Wrap classification / forecast losses with learned uncertainty weights if available
+    base_nonzero_loss = compile_losses['non_zero_probability']
+    base_forecast_loss = compile_losses['final_forecast']
+
+    def weighted_nonzero_prob(y_true, y_pred):
+        loss_val = base_nonzero_loss(y_true, y_pred)
         if hasattr(model, 'classification_uncertainty'):
             loss_val = model.classification_uncertainty(loss_val)
         return loss_val
 
+    def weighted_final_forecast(y_true, y_pred):
+        loss_val = base_forecast_loss(y_true, y_pred)
+        if hasattr(model, 'forecast_uncertainty'):
+            loss_val = model.forecast_uncertainty(loss_val)
+        return loss_val
+
+    compile_losses['non_zero_probability'] = weighted_nonzero_prob
+    compile_losses['final_forecast'] = weighted_final_forecast
+
     # Compile model
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
-        loss={
-            'base_forecast': weighted_base_mae,
-            'non_zero_probability': weighted_zero_prob
-        },
-        loss_weights=loss_weights,
+        loss=compile_losses,
+        loss_weights=compile_weights,
         metrics={
             'final_forecast': ['mae'],
             'base_forecast': ['mae'],

@@ -64,6 +64,8 @@ Thumbs.db
 # Test files and intermediate scripts
 test_*.py
 *_test.py
+!**/tests/test_*.py
+!**/tests/**/test_*.py
 *comparison*.py
 *eval*.py
 setup_environment.py

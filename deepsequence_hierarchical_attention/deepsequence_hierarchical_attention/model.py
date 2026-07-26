@@ -35,6 +35,7 @@ def create_hierarchical_model(
     data_frequency: str = 'daily',
     trend_feature_indices: Optional[List[int]] = None,
     seasonal_feature_indices: Optional[List[int]] = None,
+    holiday_feature_indices: Optional[List[int]] = None,
     holiday_feature_index: Optional[int] = None,
     regressor_feature_indices: Optional[List[int]] = None,
     time_min: Optional[float] = None,
@@ -59,17 +60,21 @@ def create_hierarchical_model(
         data_frequency: Data frequency ('daily', 'weekly', 'monthly')
         trend_feature_indices: Indices of time features
         seasonal_feature_indices: Indices of seasonal/Fourier features
-        holiday_feature_index: Index of holiday distance feature
+        holiday_feature_indices: Indices of holiday distance/binary features
+        holiday_feature_index: Deprecated single-index alias for holiday_feature_indices
         regressor_feature_indices: Indices of additional regressor features
-        time_min: Minimum time value for PWL calibration
-        time_max: Maximum time value for PWL calibration
-        n_changepoints: Number of changepoints for trend PWL
-        n_holiday_keypoints: Number of keypoints for holiday PWL
-        holiday_keypoint_range: Range for holiday PWL keypoints
+        time_min: Minimum time value for changepoint calibration
+        time_max: Maximum time value for changepoint calibration
+        n_changepoints: Number of changepoints for trend component
+        n_holiday_keypoints: Number of keypoints for holiday component
+        holiday_keypoint_range: Range for holiday keypoints
     
     Returns:
         Tuple of (main_model, trend_model, seasonal_model, holiday_model, regressor_model)
     """
+    if holiday_feature_indices is None and holiday_feature_index is not None:
+        holiday_feature_indices = [holiday_feature_index]
+
     # Create model instance
     model = DeepSequencePWLHierarchical(
         num_skus=num_skus,
@@ -85,24 +90,22 @@ def create_hierarchical_model(
         data_frequency=data_frequency
     )
     
-    # Configure PWL parameters if time range provided
+    # Configure trend changepoints if time range provided
     if time_min is not None and time_max is not None:
         model.trend_builder = TrendComponentBuilder(
             hidden_units=component_hidden_units,
             activation=activation,
             dropout=component_dropout,
-            use_pwl=True,
             n_changepoints=n_changepoints,
             time_min=time_min,
             time_max=time_max
         )
     
-    # Configure holiday PWL
+    # Configure holiday component keypoints
     model.holiday_builder = HolidayComponentBuilder(
         hidden_units=component_hidden_units,
         activation=activation,
         dropout=component_dropout,
-        use_pwl=True,
         n_keypoints=n_holiday_keypoints,
         keypoint_range=holiday_keypoint_range,
         data_frequency=data_frequency
@@ -112,7 +115,7 @@ def create_hierarchical_model(
     main_model, trend_model, seasonal_model, holiday_model, regressor_model = model.build_model(
         trend_feature_indices=trend_feature_indices,
         seasonal_feature_indices=seasonal_feature_indices,
-        holiday_feature_index=holiday_feature_index,
+        holiday_feature_indices=holiday_feature_indices,
         regressor_feature_indices=regressor_feature_indices
     )
     
@@ -127,6 +130,9 @@ def compile_hierarchical_model(
     """
     Compile the hierarchical attention model with appropriate loss and metrics.
     
+    Supports both research (`zero_probability`) and lightweight
+    (`non_zero_probability`) intermittent heads by matching model output names.
+    
     Args:
         model: The model to compile
         learning_rate: Initial learning rate
@@ -135,11 +141,27 @@ def compile_hierarchical_model(
     Returns:
         Compiled model
     """
+    output_names = set(getattr(model, 'output_names', []) or [])
+    # Keras 3 may expose dict-output keys separately from layer names
+    outputs = getattr(model, 'outputs', None)
+    if isinstance(getattr(model, 'output', None), dict):
+        output_names |= set(model.output.keys())
+    if hasattr(model, 'output') and isinstance(model.output, dict):
+        output_names |= set(model.output.keys())
+
+    if 'non_zero_probability' in output_names:
+        prob_key = 'non_zero_probability'
+    elif 'zero_probability' in output_names:
+        prob_key = 'zero_probability'
+    else:
+        # Fallback: prefer non_zero for lightweight intermittent models
+        prob_key = 'non_zero_probability'
+
     if loss_weights is None:
         loss_weights = {
             'base_forecast': 1.0,
             'final_forecast': 1.0,
-            'zero_probability': 1.0
+            prob_key: 1.0
         }
     
     model.compile(
@@ -147,13 +169,13 @@ def compile_hierarchical_model(
         loss={
             'base_forecast': 'mse',
             'final_forecast': 'mse',
-            'zero_probability': 'binary_crossentropy'
+            prob_key: 'binary_crossentropy'
         },
         loss_weights=loss_weights,
         metrics={
             'base_forecast': ['mae'],
             'final_forecast': ['mae'],
-            'zero_probability': ['accuracy', 'mae']
+            prob_key: ['accuracy', 'mae']
         }
     )
     

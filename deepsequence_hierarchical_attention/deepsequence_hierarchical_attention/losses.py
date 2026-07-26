@@ -160,16 +160,16 @@ def composite_loss(alpha=0.5, bce_weight=None, zero_rate=None, average_nonzero_d
         bce_w = 0.5
         mae_w = 0.5
     
+    # Omit base_forecast from losses: it is an auxiliary output and should not
+    # contribute to training unless the caller adds an explicit loss.
     return {
         'losses': {
             'non_zero_probability': weighted_bce_loss(pos_weight=pos_weight),
             'final_forecast': masked_mae_loss(use_mse=use_mse, use_log_scale=False),
-            'base_forecast': None  # Auxiliary output, no loss
         },
         'weights': {
             'non_zero_probability': bce_w,
             'final_forecast': mae_w,
-            'base_forecast': 0.0
         }
     }
 
