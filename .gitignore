@@ -103,8 +103,10 @@ data/raw/
 notebooks/exploratory/
 jubilant/
 
-# Test files (not needed for production)
+# Ad-hoc root test scripts (keep packaged unit tests under **/tests/)
 test_*.py
+!**/tests/test_*.py
+!**/tests/**/test_*.py
 calculate_*.py
 evaluate_*.py
 apple_to_apple_comparison.py
