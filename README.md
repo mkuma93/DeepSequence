@@ -247,7 +247,7 @@ yhat = round_forecast(final)  # optional inventory rounding
 **Notes**
 
 - Default product path remains plain DeepSequence; this head is optional.
-- On the v1.6 Jubilant bake-off it did not beat DeepSequence alone — keep it for panels where residual correction helps.
+- On the v1.6 bake-off it did not beat DeepSequence alone — keep it for panels where residual correction helps.
 - Set `preserve_ds_gate=False` only if you intentionally want a new sigmoid gate (legacy).
 
 ---

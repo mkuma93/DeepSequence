@@ -52,7 +52,8 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument(
         "--data_dir",
-        default="/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/jubilant/data",
+        default=None,
+        help="Panel data directory (or set DEEPSEQUENCE_DATA_DIR). Required for a real bake-off run.",
     )
     p.add_argument("--max_skus", type=int, default=800)
     p.add_argument("--epochs", type=int, default=10)
@@ -172,9 +173,16 @@ def train_seq_three_term(model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, arg
 
 
 def main():
+    import os
+
     args = parse_args()
     tf.keras.utils.set_random_seed(args.seed)
-    data_dir = Path(args.data_dir)
+    data_dir_raw = args.data_dir or os.environ.get("DEEPSEQUENCE_DATA_DIR")
+    if not data_dir_raw:
+        raise SystemExit(
+            "Pass --data_dir PATH or set DEEPSEQUENCE_DATA_DIR to your panel data directory."
+        )
+    data_dir = Path(data_dir_raw)
 
     print("Loading data...")
     train_df = pd.read_csv(data_dir / "train_split.csv", parse_dates=["ds"])

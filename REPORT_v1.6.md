@@ -28,7 +28,7 @@
 
 | Item | Value |
 |------|--------|
-| Panel | Jubilant intermittent demand |
+| Panel | Proprietary intermittent-demand panel |
 | SKUs | 800 (seed 42) |
 | Train zero rate | ≈ 0.899 |
 | Volume strata | Train-volume terciles (low / mid / high) |
