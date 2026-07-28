@@ -32,9 +32,9 @@
 | SKUs | 800 (seed 42) |
 | Train zero rate | ≈ 0.899 |
 | Volume strata | Train-volume terciles (low / mid / high) |
-| DS loss | three_term (gated) |
+| DeepSequence | gated hierarchical (built-in loss) |
 | LightGBM | L1 |
-| DeepAR / TST | three_term |
+| DeepAR / TST | sequence models (own heads) |
 | Metrics | Rounded all-day MAE, nonzero MAE, AUROC/AUCPR, bias |
 
 ---
@@ -45,7 +45,7 @@
 
 | Rank | Model | MAE (all) | MAE (nonzero) | AUROC | Bias |
 |------|-------|-----------|---------------|-------|------|
-| 1 | **DeepSequence three_term** | **1.732** | 6.943 | 0.826 | +0.35 |
+| 1 | **DeepSequence** | **1.732** | 6.943 | 0.826 | +0.35 |
 | 2 | LightGBM | 1.845 | 8.026 | 0.766 | +0.06 |
 | 3 | Temporal transformer (TST) | 1.882 | **6.892** | **0.835** | +0.55 |
 | 4 | DeepAR-lite | 2.018 | 7.431 | 0.806 | +0.56 |
@@ -87,7 +87,7 @@ DS over-forecasts less than TST/DeepAR. LightGBM under-forecasts on high volume 
 
 ## 5. Recommendation (v1.6)
 
-**Ship DeepSequence hierarchical + three_term + gated intermittent head** on feature contract v1.6 as the default single model.
+**Ship DeepSequence** (hierarchical + gated intermittent head) on feature contract v1.6 as the default single model.
 
 Use LightGBM only if a deliberately lean / under-forecast policy is required. DeepAR is not competitive on this bake-off.
 

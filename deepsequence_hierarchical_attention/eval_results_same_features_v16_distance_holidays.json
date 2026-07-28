@@ -97,7 +97,7 @@
     "note": "DeepAR/TST use full causal X in lookback (same columns as tabular). Holiday distance only (no is_* binaries)."
   },
   "models": {
-    "deepsequence_three_term": {
+    "deepsequence": {
       "train_seconds": 48.95078420639038,
       "overall": {
         "n_rows": 89607,
@@ -503,7 +503,7 @@
   "comparison": {
     "overall": [
       {
-        "model": "deepsequence_three_term",
+        "model": "deepsequence",
         "mae_rounded": 1.7322460228575032,
         "mae_nonzero": 6.943197174548239,
         "aucroc": 0.8257810210867866,
@@ -537,7 +537,7 @@
     ],
     "low": [
       {
-        "model": "deepsequence_three_term",
+        "model": "deepsequence",
         "mae_rounded": 0.23489925695891656,
         "mae_nonzero": 5.249377283921938,
         "aucroc": 0.6721630795970241,
@@ -571,7 +571,7 @@
     ],
     "mid": [
       {
-        "model": "deepsequence_three_term",
+        "model": "deepsequence",
         "mae_rounded": 0.8429504360102954,
         "mae_nonzero": 6.401994597536357,
         "aucroc": 0.7878601838751508,
@@ -613,7 +613,7 @@
         "bias": -0.8977314923976771
       },
       {
-        "model": "deepsequence_three_term",
+        "model": "deepsequence",
         "mae_rounded": 3.6374677986765005,
         "mae_nonzero": 7.337203207567461,
         "aucroc": 0.7779612422719996,

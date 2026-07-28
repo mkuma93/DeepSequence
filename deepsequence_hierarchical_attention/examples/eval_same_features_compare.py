@@ -7,10 +7,10 @@ All models see the SAME causal feature contract (feature_config):
   + Quantity history for sequence models.
   (v1.6+: no binary is_* holidays — redundant with days_from_*)
 
-  - DeepSequence three_term (tabular)
+  - DeepSequence (tabular, gated)
   - LightGBM L1 (tabular)
-  - DeepAR-lite three_term (sequence windows of Quantity + full X)
-  - Temporal transformer three_term (same windows)
+  - DeepAR-lite (sequence windows of Quantity + full X)
+  - Temporal transformer (same windows)
 """
 
 from __future__ import annotations
@@ -255,9 +255,9 @@ def main():
     )
 
     # ------------------------------------------------------------------
-    # DeepSequence three_term
+    # DeepSequence
     # ------------------------------------------------------------------
-    print("\n=== DeepSequence three_term (same features) ===")
+    print("\n=== DeepSequence (same features) ===")
     base = build_hierarchical_model_lightweight(
         n_temporal_features=len(cfg.trend_indices),
         n_fourier_features=len(cfg.seasonal_indices),
@@ -310,7 +310,7 @@ def main():
     pred = ds_model.predict([*te, sku_test], batch_size=4096, verbose=0)
     yhat_ds = np.asarray(pred["final_forecast"]).reshape(-1)
     p_ds = np.asarray(pred["non_zero_probability"]).reshape(-1)
-    results["models"]["deepsequence_three_term"] = {
+    results["models"]["deepsequence"] = {
         "train_seconds": ds_s,
         "overall": kpi_block(y_test, yhat_ds, p_ds),
         "strata": strata_report(y_test, yhat_ds, p_ds, sku_test_raw, volume_map),

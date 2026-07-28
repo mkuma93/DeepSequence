@@ -1,6 +1,6 @@
 # DeepSequence Hierarchical Attention
 
-Intermittent demand forecasting with a **lightweight hierarchical DeepSequence** backbone, **causal intermittent features**, and **three_term** gated training.
+Intermittent demand forecasting with a **lightweight hierarchical DeepSequence** backbone, **causal intermittent features**, and a **gated** occurrence × magnitude head.
 
 **Package version:** 1.6.0 · **Feature contract:** v1.6 (28 columns)  
 **Report:** [REPORT_v1.6.md](REPORT_v1.6.md) · **Example notebook:** [examples/v16_deepsequence_example.ipynb](examples/v16_deepsequence_example.ipynb)
@@ -60,9 +60,9 @@ Panel (id_var, ds, Quantity) + holiday distances
 | Gate `p` | Occurrence probability; final demand is gated magnitude |
 | Causal regressors | Lags + intermittent state use **strictly past** Quantity |
 | Holiday features (v1.6) | Distance only — `is_*` binaries removed as redundant |
-| Three-term loss | BCE on `p` + gated MAE + nonzero magnitude MAE |
+| Training loss | BCE on `p` + gated MAE + nonzero magnitude MAE |
 
-Optional **residual causal transformer** (`residual_transformer.py`) can refine magnitude while preserving `p_ds`; on this panel it did not beat plain DS three_term under v1.6.
+Optional **residual causal transformer** (`residual_transformer.py`) can refine magnitude while preserving `p_ds`; on this panel it did not beat plain DeepSequence under v1.6.
 
 ---
 
@@ -138,7 +138,7 @@ model = build_hierarchical_model_lightweight(
     use_cross_layers=True,
 )
 
-# Compile with three_term (or use examples/AdaptiveWeightedModel wrapper)
+# Compile with the gated DeepSequence loss (or use examples/AdaptiveWeightedModel)
 zero_rate = 0.9
 cfg = three_term_loss_config(zero_rate, alpha_bce=0.2, w_gated=1.0, w_mag=1.0)
 model.compile(
@@ -184,7 +184,7 @@ Or execute headlessly:
 jupyter nbconvert --to notebook --execute examples/v16_deepsequence_example.ipynb
 ```
 
-The notebook builds v1.6 features, trains gated DeepSequence with **three_term** for a few epochs, and prints val MAE / nonzero MAE / bias.
+The notebook builds v1.6 features, trains gated **DeepSequence** for a few epochs, and prints val MAE / nonzero MAE / bias.
 
 ---
 
@@ -194,7 +194,7 @@ Same 28 features for DeepSequence, LightGBM, TST, and DeepAR (800 SKUs, seed 42)
 
 | Rank | Model | All-day MAE | Nonzero MAE |
 |------|-------|------------:|------------:|
-| 1 | **DeepSequence three_term** | **1.73** | 6.94 |
+| 1 | **DeepSequence** | **1.73** | 6.94 |
 | 2 | LightGBM | 1.85 | 8.03 |
 | 3 | Temporal transformer | 1.88 | **6.89** |
 | 4 | DeepAR-lite | 2.02 | 7.43 |
