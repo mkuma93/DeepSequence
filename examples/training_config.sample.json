@@ -1,0 +1,15 @@
+{
+  "learning_rate": 0.0025,
+  "batch_size": 512,
+  "epochs": 100,
+  "patience": 15,
+  "loss_recipe": "three_term",
+  "alpha_bce": 0.2,
+  "w_gated": 1.0,
+  "w_mag": 1.0,
+  "hidden_dim": 48,
+  "sku_embedding_dim": 8,
+  "use_intermittent": true,
+  "use_cross_layers": true,
+  "notes": "Sample training configuration for DeepSequence v1.6. Point --data_dir / DEEPSEQUENCE_DATA_DIR at your local panel; synthetic demo uses the notebook defaults."
+}

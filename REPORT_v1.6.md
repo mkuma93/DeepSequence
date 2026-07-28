@@ -2,7 +2,19 @@
 
 **Date:** 2026-07-28  
 **Scope:** Feature contract v1.6 and same-feature bake-off only.  
-**Artifact:** `eval_results_same_features_v16_distance_holidays.json`
+**Artifact:** `eval_results_same_features_v16_distance_holidays.json` (aggregated metrics only)
+
+---
+
+## Dataset Availability
+
+The experiments were conducted using proprietary enterprise demand data that cannot be publicly released due to confidentiality agreements. To support reproducibility, the repository includes:
+
+* complete model implementation,
+* preprocessing pipeline,
+* synthetic example dataset,
+* training configuration,
+* evaluation methodology.
 
 ---
 
@@ -16,11 +28,11 @@
 | Seasonal (6) | `dow_sin`, `dow_cos`, `month_sin`, `month_cos`, `year_sin`, `year_cos` |
 | Lags (3) | `lag_1`, `lag_2`, `lag_7` |
 | Intermittent (3) | `days_since_last_sale`, `last_sale_quantity`, `lifetime_cumsum` |
-| Holiday distance (15) | `days_from_NewYear` … `days_from_NewYearEve` |
+| Holiday distance (15) | `days_from_*` calendar-distance features (generic public holidays) |
 
 **Not included:** binary holiday indicators; `lag_14` (no gain in prior ablation).
 
-**Sequence models (DeepAR / TST):** lookback windows of `[Quantity] + same 28 features` (lookback = 14).
+**Sequence models (DeepAR / TST):** lookback windows of demand history + the same 28 features (lookback = 14).
 
 ---
 
@@ -28,14 +40,16 @@
 
 | Item | Value |
 |------|--------|
-| Panel | Proprietary intermittent-demand panel |
-| SKUs | 800 (seed 42) |
+| Panel | Proprietary enterprise demand (not released; see Dataset Availability) |
+| Series count | 800 (seed 42) |
 | Train zero rate | ≈ 0.899 |
 | Volume strata | Train-volume terciles (low / mid / high) |
 | DeepSequence | gated hierarchical (built-in loss) |
 | LightGBM | L1 |
 | DeepAR / TST | sequence models (own heads) |
 | Metrics | Rounded all-day MAE, nonzero MAE, AUROC/AUCPR, bias |
+
+No company names, product names, customer IDs, or series identifiers are published with these results.
 
 ---
 
@@ -97,5 +111,7 @@ Use LightGBM only if a deliberately lean / under-forecast policy is required. De
 
 - Python package: `deepsequence-hierarchical-attention` (see `pyproject.toml`)
 - Feature SSOT: `feature_config.yaml` (v1.6), also shipped inside the package
-- Example: `examples/v16_deepsequence_example.ipynb`
-- Full metrics JSON: `eval_results_same_features_v16_distance_holidays.json`
+- Synthetic example: `examples/v16_deepsequence_example.ipynb`
+- Training configuration sample: `examples/training_config.sample.json`
+- Evaluation harness: `examples/eval_same_features_compare.py`
+- Full aggregated metrics JSON: `eval_results_same_features_v16_distance_holidays.json`

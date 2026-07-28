@@ -272,7 +272,7 @@ The notebook builds v1.6 features, trains gated **DeepSequence** for a few epoch
 
 ## v1.6 bake-off (summary)
 
-Same 28 features for DeepSequence, LightGBM, TST, and DeepAR (800 SKUs, seed 42). Full write-up: **[REPORT_v1.6.md](REPORT_v1.6.md)**.
+Same 28 features for DeepSequence, LightGBM, TST, and DeepAR (800 series, seed 42) on the confidential evaluation panel described under **Dataset Availability**. Full write-up: **[REPORT_v1.6.md](REPORT_v1.6.md)**.
 
 | Rank | Model | All-day MAE | Nonzero MAE |
 |------|-------|------------:|------------:|
@@ -285,7 +285,29 @@ Same 28 features for DeepSequence, LightGBM, TST, and DeepAR (800 SKUs, seed 42)
 - **High nonzero (sale days):** TST ≈ DS; LightGBM worst (under-forecasts)  
 - **Inventory / service level:** prefer **DS** (does not under-forecast like LightGBM on high volume)
 
-Metrics JSON: `eval_results_same_features_v16_distance_holidays.json`
+Aggregated metrics only (no series identifiers): `eval_results_same_features_v16_distance_holidays.json`
+
+---
+
+## Dataset Availability
+
+The experiments were conducted using proprietary enterprise demand data that cannot be publicly released due to confidentiality agreements. To support reproducibility, the repository includes:
+
+* complete model implementation,
+* preprocessing pipeline,
+* synthetic example dataset,
+* training configuration,
+* evaluation methodology.
+
+| Included | Location |
+|----------|----------|
+| Model | `deepsequence_hierarchical_attention/` |
+| Preprocessing | `feature_config.yaml`, `examples/feature_config_loader.py`, `intermittent_features.py` |
+| Synthetic example | `examples/v16_deepsequence_example.ipynb` |
+| Training configuration | `examples/training_config.sample.json` |
+| Evaluation methodology | `examples/eval_same_features_compare.py`, `REPORT_v1.6.md` |
+
+This repository does not include company names, product names, customer/series identifiers, internal dashboards, or employer-specific metric names.
 
 ---
 
