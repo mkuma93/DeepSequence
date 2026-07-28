@@ -62,8 +62,6 @@ Panel (id_var, ds, Quantity) + holiday distances
 | Holiday features (v1.6) | Distance only — `is_*` binaries removed as redundant |
 | Training loss | BCE on `p` + gated MAE + nonzero magnitude MAE |
 
-Optional **residual causal transformer** (`residual_transformer.py`) can refine magnitude while preserving `p_ds`; on this panel it did not beat plain DeepSequence under v1.6.
-
 ---
 
 ## Feature contract v1.6

@@ -108,11 +108,16 @@ def test_lightweight_outputs_zero_inflated_heads(synthetic_zero_inflated):
 
 
 def test_compile_helper_matches_nonzero_probability_head(synthetic_zero_inflated):
-    from deepsequence_hierarchical_attention import compile_hierarchical_model
+    from deepsequence_hierarchical_attention.losses import three_term_loss_config
 
     d = synthetic_zero_inflated
     model = _build_lightweight(d)
-    compile_hierarchical_model(model, learning_rate=1e-3)
+    loss_cfg = three_term_loss_config(zero_rate=d["zero_rate"], pos_weight=9.0)
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(1e-3),
+        loss=loss_cfg["losses"],
+        loss_weights=loss_cfg.get("weights"),
+    )
     model.train_on_batch(
         d["x"],
         {
@@ -217,20 +222,20 @@ def test_adaptive_train_step_clips_gradients_not_loss(synthetic_zero_inflated):
     assert changed, "expected parameter update on spiked intermittent batch"
 
 
-def test_create_hierarchical_model_builds_without_typeerror():
-    from deepsequence_hierarchical_attention import create_hierarchical_model
+def test_build_lightweight_model_without_typeerror():
+    from deepsequence_hierarchical_attention import build_hierarchical_model_lightweight
 
-    main, *_ = create_hierarchical_model(
-        num_skus=4,
-        n_features=10,
-        trend_feature_indices=[0, 1],
-        seasonal_feature_indices=[2, 3, 4],
-        holiday_feature_indices=[5, 6],
-        regressor_feature_indices=[7, 8, 9],
-        time_min=0.0,
-        time_max=100.0,
+    model = build_hierarchical_model_lightweight(
+        n_temporal_features=1,
+        n_fourier_features=6,
+        n_holiday_features=15,
+        n_lag_features=3,
+        n_skus=4,
+        hidden_dim=16,
+        sku_embedding_dim=4,
+        n_changepoints=10,
     )
-    assert "zero_probability" in main.output_names or "final_forecast" in main.output_names
+    assert "final_forecast" in model.output_names
 
 
 def test_sku_personalization_changes_forecast(synthetic_zero_inflated):

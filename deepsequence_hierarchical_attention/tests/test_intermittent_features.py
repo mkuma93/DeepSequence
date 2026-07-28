@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -11,6 +13,8 @@ from deepsequence_hierarchical_attention.intermittent_features import (
     build_states_from_history,
     transform_panel,
 )
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _synthetic_sku_panel():
@@ -103,9 +107,14 @@ def test_inference_server_matches_batch_transform():
 
 
 def test_feature_config_create_features_causal():
-    from examples.feature_config_loader import load_feature_config
+    import importlib.util
 
-    cfg = load_feature_config()
+    loader_path = PACKAGE_ROOT / "examples" / "feature_config_loader.py"
+    spec = importlib.util.spec_from_file_location("feature_config_loader", loader_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    cfg = mod.load_feature_config()
+
     df = _synthetic_sku_panel()
     # Dummy holiday distances (15 cols) aligned to df
     holiday_cols = cfg.holiday_names
