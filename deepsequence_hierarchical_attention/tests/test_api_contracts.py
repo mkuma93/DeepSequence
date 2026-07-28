@@ -13,13 +13,14 @@ def _parse(path: Path) -> ast.AST:
     return ast.parse(path.read_text(encoding="utf-8"))
 
 
-def test_package_exports_lightweight_only():
+def test_package_exports_lightweight_and_optional_residual():
     text = (SRC_ROOT / "__init__.py").read_text(encoding="utf-8")
     assert "build_hierarchical_model_lightweight" in text
     assert "transform_panel" in text
+    assert "build_residual_transformer" in text
     assert "create_hierarchical_model" not in text
-    assert "residual_transformer" not in text
     assert "DeepSequencePWLHierarchical" not in text
+    assert (SRC_ROOT / "residual_transformer.py").exists()
 
 
 def test_composite_loss_omits_none_base_forecast():

@@ -62,6 +62,8 @@ Panel (id_var, ds, Quantity) + holiday distances
 | Holiday features (v1.6) | Distance only — `is_*` binaries removed as redundant |
 | Training loss | BCE on `p` + gated MAE + nonzero magnitude MAE |
 
+Optional **residual causal transformer** (`residual_transformer.py`) can refine magnitude while preserving DeepSequence’s gate `p`. Default product path stays plain DeepSequence; use the residual head when a panel benefits from sequence residual correction.
+
 ---
 
 ## Feature contract v1.6
@@ -165,6 +167,88 @@ from feature_config_loader import load_feature_config
 cfg = load_feature_config()   # version 1.6, 28 columns
 X, states = cfg.create_features(train_df, holiday_df, return_states=True)
 ```
+
+---
+
+## Optional residual transformer
+
+Module: `deepsequence_hierarchical_attention.residual_transformer`  
+Also exported from the package root.
+
+Use this when DeepSequence’s structural forecast (`y_struct`) is good on timing (`p_ds`) but you want a **causal sequence head** to correct magnitude residuals. The head **keeps** DeepSequence’s gate `p_ds` (does not re-learn occurrence).
+
+**Contract**
+
+```
+residual = y - y_struct
+delta    = ResidualTransformer(lookback seq)
+base     = relu(y_struct + delta)
+ŷ        = base · p_ds          # same DS probability
+```
+
+Default sequence channels (last step’s `y` / residual are masked at predict time; `p_ds` is never masked):
+
+`[y_struct, y, resid, p_ds]`
+
+**Workflow**
+
+1. Train / predict DeepSequence → get `y_struct` (= `base_forecast`) and `p_ds` (= `non_zero_probability`).
+2. Build a panel with `y`, `y_struct`, `p_ds` (and optional `split`).
+3. Window, train, predict with the residual module.
+
+```python
+import numpy as np
+import pandas as pd
+from deepsequence_hierarchical_attention import (
+    build_residual_transformer,
+    build_residual_windows,
+    train_residual_transformer,
+    predict_residual_transformer,
+    round_forecast,
+)
+
+# panel columns: id_var, ds, y, y_struct, p_ds  (+ optional split)
+# resid is computed inside build_residual_windows if missing
+lookback = 14
+X, y, y_struct, p_ds, sku_ids, splits = build_residual_windows(
+    panel, lookback=lookback
+)
+
+# map SKU ids → dense ints for Embedding
+sku_codes, uniques = pd.factorize(sku_ids)
+n_skus = len(uniques)
+
+tr = splits == "train"
+va = splits == "val"
+
+model = build_residual_transformer(
+    lookback=lookback,
+    n_channels=X.shape[-1],  # 4 with default channels
+    n_skus=n_skus,
+    d_model=32,
+    n_heads=4,
+    preserve_ds_gate=True,   # default: keep DeepSequence p_ds
+)
+
+wrapped = train_residual_transformer(
+    model,
+    X[tr], y[tr], y_struct[tr], sku_codes[tr],
+    X[va], y[va], y_struct[va], sku_codes[va],
+    zero_rate=float((y[tr] == 0).mean()),
+    epochs=10,
+)
+
+final, p, base, delta = predict_residual_transformer(
+    model, X[va], y_struct[va], sku_codes[va]
+)
+yhat = round_forecast(final)  # optional inventory rounding
+```
+
+**Notes**
+
+- Default product path remains plain DeepSequence; this head is optional.
+- On the v1.6 Jubilant bake-off it did not beat DeepSequence alone — keep it for panels where residual correction helps.
+- Set `preserve_ds_gate=False` only if you intentionally want a new sigmoid gate (legacy).
 
 ---
 

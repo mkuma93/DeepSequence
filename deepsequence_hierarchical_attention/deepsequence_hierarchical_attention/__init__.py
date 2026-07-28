@@ -6,6 +6,7 @@ Product surface (v1.6):
 2. Causal intermittent / lag features (`intermittent_features`)
 3. Gated training losses (`losses`)
 4. Forecast post-process (`round_forecast`)
+5. Optional residual causal transformer head (`residual_transformer`)
 """
 
 from .losses import (
@@ -34,6 +35,18 @@ from .intermittent_features import (
 )
 
 from .forecast_postprocess import round_forecast
+
+from .residual_transformer import (
+    DEFAULT_SEQUENCE_CHANNELS,
+    DEFAULT_CHANNEL_COLS,
+    P_DS_CHANNEL_INDEX,
+    ResidualTrainModel,
+    build_residual_transformer,
+    build_residual_windows,
+    train_residual_transformer,
+    predict_residual_transformer,
+    mask_predict_step,
+)
 
 __version__ = "1.6.0"
 
@@ -67,6 +80,16 @@ __all__ = [
     "load_states",
     "INTERMITTENT_FEATURE_NAMES",
     "CausalInferenceFeatureServer",
+    # Optional residual head
+    "DEFAULT_SEQUENCE_CHANNELS",
+    "DEFAULT_CHANNEL_COLS",
+    "P_DS_CHANNEL_INDEX",
+    "ResidualTrainModel",
+    "build_residual_transformer",
+    "build_residual_windows",
+    "train_residual_transformer",
+    "predict_residual_transformer",
+    "mask_predict_step",
     # Post-process
     "round_forecast",
     "get_feature_config_path",
