@@ -441,3 +441,7 @@ def prepare_historical_demand_buffer(
         historical_buffer[sku_idx] = recent_demands
     
     return historical_buffer
+
+
+# Prefer the shared causal server from intermittent_features
+from .intermittent_features import CausalInferenceFeatureServer  # noqa: E402

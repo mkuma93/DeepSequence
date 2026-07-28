@@ -57,6 +57,18 @@ from .model import (
     get_training_callbacks
 )
 
+from .intermittent_features import (
+    SKUDemandState,
+    transform_panel,
+    build_states_from_history,
+    features_from_state,
+    update_state,
+    save_states,
+    load_states,
+    INTERMITTENT_FEATURE_NAMES,
+    CausalInferenceFeatureServer,
+)
+
 __all__ = [
     'SparseAttention',
     'CrossLayer',
@@ -77,5 +89,17 @@ __all__ = [
     'FeatureTransformer',
     'create_hierarchical_model',
     'compile_hierarchical_model',
-    'get_training_callbacks'
+    'get_training_callbacks',
+    'create_lag_features',
+    'AutoregressivePredictor',
+    'prepare_historical_demand_buffer',
+    'SKUDemandState',
+    'transform_panel',
+    'build_states_from_history',
+    'features_from_state',
+    'update_state',
+    'save_states',
+    'load_states',
+    'INTERMITTENT_FEATURE_NAMES',
+    'CausalInferenceFeatureServer',
 ]
