@@ -49,7 +49,7 @@ Thumbs.db
 htmlcov/
 *.cover
 
-# Local artifacts (not part of the package)
+# Local artifacts
 *.h5
 *.pkl
 *.joblib
