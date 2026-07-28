@@ -68,6 +68,9 @@ test_*.py
 !**/tests/**/test_*.py
 *comparison*.py
 *eval*.py
+# Keep packaged DeepSequence eval harnesses + v1.6 report artifact
+!deepsequence_hierarchical_attention/examples/eval_*.py
+!deepsequence_hierarchical_attention/eval_results_same_features_v16_distance_holidays.json
 setup_environment.py
 calculate_*.py
 evaluate_*.py

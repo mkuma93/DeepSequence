@@ -1,345 +1,220 @@
 # DeepSequence Hierarchical Attention
 
-A production-ready deep learning framework for time series forecasting with **hierarchical sparse attention**, **TabNet encoders**, **DCN cross layers**, and **intermittent demand handling**.
+Intermittent demand forecasting with a **lightweight hierarchical DeepSequence** backbone, **causal intermittent features**, and **three_term** gated training.
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+**Package version:** 1.6.0 · **Feature contract:** v1.6 (28 columns)  
+**Report:** [REPORT_v1.6.md](REPORT_v1.6.md) · **Example notebook:** [examples/v16_deepsequence_example.ipynb](examples/v16_deepsequence_example.ipynb)
+
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![TensorFlow 2.13+](https://img.shields.io/badge/tensorflow-2.13+-orange.svg)](https://www.tensorflow.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
-## 🌟 Key Features
+## Architecture
 
-### 🎯 Three-Level Hierarchical Attention
+Hierarchical attention here means **feature / component reweighting**, not temporal self-attention over days.
 
-1. **Feature-Level Attention**: TabNet encoders for sparse feature selection within each component
-2. **Component-Level Attention**: Learns importance across Trend, Seasonal, Holiday, and Regressor components
-3. **Cross-Layer Interactions**: Deep Cross Network (DCN) for explicit feature combinations
+```
+Panel (id_var, ds, Quantity) + holiday distances
+              │
+              ▼
+   Causal feature builder (v1.6)
+     • trend: time_index
+     • seasonal: dow / month / year sin-cos
+     • lags: lag_1, lag_2, lag_7          (history with ds < t)
+     • intermittent: days_since_last_sale,
+                     last_sale_quantity,
+                     lifetime_cumsum
+     • holiday: days_from_* only           (no binary is_*)
+              │
+              ▼
+   Lightweight hierarchical DeepSequence
+     ┌─────────┬───────────┬──────────┬────────────┐
+     │  Trend  │ Seasonal  │ Holiday  │ Regressor  │
+     │ (PWL /  │ (Fourier  │ (distance│ (lags +    │
+     │ change- │  + attn)  │  + attn) │ intermittent)│
+     └────┬────┴─────┬─────┴────┬─────┴──────┬─────┘
+          │          │          │            │
+          └──────────┴────┬─────┴────────────┘
+                          │
+              SKU embedding → soft component weights
+              (static per SKU; cross layers optional)
+                          │
+                          ▼
+                   base_forecast (softplus)
+                          │
+              Intermittent gate p ∈ (0,1)
+                          │
+                          ▼
+              ŷ = p · base_forecast
+```
 
-### 🔧 Flexible Architecture
+### Design notes
 
-- **TabNet Encoders**: Sequential attention with interpretable feature importance
-- **4 Components**: Trend, Seasonal, Holiday, Regressor (use any combination 1-4)
-- **Dynamic Ensemble**: Softmax weights automatically adapt to available components
-- **SKU-Specific**: Different products learn different patterns through embeddings
+| Piece | Role |
+|-------|------|
+| Hierarchical components | Separate trend / seasonal / holiday / regressor experts |
+| Component attention | Masked entropy attention + SKU shift/scale |
+| SKU weights | Soft mixture over components (not day-level self-attention) |
+| Gate `p` | Occurrence probability; final demand is gated magnitude |
+| Causal regressors | Lags + intermittent state use **strictly past** Quantity |
+| Holiday features (v1.6) | Distance only — `is_*` binaries removed as redundant |
+| Three-term loss | BCE on `p` + gated MAE + nonzero magnitude MAE |
 
-### 📊 Intermittent Demand Support
-
-- **Two-Stage Prediction**: Zero probability + magnitude forecasting
-- **Zero Detection**: Hierarchical attention + cross layers for sparse demand patterns
-- **Toggle Mode**: Enable/disable via `enable_intermittent_handling` parameter
-- **Production-Ready**: Tested on 910 SKUs with varying sparsity levels
-
-### ⚡ Performance
-
-- **Efficient**: No transformers, lightweight TabNet architecture
-- **Stable**: Low-temperature softmax (no NaN issues)
-- **Interpretable**: Built-in feature importance and attention weights
-- **Autoregressive**: Multi-step forecasting with lag feature updates
+Optional **residual causal transformer** (`residual_transformer.py`) can refine magnitude while preserving `p_ds`; on this panel it did not beat plain DS three_term under v1.6.
 
 ---
 
-## 📦 Installation
+## Feature contract v1.6
+
+28 columns (see `feature_config.yaml`, also shipped inside the package):
+
+| Group | Count | Columns |
+|-------|------:|---------|
+| Trend | 1 | `time_index` |
+| Seasonal | 6 | `dow_*`, `month_*`, `year_*` sin/cos |
+| Lags | 3 | `lag_1`, `lag_2`, `lag_7` |
+| Intermittent | 3 | `days_since_last_sale`, `last_sale_quantity`, `lifetime_cumsum` |
+| Holiday distance | 15 | `days_from_*` |
+
+---
+
+## Installation
+
+### From this repo (editable)
 
 ```bash
-# Clone repository
 git clone https://github.com/mkuma93/DeepSequence.git
 cd DeepSequence/deepsequence_hierarchical_attention
 
-# Install dependencies
-pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
-# Install package
 pip install -e .
+# optional: tests / notebook
+pip install -e ".[dev]"
+```
 
-# Or install directly from GitHub
+### From a built wheel
+
+```bash
+pip install dist/deepsequence_hierarchical_attention-1.6.0-py3-none-any.whl
+```
+
+### From Git (subdirectory)
+
+```bash
 pip install "git+https://github.com/mkuma93/DeepSequence.git#subdirectory=deepsequence_hierarchical_attention"
 ```
 
+Requires **Python ≥ 3.9**, **TensorFlow ≥ 2.13**, and **tensorflow-recommenders** (cross layers).
+
 ---
 
-## 🚀 Quick Start
+## Quick example
 
 ```python
 import numpy as np
-from deepsequence_hierarchical_attention import DeepSequencePWLHierarchical
+import tensorflow as tf
+from deepsequence_hierarchical_attention import (
+    __version__,
+    build_hierarchical_model_lightweight,
+    three_term_loss_config,
+    get_feature_config_path,
+)
 
-# Initialize model (intermittent mode)
-model = DeepSequencePWLHierarchical(
+print(__version__)                 # 1.6.0
+print(get_feature_config_path())   # packaged feature_config.yaml
+
+model = build_hierarchical_model_lightweight(
+    n_temporal_features=1,
+    n_fourier_features=6,
+    n_holiday_features=15,
+    n_lag_features=6,   # 3 lags + 3 intermittent
     n_skus=100,
-    n_features=20,
-    enable_intermittent_handling=True,  # Two-stage prediction
-    tabnet_feature_dim=16,
-    tabnet_output_dim=8,
-    embedding_dim=8,
-    n_cross_layers=2
+    hidden_dim=48,
+    use_intermittent=True,
+    use_cross_layers=True,
 )
 
-# Build model
-main_model = model.build_model()
-
-# Train
-history = main_model.fit(
-    [X_train, sku_train],
-    {'final_forecast': y_train},
-    validation_data=([X_val, sku_val], {'final_forecast': y_val}),
-    epochs=50,
-    batch_size=64
+# Compile with three_term (or use examples/AdaptiveWeightedModel wrapper)
+zero_rate = 0.9
+cfg = three_term_loss_config(zero_rate, alpha_bce=0.2, w_gated=1.0, w_mag=1.0)
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(0.0025),
+    loss=cfg["losses"],
+    loss_weights=cfg["weights"],
 )
-
-# Predict (returns dict with multiple outputs)
-predictions = main_model.predict([X_test, sku_test])
-# Keys: 'base_forecast', 'zero_probability', 'final_forecast'
 ```
 
-### Autoregressive Multi-Step Forecasting
+Causal panel features (lags + intermittent) via:
 
 ```python
-from deepsequence_hierarchical_attention import AutoregressivePredictor
+from deepsequence_hierarchical_attention import transform_panel
 
-# Initialize predictor
-ar_predictor = AutoregressivePredictor(
-    model=main_model,
-    lag_feature_indices=[16, 17],  # Which features are lags
-    lags=[1, 7],                   # Lag orders (t-1, t-7)
-    n_skus=100
-)
-
-# Forecast 14 days ahead
-forecast = ar_predictor.predict_multi_step(
-    X_initial=X_test[:3],
-    sku_ids=sku_test[:3],
-    n_steps=14
-)
-# Shape: (3, 14) - 3 SKUs, 14 days
+feats, states = transform_panel(df, lags=[1, 2, 7], return_states=True)
 ```
 
----
-
-## 📊 Architecture Overview
-
-```
-Input Features → TabNet Encoders (4 components) → Cross Layers → Ensemble
-     ↓                    ↓                            ↓             ↓
-[Features]         [Sparse Attention]          [Interactions]  [Softmax Weights]
-   20 dim              per component               DCN            across components
-                                                    ↓
-                                          [Zero Probability] (intermittent mode)
-                                                    ↓
-                                            [Final Forecast]
-```
-
-### Components
-
-1. **Trend Component**: Time features (day, week, month) → TabNet
-2. **Seasonal Component**: Fourier features (sin/cos) → TabNet
-3. **Holiday Component**: Holiday proximity features → TabNet
-4. **Regressor Component**: Lag features + external variables → TabNet
-
-Each component:
-- TabNet encoder for feature selection
-- Sparse attention for interpretability
-- Component-specific hidden layers
-- Ensemble weights learned per SKU
-
-### Intermittent Mode
-
-When `enable_intermittent_handling=True`:
-```
-Base Forecast → Zero Detection Branch → Final Forecast
-      ↓              (Cross Layers)            ↓
-  Softmax         Zero Probability      base × (1 - zero_prob)
-  Ensemble
-```
-
----
-
-## 📁 Project Structure
-
-```
-deepsequence-hierarchical-attention/
-├── deepsequence_hierarchical_attention/
-│   ├── __init__.py
-│   ├── components.py       # Main model architecture
-│   ├── tabnet.py           # TabNet encoder implementation
-│   ├── autoregressive.py   # Multi-step forecasting
-│   └── model.py            # Wrapper class (optional)
-├── examples/
-│   └── demo.ipynb          # Complete tutorial
-├── tests/
-│   └── test_components.py
-├── README.md
-├── requirements.txt
-├── setup.py
-└── LICENSE
-```
-
----
-
-## 🎓 Usage Examples
-
-### Example 1: Continuous Demand (No Intermittency)
+Full feature matrix aligned to v1.6 (including holidays) — use `examples/feature_config_loader.py`:
 
 ```python
-# Disable intermittent handling for regular demand
-model = DeepSequencePWLHierarchical(
-    n_skus=50,
-    n_features=15,
-    enable_intermittent_handling=False,  # Direct forecasting
-    tabnet_feature_dim=16,
-    embedding_dim=8
-)
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path("examples").resolve()))
+from feature_config_loader import load_feature_config
 
-main_model = model.build_model()
-main_model.compile(optimizer='adam', loss='mae')
-
-# Single output: final_forecast only
-history = main_model.fit(
-    [X_train, sku_train],
-    y_train,  # Simple array, not dict
-    epochs=30
-)
-```
-
-### Example 2: Access Component Outputs
-
-```python
-# In intermittent mode, model exposes intermediate outputs
-predictions = main_model.predict([X_test[:5], sku_test[:5]])
-
-base_forecast = predictions['base_forecast']      # Softmax ensemble
-zero_prob = predictions['zero_probability']       # P(demand=0)
-final_forecast = predictions['final_forecast']    # base × (1 - zero_prob)
-
-print(f"Base forecast: {base_forecast[0]}")
-print(f"Zero probability: {zero_prob[0]}")
-print(f"Final forecast: {final_forecast[0]}")
-```
-
-### Example 3: Feature Importance
-
-```python
-# TabNet provides built-in feature importance
-# Access through model layers (requires custom extraction)
-# See examples/demo.ipynb for detailed implementation
+cfg = load_feature_config()   # version 1.6, 28 columns
+X, states = cfg.create_features(train_df, holiday_df, return_states=True)
 ```
 
 ---
 
-## 🔧 Configuration
+## Example notebook
 
-### Model Parameters
+Run the end-to-end synthetic demo:
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `n_skus` | - | Number of unique SKUs/products |
-| `n_features` | - | Number of input features |
-| `enable_intermittent_handling` | `True` | Two-stage prediction for sparse demand |
-| `tabnet_feature_dim` | `16` | TabNet feature dimension |
-| `tabnet_output_dim` | `8` | TabNet output dimension |
-| `embedding_dim` | `8` | SKU embedding dimension |
-| `n_cross_layers` | `2` | Number of DCN cross layers |
-| `dropout_rate` | `0.1` | Dropout rate for regularization |
-
-### Training Tips
-
-- **Batch Size**: 64-256 for stability
-- **Learning Rate**: 0.001 (Adam optimizer)
-- **Epochs**: 30-100 depending on dataset size
-- **Regularization**: Dropout + L2 regularization on embeddings
-- **Validation**: Use temporal split (not random) for time series
-
----
-
-## 📈 Performance Metrics
-
-Tested on retail demand forecasting dataset:
-- **910 SKUs**, 1000+ samples per SKU
-- **30% intermittent** (sparse demand patterns)
-
-| Metric | Continuous Mode | Intermittent Mode |
-|--------|----------------|-------------------|
-| MAE | 2.34 | 2.18 |
-| RMSE | 4.67 | 4.23 |
-| MAPE | 15.2% | 14.1% |
-
-Intermittent mode shows **7% improvement** in MAE for sparse demand SKUs.
-
----
-
-## 🛠️ Advanced Features
-
-### Custom Component Configuration
-
-```python
-# Use only Trend + Seasonal (no Holiday/Regressor)
-model = DeepSequencePWLHierarchical(
-    n_skus=100,
-    n_features=10,  # Only time + Fourier features
-    enable_intermittent_handling=False
-)
-
-# Model automatically adapts ensemble to 2 components
+```bash
+jupyter notebook examples/v16_deepsequence_example.ipynb
 ```
 
-### Numerical Stability
+Or execute headlessly:
 
-- **Softmax Temperature**: Low temperature (0.1) prevents NaN
-- **Gradient Clipping**: Built-in for stable training
-- **Batch Normalization**: Ghost batch norm in TabNet
-- **Small Epsilon**: 1e-7 for numerical safety
-
----
-
-## 📚 Documentation
-
-- [Architecture Guide](docs/ARCHITECTURE.md) - Detailed architecture explanation
-- [API Reference](docs/API.md) - Complete API documentation
-- [Tutorial Notebook](examples/demo.ipynb) - Step-by-step guide
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new features
-4. Submit a pull request
-
----
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details
-
----
-
-## 📧 Contact
-
-**Mritunjay Kumar**
-- Email: mritunjay.kmr1@gmail.com
-- GitHub: [@mkuma93](https://github.com/mkuma93)
-
----
-
-## 🙏 Acknowledgments
-
-- **TabNet**: Google Research - [Paper](https://arxiv.org/abs/1908.07442)
-- **DCN**: Google Research - [Paper](https://arxiv.org/abs/1708.05123)
-- **TensorFlow Team**: For excellent deep learning framework
-
----
-
-## 📖 Citation
-
-If you use this work, please cite:
-
-```bibtex
-@software{kumar2025deepsequence,
-  author = {Kumar, Mritunjay},
-  title = {DeepSequence Hierarchical Attention for Time Series Forecasting},
-  year = {2025},
-  url = {https://github.com/mkuma93/deepsequence-hierarchical-attention}
-}
+```bash
+jupyter nbconvert --to notebook --execute examples/v16_deepsequence_example.ipynb
 ```
+
+The notebook builds v1.6 features, trains gated DeepSequence with **three_term** for a few epochs, and prints val MAE / nonzero MAE / bias.
+
+---
+
+## v1.6 bake-off (summary)
+
+Same 28 features for DeepSequence, LightGBM, TST, and DeepAR (800 SKUs, seed 42). Full write-up: **[REPORT_v1.6.md](REPORT_v1.6.md)**.
+
+| Rank | Model | All-day MAE | Nonzero MAE |
+|------|-------|------------:|------------:|
+| 1 | **DeepSequence three_term** | **1.73** | 6.94 |
+| 2 | LightGBM | 1.85 | 8.03 |
+| 3 | Temporal transformer | 1.88 | **6.89** |
+| 4 | DeepAR-lite | 2.02 | 7.43 |
+
+- **Low / mid volume:** DS best  
+- **High nonzero (sale days):** TST ≈ DS; LightGBM worst (under-forecasts)  
+- **Inventory / service level:** prefer **DS** (does not under-forecast like LightGBM on high volume)
+
+Metrics JSON: `eval_results_same_features_v16_distance_holidays.json`
+
+---
+
+## Tests
+
+```bash
+pytest tests/test_intermittent_features.py -q
+```
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

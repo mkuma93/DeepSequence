@@ -601,10 +601,12 @@ class LearnableFourierFeatures(tf.keras.layers.Layer):
         sin_features = tf.sin(angles)  # [batch, n_frequencies]
         cos_features = tf.cos(angles)  # [batch, n_frequencies]
         
-        # Interleave: [sin₁, cos₁, sin₂, cos₂, ...]
-        # Stack and reshape: [batch, n_freq, 2] -> [batch, 2*n_freq]
+        # Interleave: [sin₁, cos₁, sin₂, cos₂, ...] with a static last dim
+        # (dynamic tf.shape(...)/-1 reshape breaks Keras Dense units inference)
         features = tf.stack([sin_features, cos_features], axis=-1)
-        features = tf.reshape(features, [tf.shape(inputs)[0], -1])
+        features = tf.reshape(
+            features, (-1, 2 * self.n_frequencies)
+        )
         
         return features
     
@@ -1677,7 +1679,10 @@ def build_hierarchical_model_lightweight(
     enable_regressor=None,
     combination_mode='additive',
     activation='mish',
-    output_activation='linear'
+    output_activation='linear',
+    use_learnable_fourier=False,
+    n_learnable_frequencies=5,
+    fourier_periods=None,
 ):
     """
     Build lightweight hierarchical model with masked entropy attention.
@@ -1689,6 +1694,7 @@ def build_hierarchical_model_lightweight(
     Args:
         n_temporal_features: Number of time features (day, month, cyclical, etc.)
         n_fourier_features: Number of seasonal Fourier features
+            When ``use_learnable_fourier=True``, pass 1 (raw time in days).
         n_holiday_features: Number of holiday distance features
         n_lag_features: Number of lag features
         n_skus: Number of unique SKUs for embedding
@@ -1704,6 +1710,10 @@ def build_hierarchical_model_lightweight(
             Options: 'linear', 'sparse_amplify', 'sparse_amplify_exp', 'relu', 'mish'
             Use 'sparse_amplify_exp' for sparse intermittent demand
             Use 'linear' or 'relu' for high demand scenarios
+        use_learnable_fourier: If True, seasonal ω is trainable; fourier input
+            must be ``[batch, 1]`` time in day units (not precomputed sin/cos).
+        n_learnable_frequencies: Number of learnable (sin, cos) frequency pairs
+        fourier_periods: Optional initial periods (days) for learnable ω
     
     Returns:
         model: Keras Model
@@ -1713,11 +1723,21 @@ def build_hierarchical_model_lightweight(
     if enable_trend is None:
         enable_trend = bool(n_temporal_features and n_temporal_features > 0)
     if enable_seasonal is None:
-        enable_seasonal = bool(n_fourier_features and n_fourier_features > 0)
+        if use_learnable_fourier:
+            enable_seasonal = True
+        else:
+            enable_seasonal = bool(n_fourier_features and n_fourier_features > 0)
     if enable_holiday is None:
         enable_holiday = bool(n_holiday_features and n_holiday_features > 0)
     if enable_regressor is None:
         enable_regressor = bool(n_lag_features and n_lag_features > 0)
+
+    if use_learnable_fourier and n_fourier_features != 1:
+        raise ValueError(
+            "use_learnable_fourier=True expects n_fourier_features=1 "
+            "(raw time in days). Got n_fourier_features="
+            f"{n_fourier_features}."
+        )
 
     # Inputs
     temporal_input = Input(shape=(n_temporal_features,), name='temporal_features')
@@ -1758,15 +1778,28 @@ def build_hierarchical_model_lightweight(
     trend = trend * trend_mask
     component_outputs.append(trend)
     
-    # 2. Seasonal component (uses raw Fourier - already bounded)
+    # 2. Seasonal component (fixed precomputed Fourier, or learnable ω from time)
     # Auto-detect presence: 1.0 if seasonal features present, 0.0 otherwise
-    seasonal_present = 1.0 if (enable_seasonal and n_fourier_features and n_fourier_features > 0) else 0.0
+    seasonal_present = (
+        1.0
+        if (
+            enable_seasonal
+            and (
+                use_learnable_fourier
+                or (n_fourier_features and n_fourier_features > 0)
+            )
+        )
+        else 0.0
+    )
     seasonal = SeasonalComponentLightweight(
         hidden_dim=hidden_dim,
         dropout_rate=dropout_rate,
         activation=activation,
         output_activation=output_activation,
         present=seasonal_present,
+        use_learnable_fourier=use_learnable_fourier,
+        n_learnable_frequencies=n_learnable_frequencies,
+        fourier_periods=fourier_periods,
         name='seasonal'
     )(fourier_input, sku_embedding=sku_embedding)
     seasonal_mask = tf.constant(1.0 if enable_seasonal else 0.0, dtype=tf.float32)
@@ -1806,7 +1839,13 @@ def build_hierarchical_model_lightweight(
     print("[build_hierarchical_model_lightweight] present values:")
     print(f"  trend_present={trend_present}, seasonal_present={seasonal_present}, holiday_present={holiday_present}, regressor_present={regressor_present}")
     print(f"  use_cross_layers={use_cross_layers}, use_intermittent={use_intermittent}")
-    
+    if use_learnable_fourier:
+        periods = fourier_periods if fourier_periods is not None else [7.0, 14.0, 30.0, 91.0, 365.0]
+        print(
+            f"  use_learnable_fourier=True, n_freq={n_learnable_frequencies}, "
+            f"init_periods={periods[:n_learnable_frequencies]}"
+        )
+
     # ============================================================================
     # COMPONENT-LEVEL ATTENTION: SKU-specific adaptive weighting
     # ============================================================================

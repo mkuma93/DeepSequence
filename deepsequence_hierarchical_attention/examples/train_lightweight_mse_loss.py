@@ -656,9 +656,13 @@ def main():
     holiday_train = pd.read_csv(os.path.join(data_dir, 'holiday_features_train.csv'))
     holiday_val = pd.read_csv(os.path.join(data_dir, 'holiday_features_val.csv'))
     
-    # Create features
-    X_train_df = feature_config.create_features(train_df, holiday_train)
-    X_val_df = feature_config.create_features(val_df, holiday_val)
+    # Create features (causal regressor: train states warm-start val)
+    X_train_df, sku_states = feature_config.create_features(
+        train_df, holiday_train, return_states=True
+    )
+    X_val_df, sku_states = feature_config.create_features(
+        val_df, holiday_val, prior_states=sku_states, return_states=True
+    )
     
     # Prepare inputs
     X_train = X_train_df.values.astype(np.float32)

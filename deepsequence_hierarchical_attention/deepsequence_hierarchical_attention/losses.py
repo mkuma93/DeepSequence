@@ -397,6 +397,233 @@ def mae_loss():
         MAE loss function
     """
     def loss_fn(y_true, y_pred):
+        y_true = tf.reshape(tf.cast(y_true, tf.float32), [-1, 1])
+        y_pred = tf.reshape(tf.cast(y_pred, tf.float32), [-1, 1])
         return tf.reduce_mean(tf.abs(y_true - y_pred))
     
     return loss_fn
+
+
+def inverse_class_weights(zero_rate):
+    """Balanced inverse-frequency weights for zero vs non-zero days."""
+    zr = float(zero_rate)
+    nz = max(1.0 - zr, 1e-6)
+    w_zero = 1.0 / (2.0 * max(zr, 1e-6))
+    w_nonzero = 1.0 / (2.0 * nz)
+    return w_zero, w_nonzero
+
+
+def inverse_weighted_mae_loss(zero_rate):
+    """
+    MAE on ALL days with inverse zero/nonzero class weights.
+
+    Keeps quiet-day timing signal while upweighting rare sale days.
+    Shapes are forced to [batch, 1] to avoid (N,) vs (N,1) broadcast bugs.
+    """
+    w_zero, w_nonzero = inverse_class_weights(zero_rate)
+    w_zero_t = tf.constant(w_zero, dtype=tf.float32)
+    w_nonzero_t = tf.constant(w_nonzero, dtype=tf.float32)
+
+    def loss_fn(y_true, y_pred):
+        y_true = tf.reshape(tf.cast(y_true, tf.float32), [-1, 1])
+        y_pred = tf.reshape(tf.cast(y_pred, tf.float32), [-1, 1])
+        is_nz = tf.cast(y_true > 0, tf.float32)
+        w = w_zero_t * (1.0 - is_nz) + w_nonzero_t * is_nz
+        return tf.reduce_sum(w * tf.abs(y_true - y_pred)) / tf.reduce_sum(w)
+
+    return loss_fn
+
+
+def all_days_mae_loss():
+    """Unweighted MAE on all days (shape-safe)."""
+    def loss_fn(y_true, y_pred):
+        y_true = tf.reshape(tf.cast(y_true, tf.float32), [-1, 1])
+        y_pred = tf.reshape(tf.cast(y_pred, tf.float32), [-1, 1])
+        return tf.reduce_mean(tf.abs(y_true - y_pred))
+
+    return loss_fn
+
+
+def three_term_loss_config(
+    zero_rate,
+    alpha_bce=0.2,
+    w_gated=1.0,
+    w_mag=1.0,
+    pos_weight=None,
+):
+    """
+    Recommended intermittent recipe for model.compile():
+
+      L = w_gated * inverse_weighted_MAE(y, p*softplus)   # all days (timing)
+        + w_mag   * masked_MAE(y, softplus)               # sale days (size)
+        + alpha_bce * weighted_BCE(y>0, p)                # sale-or-not
+
+    Returns dict with 'losses' and 'weights' keyed by output name.
+    """
+    if pos_weight is None:
+        pos_weight = min(20.0, float(zero_rate) / max(1.0 - float(zero_rate), 1e-6))
+
+    return {
+        "recipe": "three_term",
+        "losses": {
+            "non_zero_probability": weighted_bce_loss(pos_weight=pos_weight),
+            "final_forecast": inverse_weighted_mae_loss(zero_rate),
+            "base_forecast": masked_mae_loss(use_mse=False, use_log_scale=False),
+        },
+        "weights": {
+            "non_zero_probability": float(alpha_bce),
+            "final_forecast": float(w_gated),
+            "base_forecast": float(w_mag),
+        },
+        "meta": {
+            "alpha_bce": float(alpha_bce),
+            "w_gated": float(w_gated),
+            "w_mag": float(w_mag),
+            "pos_weight": float(pos_weight),
+            "w_zero": inverse_class_weights(zero_rate)[0],
+            "w_nonzero": inverse_class_weights(zero_rate)[1],
+        },
+    }
+
+
+def bce_mae_loss_config(zero_rate, bce_weight=0.5, mae_weight=0.5, pos_weight=None, mae_all_days=True):
+    """
+    Two-term recipe: weighted BCE + MAE on final gated forecast.
+    mae_all_days=True keeps timing; False matches legacy nonzero-only MAE.
+    """
+    if pos_weight is None:
+        pos_weight = min(20.0, float(zero_rate) / max(1.0 - float(zero_rate), 1e-6))
+
+    forecast_loss = (
+        all_days_mae_loss()
+        if mae_all_days
+        else masked_mae_loss(use_mse=False, use_log_scale=False)
+    )
+    return {
+        "recipe": "bce_mae",
+        "losses": {
+            "non_zero_probability": weighted_bce_loss(pos_weight=pos_weight),
+            "final_forecast": forecast_loss,
+        },
+        "weights": {
+            "non_zero_probability": float(bce_weight),
+            "final_forecast": float(mae_weight),
+        },
+        "meta": {
+            "bce_weight": float(bce_weight),
+            "mae_weight": float(mae_weight),
+            "pos_weight": float(pos_weight),
+            "mae_all_days": bool(mae_all_days),
+        },
+    }
+
+
+def masked_poisson_nll_loss():
+    """
+    Poisson NLL on demand days only (hurdle magnitude head).
+
+    Assumes ``y_pred`` is already a positive rate (e.g. softplus base).
+    Ignores the factorial term (constant w.r.t. parameters).
+    """
+
+    def loss_fn(y_true, y_pred):
+        y_true = tf.reshape(tf.cast(y_true, tf.float32), [-1, 1])
+        lam = tf.reshape(tf.cast(y_pred, tf.float32), [-1, 1])
+        lam = tf.clip_by_value(lam, 1e-5, 1e6)
+        # NLL ∝ λ - y log λ  (drop log(y!))
+        nll = lam - y_true * tf.math.log(lam)
+        mask = tf.cast(y_true > 0, tf.float32)
+        return tf.reduce_sum(mask * nll) / (tf.reduce_sum(mask) + 1e-6)
+
+    return loss_fn
+
+
+def hurdle_poisson_loss_config(
+    zero_rate,
+    alpha_bce=1.0,
+    w_mag=1.0,
+    pos_weight=None,
+):
+    """
+    Classic intermittent / hurdle loss for gated models:
+
+      L = α * weighted_BCE(y>0, p) + w_mag * PoissonNLL(y | λ) |_{y>0}
+
+    where ``p = non_zero_probability`` and ``λ = base_forecast`` (softplus rate).
+    ``final_forecast = p * λ`` is not trained with MAE — occurrence and size
+    are separated the way intermittent demand models usually do.
+    """
+    if pos_weight is None:
+        pos_weight = min(20.0, float(zero_rate) / max(1.0 - float(zero_rate), 1e-6))
+
+    return {
+        "recipe": "hurdle_poisson",
+        "losses": {
+            "non_zero_probability": weighted_bce_loss(pos_weight=pos_weight),
+            "base_forecast": masked_poisson_nll_loss(),
+            # Keep a tiny final term so Keras still tracks the head; weight ~0
+            "final_forecast": all_days_mae_loss(),
+        },
+        "weights": {
+            "non_zero_probability": float(alpha_bce),
+            "base_forecast": float(w_mag),
+            "final_forecast": 1e-4,
+        },
+        "meta": {
+            "alpha_bce": float(alpha_bce),
+            "w_mag": float(w_mag),
+            "pos_weight": float(pos_weight),
+            "note": "hurdle: BCE occurrence + Poisson size on nonzero days",
+        },
+    }
+
+
+def tweedie_deviance_loss(power: float = 1.5):
+    """
+    Tweedie deviance loss on a positive mean prediction (1 < power < 2).
+
+    Compatible with intermittent / zero-inflated count-like targets; ``y=0``
+    is valid in this power range.
+    """
+    p = float(power)
+    if not (1.0 < p < 2.0):
+        raise ValueError("tweedie_deviance_loss expects 1 < power < 2")
+
+    def loss_fn(y_true, y_pred):
+        y = tf.reshape(tf.cast(y_true, tf.float32), [-1, 1])
+        y = tf.maximum(y, 0.0)
+        mu = tf.reshape(tf.cast(y_pred, tf.float32), [-1, 1])
+        mu = tf.clip_by_value(mu, 1e-5, 1e6)
+        # d = 2 * ( y^{2-p}/((1-p)(2-p)) - y μ^{1-p}/(1-p) + μ^{2-p}/(2-p) )
+        term_y = tf.pow(y, 2.0 - p) / ((1.0 - p) * (2.0 - p))
+        term_ymu = y * tf.pow(mu, 1.0 - p) / (1.0 - p)
+        term_mu = tf.pow(mu, 2.0 - p) / (2.0 - p)
+        deviance = 2.0 * (term_y - term_ymu + term_mu)
+        return tf.reduce_mean(deviance)
+
+    return loss_fn
+
+
+def tweedie_loss_config(power: float = 1.5, bce_weight: float = 0.0, pos_weight: float = 1.0):
+    """
+    Train gated sequence models with Tweedie deviance on ``final_forecast``.
+
+    Optional light BCE on ``non_zero_probability`` (default off) if you still
+    want an explicit occurrence head signal.
+    """
+    losses = {
+        "final_forecast": tweedie_deviance_loss(power=power),
+        "base_forecast": all_days_mae_loss(),
+        "non_zero_probability": weighted_bce_loss(pos_weight=pos_weight),
+    }
+    weights = {
+        "final_forecast": 1.0,
+        "base_forecast": 1e-4,
+        "non_zero_probability": float(bce_weight),
+    }
+    return {
+        "recipe": "tweedie",
+        "losses": losses,
+        "weights": weights,
+        "meta": {"power": float(power), "bce_weight": float(bce_weight)},
+    }

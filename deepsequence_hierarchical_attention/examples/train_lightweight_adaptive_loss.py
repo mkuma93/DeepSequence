@@ -31,7 +31,11 @@ import traceback
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from deepsequence_hierarchical_attention.components_lightweight import build_hierarchical_model_lightweight
-from deepsequence_hierarchical_attention.losses import composite_loss
+from deepsequence_hierarchical_attention.losses import (
+    composite_loss,
+    three_term_loss_config,
+    bce_mae_loss_config,
+)
 from feature_config_loader import load_feature_config
 
 
@@ -124,12 +128,20 @@ class AdaptiveLossWeighting(keras.layers.Layer):
 
 class AdaptiveWeightedModel(keras.Model):
     """
-    Wrapper model that applies adaptive loss weighting to sub-model outputs.
+    Wrapper model with selectable intermittent loss recipes.
+
+    loss_recipe:
+      - "legacy": BCE + MAE(final) on nonzero days only (old adaptive path)
+      - "bce_mae": BCE + MAE(final) on all days (shape-safe)
+      - "three_term": inverse-weighted gated MAE + nonzero mag MAE + light BCE
+        (recommended)
     """
     
     def __init__(self, base_model, bce_loss_fn, mae_loss_fn, 
                  zero_rate, avg_nonzero_demand, pos_weight,
                  use_fixed_weights=False, bce_weight=0.5, mae_weight=0.5,
+                 loss_recipe="legacy",
+                 alpha_bce=0.2, w_gated=1.0, w_mag=1.0,
                  **kwargs):
         super().__init__(**kwargs)
         self.base_model = base_model
@@ -138,10 +150,18 @@ class AdaptiveWeightedModel(keras.Model):
         self.use_fixed_weights = use_fixed_weights
         self.bce_weight = bce_weight
         self.mae_weight = mae_weight
+        self.loss_recipe = str(loss_recipe)
+        self.alpha_bce = float(alpha_bce)
+        self.w_gated = float(w_gated)
+        self.w_mag = float(w_mag)
         self.adaptive_weighting = AdaptiveLossWeighting(num_tasks=2)
         self.zero_rate = zero_rate
         self.avg_nonzero_demand = avg_nonzero_demand
-        self.pos_weight = pos_weight
+        self.pos_weight = float(pos_weight)
+        zr = float(zero_rate)
+        nz = max(1.0 - zr, 1e-6)
+        self.w_zero = 1.0 / (2.0 * max(zr, 1e-6))
+        self.w_nonzero = 1.0 / (2.0 * nz)
         
         # Calculate optimal threshold for highly imbalanced data
         # For 90% zeros: threshold should match the non-zero rate (0.1) for balanced predictions
@@ -151,6 +171,7 @@ class AdaptiveWeightedModel(keras.Model):
         # Metrics
         self.bce_loss_tracker = keras.metrics.Mean(name='zero_probability_loss')
         self.mae_loss_tracker = keras.metrics.Mean(name='final_forecast_loss')
+        self.mag_loss_tracker = keras.metrics.Mean(name='magnitude_loss')
         self.total_loss_tracker = keras.metrics.Mean(name='loss')
         self.mae_tracker = keras.metrics.MeanAbsoluteError(name='base_forecast_mae')
         self.final_mae_tracker = keras.metrics.MeanAbsoluteError(name='final_forecast_mae')
@@ -170,89 +191,113 @@ class AdaptiveWeightedModel(keras.Model):
     
     def call(self, inputs, training=None):
         return self.base_model(inputs, training=training)
+
+    def _align(self, *tensors):
+        """Force [batch, 1] to avoid (N,) vs (N,1) broadcast inflation."""
+        return [tf.reshape(tf.cast(t, tf.float32), [-1, 1]) for t in tensors]
+
+    def _compute_task_losses(self, y_true, final_forecast, non_zero_probability, base_forecast):
+        y_true, final_forecast, non_zero_probability, base_forecast = self._align(
+            y_true, final_forecast, non_zero_probability, base_forecast
+        )
+        y_nonzero = tf.cast(y_true > 0, tf.float32)
+
+        if self.loss_recipe == "three_term":
+            w = self.w_zero * (1.0 - y_nonzero) + self.w_nonzero * y_nonzero
+            gated_mae = tf.reduce_sum(w * tf.abs(y_true - final_forecast)) / tf.reduce_sum(w)
+            mag_mae = tf.reduce_sum(y_nonzero * tf.abs(y_true - base_forecast)) / (
+                tf.reduce_sum(y_nonzero) + 1e-6
+            )
+            p_clip = tf.clip_by_value(non_zero_probability, 1e-7, 1.0 - 1e-7)
+            bce_loss = tf.reduce_mean(
+                -self.pos_weight * y_nonzero * tf.math.log(p_clip)
+                - (1.0 - y_nonzero) * tf.math.log(1.0 - p_clip)
+            )
+            total = (
+                self.w_gated * gated_mae
+                + self.w_mag * mag_mae
+                + self.alpha_bce * bce_loss
+            )
+            return total, bce_loss, gated_mae, mag_mae, y_nonzero
+
+        # BCE via provided loss fn (shape-aligned)
+        bce_loss = self.bce_loss_fn(y_nonzero, non_zero_probability)
+
+        if self.loss_recipe == "bce_mae":
+            mae_loss = tf.reduce_mean(tf.abs(y_true - final_forecast))
+            mag_mae = tf.reduce_sum(y_nonzero * tf.abs(y_true - base_forecast)) / (
+                tf.reduce_sum(y_nonzero) + 1e-6
+            )
+        else:  # legacy
+            mae_loss = self.mae_loss_fn(
+                y_true, final_forecast, sample_weight=tf.squeeze(y_nonzero, axis=-1)
+            )
+            mag_mae = mae_loss
+
+        if self.use_fixed_weights or self.loss_recipe == "bce_mae":
+            total = self.bce_weight * bce_loss + self.mae_weight * mae_loss
+        else:
+            bce_norm = tf.stop_gradient(tf.maximum(tf.reduce_mean(tf.abs(bce_loss)), 1e-6))
+            mae_norm = tf.stop_gradient(tf.maximum(tf.reduce_mean(tf.abs(mae_loss)), 1e-6))
+            total = self.adaptive_weighting([bce_loss / bce_norm, mae_loss / mae_norm])
+
+        return total, bce_loss, mae_loss, mag_mae, y_nonzero
     
     def train_step(self, data):
         if isinstance(data, (tuple, list)) and len(data) == 3:
             x, y, _sample_weight = data
         else:
             x, y = data
-        y_true = y['base_forecast']  # True demand values
-        y_binary = y['non_zero_binary']
+        y_true = y.get('base_forecast', y.get('final_forecast'))
         
         with tf.GradientTape() as tape:
-            # Forward pass
             outputs = self.base_model(x, training=True)
             final_forecast = outputs['final_forecast']
             non_zero_probability = outputs['non_zero_probability']
             base_forecast = outputs.get('base_forecast', final_forecast)
+
+            total_loss, bce_loss, mae_loss, mag_mae, y_nonzero = self._compute_task_losses(
+                y_true, final_forecast, non_zero_probability, base_forecast
+            )
             
-            # y_binary is 1 for non-zero, 0 for zero (matches non_zero_probability)
-            # Compute individual task losses
-            y_nonzero = tf.cast(y_true > 0, tf.float32)
-            # Loss function handles weighting internally
-            bce_loss = self.bce_loss_fn(y_binary, non_zero_probability)
-            # Only penalize MAE on non-zero targets to focus forecast quality where demand exists
-            mae_loss = self.mae_loss_fn(y_true, final_forecast, sample_weight=y_nonzero)
-            
-            # NOTE: Entropy regularization (confidence penalty) is now added via
-            # self.add_loss() in IntermittentHandlerLightweight.call()
-            # This applies masked entropy loss based on presence_mask if provided
-            
-            # Apply weighting (fixed or adaptive)
-            if self.use_fixed_weights:
-                total_loss = self.bce_weight * bce_loss + self.mae_weight * mae_loss
-            else:
-                # Normalize task losses to similar scale for stable adaptive weighting
-                bce_norm = tf.stop_gradient(tf.maximum(tf.reduce_mean(tf.abs(bce_loss)), 1e-6))
-                mae_norm = tf.stop_gradient(tf.maximum(tf.reduce_mean(tf.abs(mae_loss)), 1e-6))
-                bce_stable = bce_loss / bce_norm
-                mae_stable = mae_loss / mae_norm
-                total_loss = self.adaptive_weighting([bce_stable, mae_stable])
-            
-            # CRITICAL: Add regularization losses (entropy from attention layers)
-            # These are added via self.add_loss() in component layers
             if self.base_model.losses:
-                regularization_loss = tf.add_n(self.base_model.losses)
-                total_loss = total_loss + regularization_loss
+                total_loss = total_loss + tf.add_n(self.base_model.losses)
         
-        # Compute gradients and update weights
         trainable_vars = self.base_model.trainable_variables
-        if not self.use_fixed_weights:
+        if self.loss_recipe == "legacy" and not self.use_fixed_weights:
             trainable_vars = trainable_vars + self.adaptive_weighting.trainable_variables
         gradients = tape.gradient(total_loss, trainable_vars)
         
-        # CRITICAL: Fix NaN/Inf in gradients (pure tensor ops, no Python control flow)
-        # and clip global norm so spiky intermittent batches still train (do NOT clip
-        # the loss scalar before backprop — that zeros gradients when loss > threshold).
         fixed_gradients = []
         for grad in gradients:
             if grad is None:
                 fixed_gradients.append(None)
             else:
-                # Use tf.where to replace NaN/Inf with zeros (tensor-safe, no Python bool)
                 fixed_grad = tf.where(tf.math.is_finite(grad), grad, tf.zeros_like(grad))
                 fixed_gradients.append(fixed_grad)
         fixed_gradients, _ = tf.clip_by_global_norm(fixed_gradients, 5.0)
         
         self.optimizer.apply_gradients(zip(fixed_gradients, trainable_vars))
         
-        # Update metrics
+        y_true_m, final_m, base_m, p_m = self._align(
+            y_true, final_forecast, base_forecast, non_zero_probability
+        )
         self.bce_loss_tracker.update_state(bce_loss)
         self.mae_loss_tracker.update_state(mae_loss)
+        self.mag_loss_tracker.update_state(mag_mae)
         self.total_loss_tracker.update_state(total_loss)
-        # Report non-zero precision/recall using non_zero_probability vs (y_true>0)
-        # Compute metrics on ALL samples (precision needs both TP and FP)
-        self.nonzero_precision.update_state(y_nonzero, non_zero_probability)
-        self.nonzero_recall.update_state(y_nonzero, non_zero_probability)
-        self.nonzero_aucpr.update_state(y_nonzero, non_zero_probability)
-        self.nonzero_aucroc.update_state(y_nonzero, non_zero_probability)
-        self.mae_tracker.update_state(y_true, base_forecast, sample_weight=y_nonzero)
-        self.final_mae_tracker.update_state(y_true, final_forecast, sample_weight=y_nonzero)
+        self.nonzero_precision.update_state(y_nonzero, p_m)
+        self.nonzero_recall.update_state(y_nonzero, p_m)
+        self.nonzero_aucpr.update_state(y_nonzero, p_m)
+        self.nonzero_aucroc.update_state(y_nonzero, p_m)
+        self.mae_tracker.update_state(y_true_m, base_m, sample_weight=y_nonzero)
+        self.final_mae_tracker.update_state(y_true_m, final_m)
         
         return {
             'loss': self.total_loss_tracker.result(),
             'classification_loss': self.bce_loss_tracker.result(),
             'final_forecast_loss': self.mae_loss_tracker.result(),
+            'magnitude_loss': self.mag_loss_tracker.result(),
             'nonzero_precision': self.nonzero_precision.result(),
             'nonzero_recall': self.nonzero_recall.result(),
             'nonzero_aucpr': self.nonzero_aucpr.result(),
@@ -266,56 +311,40 @@ class AdaptiveWeightedModel(keras.Model):
             x, y, _sample_weight = data
         else:
             x, y = data
-        y_true = y['base_forecast']  # True demand values
-        y_binary = y['non_zero_binary']
+        y_true = y.get('base_forecast', y.get('final_forecast'))
         
-        # Forward pass
         outputs = self.base_model(x, training=False)
         final_forecast = outputs['final_forecast']
         non_zero_probability = outputs['non_zero_probability']
         base_forecast = outputs.get('base_forecast', final_forecast)
+
+        total_loss, bce_loss, mae_loss, mag_mae, y_nonzero = self._compute_task_losses(
+            y_true, final_forecast, non_zero_probability, base_forecast
+        )
         
-        # y_binary is 1 for non-zero, 0 for zero (matches non_zero_probability)
-        # Compute individual task losses
-        y_nonzero = tf.cast(y_true > 0, tf.float32)
-        # Loss function handles weighting internally
-        bce_loss = self.bce_loss_fn(y_binary, non_zero_probability)
-        # Only penalize MAE on non-zero targets to focus forecast quality where demand exists
-        mae_loss = self.mae_loss_fn(y_true, final_forecast, sample_weight=y_nonzero)
-        
-        # NOTE: Entropy regularization is now added via self.add_loss() in the layer
-        
-        if self.use_fixed_weights:
-            total_loss = self.bce_weight * bce_loss + self.mae_weight * mae_loss
-        else:
-            bce_norm = tf.stop_gradient(tf.maximum(tf.reduce_mean(tf.abs(bce_loss)), 1e-6))
-            mae_norm = tf.stop_gradient(tf.maximum(tf.reduce_mean(tf.abs(mae_loss)), 1e-6))
-            bce_stable = bce_loss / bce_norm
-            mae_stable = mae_loss / mae_norm
-            total_loss = self.adaptive_weighting([bce_stable, mae_stable])
-        
-        # Add regularization losses (entropy from attention layers)
         if self.base_model.losses:
-            regularization_loss = tf.add_n(self.base_model.losses)
-            total_loss = total_loss + regularization_loss
+            total_loss = total_loss + tf.add_n(self.base_model.losses)
         
-        # Update metrics
+        y_true_m, final_m, base_m, p_m = self._align(
+            y_true, final_forecast, base_forecast, non_zero_probability
+        )
         self.bce_loss_tracker.update_state(bce_loss)
         self.mae_loss_tracker.update_state(mae_loss)
+        self.mag_loss_tracker.update_state(mag_mae)
         self.total_loss_tracker.update_state(total_loss)
-        # Compute metrics on ALL samples (precision needs both TP and FP)
-        self.nonzero_precision.update_state(y_nonzero, non_zero_probability)
-        self.nonzero_recall.update_state(y_nonzero, non_zero_probability)
-        self.nonzero_aucpr.update_state(y_nonzero, non_zero_probability)
-        self.nonzero_aucroc.update_state(y_nonzero, non_zero_probability)
-        self.mae_tracker.update_state(y_true, base_forecast, sample_weight=y_nonzero)
-        self.final_mae_tracker.update_state(y_true, final_forecast, sample_weight=y_nonzero)
+        self.nonzero_precision.update_state(y_nonzero, p_m)
+        self.nonzero_recall.update_state(y_nonzero, p_m)
+        self.nonzero_aucpr.update_state(y_nonzero, p_m)
+        self.nonzero_aucroc.update_state(y_nonzero, p_m)
+        self.mae_tracker.update_state(y_true_m, base_m, sample_weight=y_nonzero)
+        self.final_mae_tracker.update_state(y_true_m, final_m)
         
         return {
             'loss': self.total_loss_tracker.result(),
             'zero_probability_loss': self.bce_loss_tracker.result(),
             'final_forecast_loss': self.mae_loss_tracker.result(),
             'classification_loss': self.bce_loss_tracker.result(),
+            'magnitude_loss': self.mag_loss_tracker.result(),
             'nonzero_precision': self.nonzero_precision.result(),
             'nonzero_recall': self.nonzero_recall.result(),
             'nonzero_aucpr': self.nonzero_aucpr.result(),
@@ -330,6 +359,7 @@ class AdaptiveWeightedModel(keras.Model):
             self.total_loss_tracker,
             self.bce_loss_tracker,
             self.mae_loss_tracker,
+            self.mag_loss_tracker,
             self.nonzero_precision,
             self.nonzero_recall,
             self.nonzero_aucpr,
@@ -417,10 +447,12 @@ class WeightedBCELoss(tf.keras.losses.Loss):
         self.weight_zero = weight_zero
     
     def call(self, y_true, y_pred):
-        y_true = tf.cast(y_true, tf.float32)
+        # Force matching rank to avoid (N,) vs (N,1) -> (N,N) broadcast
+        y_true = tf.reshape(tf.cast(y_true, tf.float32), [-1, 1])
+        y_pred = tf.reshape(tf.cast(y_pred, tf.float32), [-1, 1])
         # Clip predictions for numerical stability in log
         epsilon = 1e-7
-        y_pred = tf.clip_by_value(tf.cast(y_pred, tf.float32), epsilon, 1.0 - epsilon)
+        y_pred = tf.clip_by_value(y_pred, epsilon, 1.0 - epsilon)
         
         # Binary Cross-Entropy: -[y * log(p) + (1-y) * log(1-p)]
         bce = -(y_true * tf.math.log(y_pred) + (1.0 - y_true) * tf.math.log(1.0 - y_pred))
@@ -548,6 +580,10 @@ class AdaptiveWeightLogger(keras.callbacks.Callback):
     
     def on_epoch_end(self, epoch, logs=None):
         if (epoch + 1) % self.log_freq == 0:
+            recipe = getattr(self.model, 'loss_recipe', 'legacy')
+            if recipe in ('three_term', 'bce_mae') or getattr(self.model, 'use_fixed_weights', False):
+                print(f"\n[Loss recipe={recipe} - Epoch {epoch+1}] fixed/composite weights (no adaptive log-vars)")
+                return
             summary = self.model.adaptive_weighting.get_weights_summary()
             print(f"\n[Adaptive Weights - Epoch {epoch+1}]")
             # Handle fixed weights case
@@ -584,6 +620,18 @@ def main():
     parser.add_argument("--epochs", type=int, default=None, help="Number of training epochs")
     parser.add_argument("--patience", type=int, default=None, help="Early stopping patience")
     parser.add_argument("--data_dir", type=str, default=None, help="Directory containing train_split.csv and val_split.csv")
+    parser.add_argument(
+        "--loss_recipe",
+        type=str,
+        default=None,
+        choices=["legacy", "bce_mae", "three_term"],
+        help="Loss recipe: legacy (nonzero MAE), bce_mae (all-day MAE), three_term (recommended)",
+    )
+    parser.add_argument("--alpha_bce", type=float, default=None, help="BCE weight for three_term recipe (default 0.2)")
+    parser.add_argument("--w_gated", type=float, default=None, help="Gated MAE weight for three_term (default 1.0)")
+    parser.add_argument("--w_mag", type=float, default=None, help="Nonzero magnitude MAE weight for three_term (default 1.0)")
+    parser.add_argument("--bce_weight", type=float, default=None, help="BCE weight for bce_mae/legacy fixed mix")
+    parser.add_argument("--mae_weight", type=float, default=None, help="MAE weight for bce_mae/legacy fixed mix")
     args = parser.parse_args([] if hasattr(sys, 'ps1') else None)
 
     cfg = {}
@@ -657,9 +705,13 @@ def main():
     holiday_train = pd.read_csv(os.path.join(data_dir, 'holiday_features_train.csv'))
     holiday_val = pd.read_csv(os.path.join(data_dir, 'holiday_features_val.csv'))
     
-    # Create features
-    X_train_df = feature_config.create_features(train_df, holiday_train)
-    X_val_df = feature_config.create_features(val_df, holiday_val)
+    # Create features (causal regressor: train states warm-start val)
+    X_train_df, sku_states = feature_config.create_features(
+        train_df, holiday_train, return_states=True
+    )
+    X_val_df, sku_states = feature_config.create_features(
+        val_df, holiday_val, prior_states=sku_states, return_states=True
+    )
     
     # Prepare inputs
     X_train = X_train_df.values.astype(np.float32)
@@ -797,26 +849,63 @@ def main():
     # - Log1p SKU volume weighting for magnitude loss
     weight_nonzero = float(cfg_val('weight_nonzero', 9.0))
     use_mse = bool(cfg_val('use_mse', False))  # True for MSE, False for MAE
+    loss_recipe = str(cfg_val('loss_recipe', 'legacy'))
+    alpha_bce = float(cfg_val('alpha_bce', 0.2))
+    w_gated = float(cfg_val('w_gated', 1.0))
+    w_mag = float(cfg_val('w_mag', 1.0))
+    fixed_bce_weight = cfg_val('bce_weight', None)
+    fixed_mae_weight = cfg_val('mae_weight', None)
+
+    if loss_recipe == 'three_term':
+        loss_config = three_term_loss_config(
+            zero_rate=zero_rate,
+            alpha_bce=alpha_bce,
+            w_gated=w_gated,
+            w_mag=w_mag,
+            pos_weight=weight_nonzero,
+        )
+        print(f"\n✓ Using THREE-TERM intermittent recipe (recommended):")
+        print(f"  - inverse-weighted gated MAE on ALL days (timing)")
+        print(f"  - masked MAE on base_forecast for sale days (size)")
+        print(f"  - light weighted BCE (alpha_bce={alpha_bce})")
+        print(f"  - weights: gated={w_gated}, mag={w_mag}, bce={alpha_bce}")
+        print(f"  - class weights: w_zero={loss_config['meta']['w_zero']:.3f}, "
+              f"w_nz={loss_config['meta']['w_nonzero']:.3f}")
+    elif loss_recipe == 'bce_mae':
+        bw = float(fixed_bce_weight) if fixed_bce_weight is not None else 0.5
+        mw = float(fixed_mae_weight) if fixed_mae_weight is not None else 0.5
+        loss_config = bce_mae_loss_config(
+            zero_rate=zero_rate,
+            bce_weight=bw,
+            mae_weight=mw,
+            pos_weight=weight_nonzero,
+            mae_all_days=True,
+        )
+        print(f"\n✓ Using BCE + all-day MAE recipe:")
+        print(f"  - BCE weight={bw}, MAE weight={mw}, pos_weight={weight_nonzero:.2f}")
+    else:
+        # Create composite loss with data-driven weighting (legacy)
+        # Returns separate losses for each output with appropriate weights
+        # NOTE: We use weight=1.0 for forecast loss since per-SKU weighting is applied via sample_weight
+        loss_config = composite_loss(
+            zero_rate=zero_rate,  # Auto-weights BCE by zero rate
+            average_nonzero_demand=1.0,  # Set to 1.0 - per-SKU weighting via sample_weight instead
+            pos_weight=weight_nonzero,  # 9:1 class weighting
+            use_mse=use_mse  # MAE or MSE for magnitude
+        )
+        print(f"\n✓ Using LEGACY composite_loss (nonzero-only MAE on final):")
+        print(f"  - BCE with pos_weight={weight_nonzero:.1f} (zero=1.0, non-zero={weight_nonzero:.1f})")
+        print(f"  - {'MSE' if use_mse else 'MAE'} on non-zero samples only")
+
+    bce_weight = loss_config['weights'].get('non_zero_probability', 1.0)
+    mae_weight = loss_config['weights'].get('final_forecast', 1.0)
     
-    # Create composite loss with data-driven weighting
-    # Returns separate losses for each output with appropriate weights
-    # NOTE: We use weight=1.0 for forecast loss since per-SKU weighting is applied via sample_weight
-    loss_config = composite_loss(
-        zero_rate=zero_rate,  # Auto-weights BCE by zero rate
-        average_nonzero_demand=1.0,  # Set to 1.0 - per-SKU weighting via sample_weight instead
-        pos_weight=weight_nonzero,  # 9:1 class weighting
-        use_mse=use_mse  # MAE or MSE for magnitude
-    )
-    
-    bce_weight = loss_config['weights']['non_zero_probability']
-    mae_weight = loss_config['weights']['final_forecast']  # Will be 1.0 now
-    
-    print(f"\n✓ Using composite_loss from losses.py with PER-SKU weighting:")
-    print(f"  - BCE with pos_weight={weight_nonzero:.1f} (zero=1.0, non-zero={weight_nonzero:.1f})")
-    print(f"  - {'MSE' if use_mse else 'MAE'} on non-zero samples only")
     print(f"  - BCE weight: {bce_weight:.4f}")
-    print(f"  - MAE/MSE base weight: {mae_weight:.4f} (per-SKU scaled via sample_weight)")
-    print(f"  - Per-SKU scaling: log1p(sku_nonzero_mean) applied as sample weights")
+    print(f"  - final_forecast weight: {mae_weight:.4f}")
+    if 'base_forecast' in loss_config['weights']:
+        print(f"  - base_forecast (mag) weight: {loss_config['weights']['base_forecast']:.4f}")
+    if loss_recipe == 'legacy':
+        print(f"  - Per-SKU scaling: log1p(sku_nonzero_mean) applied as sample weights")
     
     # Initial threshold for metrics
     optimal_threshold = 0.55
@@ -829,6 +918,22 @@ def main():
         print(f"  WARNING: Reducing learning rate to {lr:.6f} for stability")
     
     # Compile model with separate losses for each output
+    compile_metrics = {
+        'non_zero_probability': [
+            keras.metrics.Precision(name='nonzero_precision', thresholds=[optimal_threshold]),
+            keras.metrics.Recall(name='nonzero_recall', thresholds=[optimal_threshold]),
+            keras.metrics.AUC(curve='PR', name='nonzero_aucpr'),
+            keras.metrics.AUC(curve='ROC', name='nonzero_aucroc')
+        ],
+        'final_forecast': [
+            keras.metrics.MeanAbsoluteError(name='final_forecast_mae')
+        ]
+    }
+    if 'base_forecast' in loss_config['losses']:
+        compile_metrics['base_forecast'] = [
+            keras.metrics.MeanAbsoluteError(name='base_forecast_mae')
+        ]
+
     base_model.compile(
         optimizer=keras.optimizers.Adam(
             learning_rate=lr,
@@ -836,17 +941,7 @@ def main():
         ),
         loss=loss_config['losses'],
         loss_weights=loss_config['weights'],
-        metrics={
-            'non_zero_probability': [
-                keras.metrics.Precision(name='nonzero_precision', thresholds=[optimal_threshold]),
-                keras.metrics.Recall(name='nonzero_recall', thresholds=[optimal_threshold]),
-                keras.metrics.AUC(curve='PR', name='nonzero_aucpr'),
-                keras.metrics.AUC(curve='ROC', name='nonzero_aucroc')
-            ],
-            'final_forecast': [
-                keras.metrics.MeanAbsoluteError(name='final_forecast_mae')
-            ]
-        }
+        metrics=compile_metrics,
     )
     
     # Build the model explicitly to enable weight saving
@@ -865,9 +960,7 @@ def main():
     print(f"\n✓ Model compilation complete:")
     print(f"  Optimizer: Adam with gradient clipping (global_norm=10.0)")
     print(f"  Learning rate: {lr:.6f}")
-    print(f"  Classification loss: Weighted BCE with pos_weight={weight_nonzero:.2f} on non_zero_probability")
-    print(f"  Forecast loss: Masked {'MSE' if use_mse else 'MAE'} on non-zero samples only")
-    print(f"  Loss weights: BCE={bce_weight:.3f}, MAE={mae_weight:.3f}")
+    print(f"  Loss recipe: {loss_recipe}")
     print(f"  Classification threshold: {optimal_threshold:.2f} (for metrics)")
     
     # Callbacks
@@ -1003,12 +1096,27 @@ def main():
     ramp_epochs = int(os.environ.get('RAMP_EPOCHS', '10'))
     callbacks.append(ScheduledStopRampCallback(total_epochs=ramp_epochs))
     
-    print("\nStarting training with BALANCED loss weighting (50/50) and FIXED threshold (0.55)...")
-    print("Balanced loss prevents zero over-prediction; higher threshold cuts false positives.")
+    print("\nStarting training...")
+    print(f"Loss recipe: {loss_recipe}")
     start_time = time.time()
     
     batch_size = int(cfg_val('batch_size', best_params['batch_size']))
     epochs = int(cfg_val('epochs', 100))
+
+    # three_term / bce_mae already balance classes inside the loss; skip extra SKU weights
+    # on final_forecast to avoid double-counting. legacy keeps per-SKU forecast weights.
+    if loss_recipe in ('three_term', 'bce_mae'):
+        fit_sample_weight = {
+            'non_zero_probability': None,
+            'final_forecast': None,
+            'base_forecast': None,
+        }
+    else:
+        fit_sample_weight = {
+            'non_zero_probability': None,
+            'final_forecast': sample_weights_train,
+            'base_forecast': None,
+        }
 
     history = model.fit(
         [X_train_trend, X_train_seasonal, X_train_holiday,
@@ -1016,13 +1124,9 @@ def main():
         {
             'non_zero_probability': y_train_binary,  # Binary classification target (for metrics only)
             'final_forecast': y_train,  # Final forecast target - composite loss handles both tasks
-            'base_forecast': y_train  # Base forecast target (no loss)
+            'base_forecast': y_train  # Base forecast target (mag term when three_term)
         },
-        sample_weight={
-            'non_zero_probability': None,  # No sample weighting for classification
-            'final_forecast': sample_weights_train,  # Per-SKU weighting for forecast loss
-            'base_forecast': None  # No loss on base_forecast
-        },
+        sample_weight=fit_sample_weight,
         validation_data=(
             [X_val_trend, X_val_seasonal, X_val_holiday,
              X_val_regressor, sku_val],
