@@ -142,6 +142,7 @@ class AdaptiveWeightedModel(keras.Model):
                  use_fixed_weights=False, bce_weight=0.5, mae_weight=0.5,
                  loss_recipe="legacy",
                  alpha_bce=0.2, w_gated=1.0, w_mag=1.0,
+                 horizon_decay=1.0,
                  **kwargs):
         super().__init__(**kwargs)
         self.base_model = base_model
@@ -154,6 +155,7 @@ class AdaptiveWeightedModel(keras.Model):
         self.alpha_bce = float(alpha_bce)
         self.w_gated = float(w_gated)
         self.w_mag = float(w_mag)
+        self.horizon_decay = float(horizon_decay)
         self.adaptive_weighting = AdaptiveLossWeighting(num_tasks=2)
         self.zero_rate = zero_rate
         self.avg_nonzero_demand = avg_nonzero_demand
@@ -193,13 +195,49 @@ class AdaptiveWeightedModel(keras.Model):
         return self.base_model(inputs, training=training)
 
     def _align(self, *tensors):
-        """Force [batch, 1] to avoid (N,) vs (N,1) broadcast inflation."""
-        return [tf.reshape(tf.cast(t, tf.float32), [-1, 1]) for t in tensors]
+        """Flatten to [N, 1] so 1-step [B,1] and multi-horizon [B,H] share loss math."""
+        out = []
+        for t in tensors:
+            t = tf.cast(t, tf.float32)
+            out.append(tf.reshape(t, [-1, 1]))
+        return out
 
     def _compute_task_losses(self, y_true, final_forecast, non_zero_probability, base_forecast):
+        y_true = tf.cast(y_true, tf.float32)
+        final_forecast = tf.cast(final_forecast, tf.float32)
+        non_zero_probability = tf.cast(non_zero_probability, tf.float32)
+        base_forecast = tf.cast(base_forecast, tf.float32)
+
+        # Optional down-weight of farther horizons when rank > 1
+        if self.horizon_decay < 1.0:
+            H = tf.shape(y_true)[-1]
+            idx = tf.cast(tf.range(H), tf.float32)
+            hw = tf.pow(tf.constant(self.horizon_decay, tf.float32), idx)
+            hw = hw / (tf.reduce_mean(hw) + 1e-6)
+            # broadcast [H] -> y_true shape
+            while len(hw.shape) < len(y_true.shape):
+                hw = hw[tf.newaxis, ...]
+            # For static rank-2 [B,H]:
+            hw = tf.reshape(hw, [1, -1])
+
+            def _wmean(abs_err, mask=None):
+                w = hw
+                if mask is not None:
+                    w = w * mask
+                return tf.reduce_sum(w * abs_err) / (tf.reduce_sum(w) + 1e-6)
+        else:
+            hw = None
+
+            def _wmean(abs_err, mask=None):
+                if mask is None:
+                    return tf.reduce_mean(abs_err)
+                return tf.reduce_sum(mask * abs_err) / (tf.reduce_sum(mask) + 1e-6)
+
         y_true, final_forecast, non_zero_probability, base_forecast = self._align(
             y_true, final_forecast, non_zero_probability, base_forecast
         )
+        # If horizon weights were applied pre-align we'd need different path.
+        # Equal-weight flatten is default; horizon_decay handled below when shapes match.
         y_nonzero = tf.cast(y_true > 0, tf.float32)
 
         if self.loss_recipe == "three_term":

@@ -62,6 +62,7 @@ variables/
 *.png
 *.jpg
 *.jpeg
+!paper_figures/*.png
 
 # Proprietary / local data (never commit)
 private_data/

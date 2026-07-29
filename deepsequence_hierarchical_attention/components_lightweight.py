@@ -1683,6 +1683,7 @@ def build_hierarchical_model_lightweight(
     use_learnable_fourier=False,
     n_learnable_frequencies=5,
     fourier_periods=None,
+    horizon=1,
 ):
     """
     Build lightweight hierarchical model with masked entropy attention.
@@ -1714,10 +1715,15 @@ def build_hierarchical_model_lightweight(
             must be ``[batch, 1]`` time in day units (not precomputed sin/cos).
         n_learnable_frequencies: Number of learnable (sin, cos) frequency pairs
         fourier_periods: Optional initial periods (days) for learnable ω
+        horizon: Forecast horizon length. ``1`` keeps the classic 1-step head;
+            ``H>1`` emits ``[B, H]`` gated outputs (direct multi-horizon).
     
     Returns:
         model: Keras Model
     """
+    horizon = int(horizon)
+    if horizon < 1:
+        raise ValueError(f"horizon must be >= 1, got {horizon}")
     # Auto-enable components based on feature counts when flags are None
     # If a component has zero input features, we disable it (mask gradients)
     if enable_trend is None:
@@ -1838,7 +1844,7 @@ def build_hierarchical_model_lightweight(
     # Build-time logging for quick verification of gating
     print("[build_hierarchical_model_lightweight] present values:")
     print(f"  trend_present={trend_present}, seasonal_present={seasonal_present}, holiday_present={holiday_present}, regressor_present={regressor_present}")
-    print(f"  use_cross_layers={use_cross_layers}, use_intermittent={use_intermittent}")
+    print(f"  use_cross_layers={use_cross_layers}, use_intermittent={use_intermittent}, horizon={horizon}")
     if use_learnable_fourier:
         periods = fourier_periods if fourier_periods is not None else [7.0, 14.0, 30.0, 91.0, 365.0]
         print(
@@ -1939,35 +1945,29 @@ def build_hierarchical_model_lightweight(
         base_forecast = base_forecast_attention
         component_interaction_norm = None
     
-    # Add bias for base demand level
-    base_forecast = Dense(
+    # Scalar structural level used by intermittent path (and as MH head context)
+    base_level = Dense(
         1,
         activation='softplus',
         use_bias=True,
-        name='base_forecast'
+        name='base_level' if horizon > 1 else 'base_forecast',
     )(base_forecast)
-    
+
     # Intermittent handling (optional)
     if use_intermittent:
-        # Use base forecast directly without transformation
-        # Keep shape [batch, 1] to align with component outputs
-        
-        # Use CrossLayer for intermittent handler if enabled
-        # Build intermittent features: all components + base forecast + SKU signal
-        # Project SKU embedding to a scalar to be compatible with component signals
+        # Build intermittent features: all components + scalar base level + SKU signal
         sku_signal_for_intermittent = Dense(
             1,
             activation='tanh',
             use_bias=False,
             name='sku_signal_for_intermittent'
         )(sku_embedding)
-        intermittent_components = component_outputs + [base_forecast, sku_signal_for_intermittent]
-        # Auto-detect intermittent presence: 1.0 if use_intermittent is True, 0.0 otherwise
+        intermittent_components = component_outputs + [base_level, sku_signal_for_intermittent]
         intermittent_present = 1.0 if use_intermittent else 0.0
         if use_cross_layers:
-            # Apply a dedicated cross layer for intermittent handler features
             cross_intermittent = CrossLayerLightweight(name='cross_layer_intermittent')(intermittent_components)
             cross_intermittent_norm = LayerNormalization(name='cross_layer_intermittent_norm')(cross_intermittent)
+            intermittent_features = cross_intermittent_norm
             zero_prob = IntermittentHandlerLightweight(
                 hidden_dim=16,
                 dropout_rate=dropout_rate,
@@ -1975,35 +1975,67 @@ def build_hierarchical_model_lightweight(
                 name='intermittent'
             )(cross_intermittent_norm)
         else:
-            # Provide raw component signals (concatenated inside handler)
+            intermittent_features = Concatenate(name='intermittent_concat')(intermittent_components)
             zero_prob = IntermittentHandlerLightweight(
                 hidden_dim=16,
                 dropout_rate=dropout_rate,
                 present=intermittent_present,
                 name='intermittent'
             )(intermittent_components)
-        # IntermittentHandler directly predicts zero_probability ∈ (0,1)
-        # Convert to non-zero probability for gating and metrics: p_nonzero = 1 - p_zero
-        # Named layer required so Model.output_names keeps 'non_zero_probability'
-        # (bare `1.0 - x` becomes an anonymous 'subtract' output in Keras 3).
-        epsilon = 1e-7
-        zero_prob_safe = ClipByValue(epsilon, 1.0 - epsilon, name='zero_prob_clip')(zero_prob)
-        non_zero_prob = InvertProbability(name='non_zero_probability')(zero_prob_safe)
-        
-        # Use continuous probability P for differentiable gating
-        # Final forecast = P * base_forecast (P = non_zero_probability)
-        # Decouple gradients with schedulable stop: ramp stop over epochs via callback
+
         scheduled_stop = ScheduledStopGradient(initial_prob=0.0, name='scheduled_stop')
-        final_forecast = Multiply(name='final_forecast')(
-            [base_forecast, scheduled_stop(non_zero_prob)]
-        )
-        
+
+        if horizon == 1:
+            # Classic 1-step gated head (unchanged API / shapes [B,1])
+            epsilon = 1e-7
+            zero_prob_safe = ClipByValue(epsilon, 1.0 - epsilon, name='zero_prob_clip')(zero_prob)
+            non_zero_prob = InvertProbability(name='non_zero_probability')(zero_prob_safe)
+            base_forecast = base_level
+            final_forecast = Multiply(name='final_forecast')(
+                [base_forecast, scheduled_stop(non_zero_prob)]
+            )
+        else:
+            # Direct multi-horizon head: Dense(H) magnitude + Dense(H) gate
+            head_ctx = Concatenate(name='mh_head_context')(
+                [base_level, intermittent_features, sku_embedding]
+            )
+            head_ctx = Dense(
+                hidden_dim,
+                activation=mish,
+                name='mh_head_hidden',
+            )(head_ctx)
+            head_ctx = Dropout(dropout_rate, name='mh_head_dropout')(head_ctx)
+            base_forecast = Dense(
+                horizon,
+                activation='softplus',
+                use_bias=True,
+                name='base_forecast',
+            )(head_ctx)
+            non_zero_prob = Dense(
+                horizon,
+                activation='sigmoid',
+                use_bias=True,
+                name='non_zero_probability',
+            )(head_ctx)
+            final_forecast = Multiply(name='final_forecast')(
+                [base_forecast, scheduled_stop(non_zero_prob)]
+            )
+
         outputs = {
             'final_forecast': final_forecast,
             'non_zero_probability': non_zero_prob,
             'base_forecast': base_forecast
         }
     else:
+        if horizon == 1:
+            base_forecast = base_level
+        else:
+            base_forecast = Dense(
+                horizon,
+                activation='softplus',
+                use_bias=True,
+                name='base_forecast',
+            )(base_level)
         outputs = {'final_forecast': base_forecast}
     
     # Build model

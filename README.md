@@ -3,7 +3,7 @@
 Intermittent demand forecasting with a **lightweight hierarchical DeepSequence** backbone, **causal intermittent features**, and a **gated** occurrence × magnitude head.
 
 **Package version:** 1.6.0 · **Feature contract:** v1.6 (28 columns)  
-**Report:** [REPORT_v1.6.md](REPORT_v1.6.md) · **Example notebook:** [examples/v16_deepsequence_example.ipynb](examples/v16_deepsequence_example.ipynb)
+**Paper:** [PAPER.md](PAPER.md) · **Report:** [REPORT_v1.6.md](REPORT_v1.6.md) · **Example notebook:** [examples/v16_deepsequence_example.ipynb](examples/v16_deepsequence_example.ipynb)
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![TensorFlow 2.13+](https://img.shields.io/badge/tensorflow-2.13+-orange.svg)](https://www.tensorflow.org/)
@@ -272,20 +272,25 @@ The notebook builds v1.6 features, trains gated **DeepSequence** for a few epoch
 
 ## v1.6 bake-off (summary)
 
-Same 28 features for DeepSequence, LightGBM, TST, and DeepAR (800 series, seed 42) on the confidential evaluation panel described under **Dataset Availability**. Full write-up: **[REPORT_v1.6.md](REPORT_v1.6.md)**.
+Same 28 features for DeepSequence, LightGBM, TST, DeepAR, and TFT-lite (800 series, seed 42) on the confidential evaluation panel described under **Dataset Availability**. Full write-up: **[REPORT_v1.6.md](REPORT_v1.6.md)**.
 
-| Rank | Model | All-day MAE | Nonzero MAE |
-|------|-------|------------:|------------:|
-| 1 | **DeepSequence** | **1.73** | 6.94 |
-| 2 | LightGBM | 1.85 | 8.03 |
-| 3 | Temporal transformer | 1.88 | **6.89** |
-| 4 | DeepAR-lite | 2.02 | 7.43 |
+| Rank | Model | IWMAE | All-day MAE | Nonzero MAE | Occ F1 |
+|------|-------|------:|------------:|------------:|-------:|
+| 1 | **DeepSequence** | **4.00** | **1.73** | 6.94 | **0.40** |
+| 2 | TFT-lite | 4.03 | 1.80 | 6.91 | 0.39 |
+| 3 | Temporal transformer | 4.07 | 1.88 | **6.89** | 0.39 |
+| 4 | DeepAR-lite | 4.37 | 2.02 | 7.43 | 0.33 |
+| 5 | LightGBM | 4.57 | 1.85 | 8.03 | 0.21 |
 
-- **Low / mid volume:** DS best  
-- **High nonzero (sale days):** TST ≈ DS; LightGBM worst (under-forecasts)  
-- **Inventory / service level:** prefer **DS** (does not under-forecast like LightGBM on high volume)
+Primary intermittent ranking is **IWMAE** (all-day MAE alone favors near-zero forecasts under ~90% zeros). Also recorded: MASE (s=7), underforecast rate on sale days, AUROC/AUCPR (see REPORT §2.1 / §3).
+
+- **Low / mid / high IWMAE:** DS best on mid + high; TST edges low  
+- **Inventory / service level:** prefer **DS** (best IWMAE + occurrence F1; TFT is the strongest neural runner-up)
 
 Aggregated metrics only (no series identifiers): `eval_results_same_features_v16_distance_holidays.json`
+
+**Multi-horizon (recursive, H=14):** under **IWMAE**, DS wins h=1; TST/TFT lead longer horizons; LightGBM never wins IWMAE despite all-day MAE at h≥7 (worst occ F1 / underforecast). Full tables: [REPORT_v1.6.md](REPORT_v1.6.md) §7 · `eval_results_multihorizon_v16.json`.
+
 
 ---
 

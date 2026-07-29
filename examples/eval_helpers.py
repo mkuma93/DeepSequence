@@ -9,10 +9,32 @@ import tensorflow as tf
 from sklearn.metrics import (
     average_precision_score,
     mean_absolute_error,
+    precision_recall_fscore_support,
     roc_auc_score,
 )
 
 from deepsequence_hierarchical_attention.forecast_postprocess import round_forecast
+
+
+def seasonal_naive_mae_scale(y: np.ndarray, season: int = 7) -> float | None:
+    """In-sample mean |y_t - y_{t-season}| used as MASE / RMSSE denominator."""
+    y = np.asarray(y, np.float64).reshape(-1)
+    if len(y) <= season:
+        return None
+    scale = float(np.mean(np.abs(y[season:] - y[:-season])))
+    return scale if scale > 1e-12 else None
+
+
+def train_mase_scale(train_df: pd.DataFrame, season: int = 7) -> float | None:
+    """Pooled seasonal-naive MAE over all series in train (daily panel)."""
+    scales = []
+    for _, g in train_df.sort_values("ds").groupby("id_var", sort=False):
+        s = seasonal_naive_mae_scale(g["Quantity"].to_numpy(), season=season)
+        if s is not None:
+            scales.append(s)
+    if not scales:
+        return None
+    return float(np.mean(scales))
 
 
 def build_deepar(lookback, n_skus, n_channels=4, hidden=64):
@@ -60,6 +82,86 @@ def build_transformer(lookback, n_skus, n_channels=4, d_model=64, n_heads=4):
         name="temporal_transformer",
     )
 
+
+def _grn(x, units, dropout=0.1, name="grn"):
+    """Gated Residual Network (TFT building block), simplified."""
+    skip = (
+        x
+        if int(x.shape[-1]) == units
+        else tf.keras.layers.Dense(units, name=f"{name}_skip")(x)
+    )
+    h = tf.keras.layers.Dense(units, activation="elu", name=f"{name}_fc1")(x)
+    h = tf.keras.layers.Dense(units, name=f"{name}_fc2")(h)
+    h = tf.keras.layers.Dropout(dropout, name=f"{name}_drop")(h)
+    gate = tf.keras.layers.Dense(units, activation="sigmoid", name=f"{name}_gate")(x)
+    out = skip + gate * h
+    return tf.keras.layers.LayerNormalization(name=f"{name}_ln")(out)
+
+
+def build_tft(
+    lookback,
+    n_skus,
+    n_channels=4,
+    d_model=64,
+    n_heads=4,
+    lstm_hidden=64,
+    dropout=0.1,
+):
+    """
+    TFT-lite for the same sequence contract as DeepAR/TST.
+
+    Uses: SKU static embedding, per-timestep variable selection (softmax over
+    channels), GRN, LSTM encoder, causal multi-head attention, gated
+    intermittent head (base × p) — fair bake-off with other sequence models.
+    """
+    hist = tf.keras.Input(shape=(lookback, n_channels), name="history")
+    sku = tf.keras.Input(shape=(1,), dtype=tf.int32, name="sku_id")
+
+    # Static context from SKU
+    static = tf.keras.layers.Embedding(n_skus, d_model, name="sku_emb")(sku)
+    static = tf.keras.layers.Flatten()(static)
+    static = _grn(static, d_model, dropout=dropout, name="static_grn")
+
+    # Variable selection over input channels (soft weights shared across time)
+    # scores: (B, C) -> softmax over channels, broadcast to (B, L, C)
+    vs_scores = tf.keras.layers.Dense(n_channels, name="var_select_logits")(static)
+    vs_weights = tf.keras.layers.Activation("softmax", name="var_select_weights")(vs_scores)
+    vs_weights_t = tf.keras.layers.RepeatVector(lookback)(vs_weights)
+    selected = tf.keras.layers.Multiply(name="var_selected")([hist, vs_weights_t])
+
+    # Project selected inputs + static context
+    x = tf.keras.layers.Dense(d_model, name="input_proj")(selected)
+    static_t = tf.keras.layers.RepeatVector(lookback)(static)
+    x = tf.keras.layers.Add(name="add_static")([x, static_t])
+    x = _grn(x, d_model, dropout=dropout, name="temporal_grn")
+
+    # Local processing (LSTM encoder) + self-attention (TFT-style)
+    lstm_out = tf.keras.layers.LSTM(
+        lstm_hidden, return_sequences=True, name="lstm_encoder"
+    )(x)
+    lstm_out = tf.keras.layers.Dense(d_model, name="lstm_proj")(lstm_out)
+    attn = tf.keras.layers.MultiHeadAttention(
+        num_heads=n_heads,
+        key_dim=max(1, d_model // n_heads),
+        name="tft_mha",
+    )(lstm_out, lstm_out, use_causal_mask=True)
+    x = tf.keras.layers.Add(name="attn_residual")([lstm_out, attn])
+    x = tf.keras.layers.LayerNormalization(name="attn_ln")(x)
+    x = _grn(x, d_model, dropout=dropout, name="post_attn_grn")
+
+    # Predict from last encoder step
+    h = x[:, -1, :]
+    h = tf.keras.layers.Dense(32, activation="relu", name="head_hidden")(h)
+    base = tf.keras.layers.Dense(1, activation="softplus", name="base_forecast")(h)
+    p = tf.keras.layers.Dense(1, activation="sigmoid", name="non_zero_probability")(h)
+    final = tf.keras.layers.Multiply(name="final_forecast")([base, p])
+    return tf.keras.Model(
+        [hist, sku],
+        {"final_forecast": final, "non_zero_probability": p, "base_forecast": base},
+        name="tft_lite",
+    )
+
+
 def predict_seq(model, X, sku):
     pred = model.predict([X, sku], batch_size=4096, verbose=0)
     return (
@@ -101,44 +203,102 @@ def train_volume_terciles(train_df: pd.DataFrame) -> dict:
         }
     return mapping, stats
 
-def kpi_block(y, yhat, p=None):
+def kpi_block(y, yhat, p=None, mase_scale: float | None = None):
+    """Intermittent-aware forecast KPIs.
+
+    All-day MAE alone is weak under high zero rates (near-zero forecasts look good).
+    This block reports timing (occurrence), magnitude (sale days), scale-free error
+    (MASE), and inverse-frequency weighted MAE aligned with intermittent training.
+    """
     y = np.asarray(y, np.float64).reshape(-1)
     yhat = np.maximum(np.asarray(yhat, np.float64).reshape(-1), 0.0)
     yhat_r = round_forecast(yhat)
     nz = y > 0
+    z = ~nz
+    n = len(y)
     out = {
-        "n_rows": int(len(y)),
+        "n_rows": int(n),
         "n_nonzero": int(nz.sum()),
-        "zero_rate": float((~nz).mean()) if len(y) else None,
-        "mae_all": float(mean_absolute_error(y, yhat)) if len(y) else None,
-        "mae_all_rounded": float(mean_absolute_error(y, yhat_r)) if len(y) else None,
+        "zero_rate": float(z.mean()) if n else None,
+        # Magnitude / level (weak alone under intermittency)
+        "mae_all": float(mean_absolute_error(y, yhat)) if n else None,
+        "mae_all_rounded": float(mean_absolute_error(y, yhat_r)) if n else None,
         "mae_nonzero": float(mean_absolute_error(y[nz], yhat[nz])) if nz.any() else None,
-        "mean_final": float(yhat.mean()) if len(y) else None,
-        "mean_actual": float(y.mean()) if len(y) else None,
-        "bias": float(yhat.mean() - y.mean()) if len(y) else None,
-        "predict_zero_mae": float(mean_absolute_error(y, np.zeros_like(y))) if len(y) else None,
+        "rmse_nonzero": float(np.sqrt(np.mean((y[nz] - yhat[nz]) ** 2))) if nz.any() else None,
+        "mean_final": float(yhat.mean()) if n else None,
+        "mean_actual": float(y.mean()) if n else None,
+        "bias": float(yhat.mean() - y.mean()) if n else None,
+        "bias_nonzero": float(yhat[nz].mean() - y[nz].mean()) if nz.any() else None,
+        "predict_zero_mae": float(mean_absolute_error(y, np.zeros_like(y))) if n else None,
     }
-    if p is not None and len(y) and len(np.unique((y > 0).astype(int))) == 2:
+
+    # Inverse-frequency weighted MAE: upweight rare sale days (and quiet days symmetrically)
+    if n and 0 < nz.mean() < 1.0:
+        w = np.where(nz, 1.0 / nz.mean(), 1.0 / z.mean())
+        out["iwmae"] = float(np.average(np.abs(y - yhat), weights=w))
+        out["iwmae_rounded"] = float(np.average(np.abs(y - yhat_r), weights=w))
+    else:
+        out["iwmae"] = out["mae_all"]
+        out["iwmae_rounded"] = out["mae_all_rounded"]
+
+    # Relative to seasonal naive (train pooled scale when provided)
+    if n and mase_scale is not None and mase_scale > 0:
+        out["mase"] = float(np.mean(np.abs(y - yhat)) / mase_scale)
+        out["mase_rounded"] = float(np.mean(np.abs(y - yhat_r)) / mase_scale)
+        if nz.any():
+            out["mase_nonzero"] = float(np.mean(np.abs(y[nz] - yhat[nz])) / mase_scale)
+    else:
+        out["mase"] = None
+        out["mase_rounded"] = None
+        out["mase_nonzero"] = None
+
+    # Timing / occurrence from rounded forecast (ŷ_r > 0)
+    if n and len(np.unique(nz.astype(int))) == 2:
+        pred_nz = yhat_r > 0
+        pr, rc, f1, _ = precision_recall_fscore_support(
+            nz.astype(int), pred_nz.astype(int), average="binary", zero_division=0
+        )
+        out["occ_precision"] = float(pr)
+        out["occ_recall"] = float(rc)
+        out["occ_f1"] = float(f1)
+        # Service-oriented on sale days: under-forecast fraction / stockout proxy
+        out["underforecast_rate_nonzero"] = float(np.mean(yhat[nz] < y[nz]))
+        out["hit_nonzero_rate"] = float(np.mean(pred_nz[nz]))  # predicted demand when sale
+    else:
+        out["occ_precision"] = None
+        out["occ_recall"] = None
+        out["occ_f1"] = None
+        out["underforecast_rate_nonzero"] = None
+        out["hit_nonzero_rate"] = None
+
+    if p is not None and n and len(np.unique(nz.astype(int))) == 2:
         p = np.asarray(p, np.float64).reshape(-1)
-        yb = (y > 0).astype(np.float64)
+        yb = nz.astype(np.float64)
         out["mean_p"] = float(p.mean())
         out["aucroc"] = float(roc_auc_score(yb, p))
         out["aucpr"] = float(average_precision_score(yb, p))
+        pred_p = p >= 0.5
+        pr, rc, f1, _ = precision_recall_fscore_support(
+            nz.astype(int), pred_p.astype(int), average="binary", zero_division=0
+        )
+        out["p_precision@0.5"] = float(pr)
+        out["p_recall@0.5"] = float(rc)
+        out["p_f1@0.5"] = float(f1)
     return out
 
-def strata_report(y, yhat, p, skus, volume_map):
+def strata_report(y, yhat, p, skus, volume_map, mase_scale: float | None = None):
     y = np.asarray(y).reshape(-1)
     yhat = np.asarray(yhat).reshape(-1)
     skus = np.asarray(skus).reshape(-1)
     p = None if p is None else np.asarray(p).reshape(-1)
     bands = np.array([volume_map.get(s, "unk") for s in skus])
-    out = {"overall": kpi_block(y, yhat, p)}
+    out = {"overall": kpi_block(y, yhat, p, mase_scale=mase_scale)}
     # volume-weighted MAE: weight each row by that SKU's train volume share of total
     # (approx: use band mean volume as proxy per row belonging to band)
     for band in ("low", "mid", "high"):
         m = bands == band
         out[band] = kpi_block(
-            y[m], yhat[m], None if p is None else p[m]
+            y[m], yhat[m], None if p is None else p[m], mase_scale=mase_scale
         )
         out[band]["n_skus_in_pred"] = int(len(set(skus[m].tolist())))
     # equal-SKU mean of per-SKU MAE (rounded) within overall
