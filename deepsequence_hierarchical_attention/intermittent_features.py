@@ -15,15 +15,55 @@ import json
 import numpy as np
 import pandas as pd
 
+from .frequency_presets import DEFAULT_LAGS, default_lags_for_frequency  # noqa: F401
+
 # Default cold-start: never sold before prediction date
 DEFAULT_DAYS_SINCE_SENTINEL = -1.0
-DEFAULT_LAGS = (1, 2, 7)
+# DEFAULT_LAGS remains daily {1,2,7} for backward-compatible call sites.
+# Prefer default_lags_for_frequency(freq) when the panel grain is known.
+
+RATE_FEATURE_NAMES = (
+    "rolling_nonzero_rate",
+    "rolling_mean_size",
+    "age_normalized_cumsum",
+)
 
 INTERMITTENT_FEATURE_NAMES = (
     "days_since_last_sale",
     "last_sale_quantity",
     "lifetime_cumsum",
 )
+
+MONTHLY_INTERMITTENT_FEATURE_NAMES = (
+    "months_since_last_sale",
+    "last_sale_quantity",
+    "lifetime_cumsum",
+)
+
+DEFAULT_RATE_WINDOW = 12
+
+
+def _month_index(ts: pd.Timestamp) -> int:
+    ts = pd.Timestamp(ts).normalize()
+    return int(ts.year * 12 + ts.month)
+
+
+def _gap_since_sale(
+    date: pd.Timestamp,
+    last_sale_date: Optional[pd.Timestamp],
+    *,
+    gap_unit: str,
+    sentinel: float,
+) -> float:
+    if last_sale_date is None:
+        return float(sentinel)
+    date = pd.Timestamp(date).normalize()
+    last = pd.Timestamp(last_sale_date).normalize()
+    if gap_unit == "months":
+        return float(_month_index(date) - _month_index(last))
+    if gap_unit == "days":
+        return float((date - last).days)
+    raise ValueError(f"gap_unit must be 'days' or 'months', got {gap_unit!r}")
 
 
 @dataclass
@@ -34,10 +74,15 @@ class SKUDemandState:
     last_sale_date: Optional[pd.Timestamp] = None
     last_sale_quantity: float = 0.0
     lifetime_cumsum: float = 0.0
-    # Newest demand last; length kept <= max_lag
+    n_obs: int = 0
+    # Newest demand last; length kept <= max(max_lag, rate_window)
     recent_demand: List[float] = field(default_factory=list)
     max_lag: int = 7
+    rate_window: int = DEFAULT_RATE_WINDOW
     days_since_sentinel: float = DEFAULT_DAYS_SINCE_SENTINEL
+
+    def _history_keep(self) -> int:
+        return max(int(self.max_lag), int(self.rate_window), 1)
 
     def copy(self) -> "SKUDemandState":
         return SKUDemandState(
@@ -45,25 +90,50 @@ class SKUDemandState:
             last_sale_date=self.last_sale_date,
             last_sale_quantity=float(self.last_sale_quantity),
             lifetime_cumsum=float(self.lifetime_cumsum),
+            n_obs=int(self.n_obs),
             recent_demand=list(self.recent_demand),
             max_lag=int(self.max_lag),
+            rate_window=int(self.rate_window),
             days_since_sentinel=float(self.days_since_sentinel),
         )
 
-    def features_at(self, date: Union[str, pd.Timestamp], lags: Iterable[int] = DEFAULT_LAGS) -> Dict[str, float]:
+    def features_at(
+        self,
+        date: Union[str, pd.Timestamp],
+        lags: Iterable[int] = DEFAULT_LAGS,
+        gap_unit: str = "days",
+    ) -> Dict[str, float]:
         """Build regressor features for prediction date ``date`` (no update)."""
         date = pd.Timestamp(date).normalize()
-        if self.last_sale_date is None:
-            days_since = float(self.days_since_sentinel)
-            last_qty = 0.0
+        gap = _gap_since_sale(
+            date,
+            self.last_sale_date,
+            gap_unit=gap_unit,
+            sentinel=float(self.days_since_sentinel),
+        )
+        last_qty = 0.0 if self.last_sale_date is None else float(self.last_sale_quantity)
+        gap_name = (
+            "months_since_last_sale" if gap_unit == "months" else "days_since_last_sale"
+        )
+        window = self.recent_demand[-int(self.rate_window) :] if self.recent_demand else []
+        if window:
+            arr = np.asarray(window, dtype=np.float64)
+            nz = arr > 0.0
+            rolling_nonzero_rate = float(nz.mean())
+            rolling_mean_size = float(arr[nz].mean()) if nz.any() else 0.0
         else:
-            days_since = float((date - pd.Timestamp(self.last_sale_date).normalize()).days)
-            last_qty = float(self.last_sale_quantity)
-
+            rolling_nonzero_rate = 0.0
+            rolling_mean_size = 0.0
+        age_normalized_cumsum = (
+            float(self.lifetime_cumsum) / float(self.n_obs) if self.n_obs > 0 else 0.0
+        )
         out = {
-            "days_since_last_sale": days_since,
+            gap_name: gap,
             "last_sale_quantity": last_qty,
             "lifetime_cumsum": float(self.lifetime_cumsum),
+            "rolling_nonzero_rate": rolling_nonzero_rate,
+            "rolling_mean_size": rolling_mean_size,
+            "age_normalized_cumsum": age_normalized_cumsum,
         }
         for lag in lags:
             lag = int(lag)
@@ -90,9 +160,11 @@ class SKUDemandState:
 
         self.as_of_date = date
         self.lifetime_cumsum += quantity
+        self.n_obs += 1
         self.recent_demand.append(quantity)
-        if len(self.recent_demand) > self.max_lag:
-            self.recent_demand = self.recent_demand[-self.max_lag :]
+        keep = self._history_keep()
+        if len(self.recent_demand) > keep:
+            self.recent_demand = self.recent_demand[-keep:]
 
         if quantity > 0.0:
             self.last_sale_date = date
@@ -116,8 +188,10 @@ class SKUDemandState:
             ),
             last_sale_quantity=float(d.get("last_sale_quantity", 0.0)),
             lifetime_cumsum=float(d.get("lifetime_cumsum", 0.0)),
+            n_obs=int(d.get("n_obs", 0)),
             recent_demand=[float(x) for x in d.get("recent_demand", [])],
             max_lag=int(d.get("max_lag", 7)),
+            rate_window=int(d.get("rate_window", DEFAULT_RATE_WINDOW)),
             days_since_sentinel=float(d.get("days_since_sentinel", DEFAULT_DAYS_SINCE_SENTINEL)),
         )
 
@@ -128,8 +202,13 @@ StateMap = Dict[str, SKUDemandState]
 def empty_state(
     max_lag: int = 7,
     days_since_sentinel: float = DEFAULT_DAYS_SINCE_SENTINEL,
+    rate_window: int = DEFAULT_RATE_WINDOW,
 ) -> SKUDemandState:
-    return SKUDemandState(max_lag=max_lag, days_since_sentinel=days_since_sentinel)
+    return SKUDemandState(
+        max_lag=max_lag,
+        days_since_sentinel=days_since_sentinel,
+        rate_window=rate_window,
+    )
 
 
 def copy_states(states: Optional[Mapping[str, SKUDemandState]]) -> StateMap:
@@ -154,8 +233,9 @@ def features_from_state(
     state: SKUDemandState,
     date: Union[str, pd.Timestamp],
     lags: Iterable[int] = DEFAULT_LAGS,
+    gap_unit: str = "days",
 ) -> Dict[str, float]:
-    return state.features_at(date, lags=lags)
+    return state.features_at(date, lags=lags, gap_unit=gap_unit)
 
 
 def update_state(
@@ -176,21 +256,27 @@ def transform_panel(
     prior_states: Optional[Mapping[str, SKUDemandState]] = None,
     days_since_sentinel: float = DEFAULT_DAYS_SINCE_SENTINEL,
     return_states: bool = True,
+    gap_unit: str = "days",
+    intermittent_names: Optional[Iterable[str]] = None,
+    rate_window: int = DEFAULT_RATE_WINDOW,
 ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, StateMap]]:
     """
     Causally transform a demand panel into lag + intermittent regressor features.
 
     For each row at date t, features use only that SKU's history with ds < t.
-    Optional ``prior_states`` warm-starts SKUs (e.g. end of train → val/test).
-
-    Returns feature frame aligned to ``df`` row order after sorting by
-    (id, date). Caller should pass an already row-aligned holiday frame if
-    concatenating elsewhere — this function re-sorts; use
-    ``transform_panel_preserve_order`` when index alignment matters, or sort
-    holidays the same way.
+    ``gap_unit='months'`` measures time since last sale in months (monthly panels).
     """
     lags = tuple(int(x) for x in lags)
     max_lag = max(lags) if lags else 7
+    rate_window = int(rate_window)
+    gap_unit = str(gap_unit)
+    if intermittent_names is None:
+        intermittent_names = (
+            MONTHLY_INTERMITTENT_FEATURE_NAMES
+            if gap_unit == "months"
+            else INTERMITTENT_FEATURE_NAMES
+        )
+    intermittent_names = tuple(intermittent_names)
 
     work = df[[id_col, date_col, quantity_col]].copy()
     work[date_col] = pd.to_datetime(work[date_col])
@@ -201,7 +287,7 @@ def transform_panel(
 
     states = copy_states(prior_states)
     n = len(work)
-    col_names = [f"lag_{lag}" for lag in lags] + list(INTERMITTENT_FEATURE_NAMES)
+    col_names = [f"lag_{lag}" for lag in lags] + list(intermittent_names)
     cols = {name: np.empty(n, dtype=np.float64) for name in col_names}
 
     ids = work[id_col].to_numpy()
@@ -217,16 +303,20 @@ def transform_panel(
 
         state = states.get(sku)
         if state is None:
-            state = empty_state(max_lag=max_lag, days_since_sentinel=days_since_sentinel)
+            state = empty_state(
+                max_lag=max_lag,
+                days_since_sentinel=days_since_sentinel,
+                rate_window=rate_window,
+            )
         else:
-            # Ensure max_lag covers configured lags
             state.max_lag = max(state.max_lag, max_lag)
+            state.rate_window = max(int(state.rate_window), rate_window)
             state.days_since_sentinel = days_since_sentinel
 
         for k in range(i, j):
             date_k = pd.Timestamp(dates[k]).normalize()
-            feats = state.features_at(date_k, lags=lags)
-            for name in INTERMITTENT_FEATURE_NAMES:
+            feats = state.features_at(date_k, lags=lags, gap_unit=gap_unit)
+            for name in intermittent_names:
                 cols[name][k] = feats[name]
             for lag in lags:
                 cols[f"lag_{lag}"][k] = feats[f"lag_{lag}"]
@@ -236,7 +326,6 @@ def transform_panel(
         i = j
 
     feat_df = pd.DataFrame(cols, index=original_index)
-    # Restore caller row order
     feat_df = feat_df.loc[df.index]
     if return_states:
         return feat_df, states
@@ -251,6 +340,8 @@ def build_states_from_history(
     quantity_col: str = "Quantity",
     lags: Iterable[int] = DEFAULT_LAGS,
     days_since_sentinel: float = DEFAULT_DAYS_SINCE_SENTINEL,
+    gap_unit: str = "days",
+    rate_window: int = DEFAULT_RATE_WINDOW,
 ) -> StateMap:
     """Scan history and return end-of-history states (for inference warm-start)."""
     _, states = transform_panel(
@@ -260,6 +351,8 @@ def build_states_from_history(
         quantity_col=quantity_col,
         lags=lags,
         days_since_sentinel=days_since_sentinel,
+        gap_unit=gap_unit,
+        rate_window=rate_window,
         return_states=True,
     )
     return states

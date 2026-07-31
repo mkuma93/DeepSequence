@@ -220,6 +220,109 @@ def rollout_tabular(
     }
 
 
+HybridPredictFn = Callable[
+    [np.ndarray, np.ndarray, np.ndarray],
+    Tuple[np.ndarray, Optional[np.ndarray]],
+]
+# predict_fn(X[n,F], sku[n,1], windows[n,L,C]) -> (yhat[n], p[n] or None)
+
+
+def rollout_hybrid(
+    timelines: Dict[str, SkuTimeline],
+    origins: Sequence[Tuple[str, int]],
+    sku_map: Dict[str, int],
+    predict_fn: HybridPredictFn,
+    lag_periods: Sequence[int],
+    tmin: float,
+    span: float,
+    horizon: int,
+    lookback: int,
+    batch_size: int = 1024,
+) -> Dict[str, np.ndarray]:
+    """Recursive hybrid rollout: current-row tabular features + lookback window.
+
+    Lookback ends the day before the prediction date (same as sequence models).
+    Demand path uses true y through the origin, then recursive yhat.
+    """
+    n = len(origins)
+    H = int(horizon)
+    L = int(lookback)
+    n_hol = timelines[origins[0][0]].holidays.shape[1]
+    n_feat = 1 + 6 + len(lag_periods) + 3 + n_hol
+    n_ch = 1 + n_feat
+
+    y_true = np.zeros((n, H), np.float32)
+    yhat = np.zeros((n, H), np.float32)
+    p_out = np.zeros((n, H), np.float32)
+    skus = np.array([o[0] for o in origins], dtype=object)
+    has_p = True
+
+    demand_paths: List[List[float]] = []
+    for sku, t_idx in origins:
+        tl = timelines[sku]
+        demand_paths.append([float(x) for x in tl.y[: t_idx + 1]])
+
+    for h in range(H):
+        Xb = np.zeros((n, n_feat), np.float32)
+        windows = np.zeros((n, L, n_ch), np.float32)
+        skb = np.zeros((n, 1), np.int32)
+
+        for i, (sku, t_idx) in enumerate(origins):
+            tl = timelines[sku]
+            pred_idx = t_idx + 1 + h
+            y_true[i, h] = tl.y[pred_idx]
+            skb[i, 0] = sku_map[sku]
+            path = demand_paths[i]
+
+            st = empty_state(max_lag=max(lag_periods))
+            for k in range(0, pred_idx):
+                qty_k = float(path[k]) if k < len(path) else 0.0
+                st.update(pd.Timestamp(tl.dates[k]), qty_k)
+            Xb[i] = assemble_feature_row(tl, pred_idx, st, lag_periods, tmin, span)
+
+            st_lb = empty_state(max_lag=max(lag_periods))
+            start_j = pred_idx - L
+            for k in range(0, max(0, start_j)):
+                st_lb.update(
+                    pd.Timestamp(tl.dates[k]),
+                    float(path[k]) if k < len(path) else 0.0,
+                )
+            for li, j in enumerate(range(start_j, pred_idx)):
+                if j < 0:
+                    windows[i, li, :] = 0.0
+                    continue
+                feat = assemble_feature_row(tl, j, st_lb, lag_periods, tmin, span)
+                qty = float(path[j]) if j < len(path) else 0.0
+                windows[i, li, 0] = qty
+                windows[i, li, 1:] = feat
+                st_lb.update(pd.Timestamp(tl.dates[j]), qty)
+
+        yh_parts, p_parts = [], []
+        for start in range(0, n, batch_size):
+            end = min(start + batch_size, n)
+            yh, p = predict_fn(
+                Xb[start:end], skb[start:end], windows[start:end]
+            )
+            yh_parts.append(np.asarray(yh, np.float32).reshape(-1))
+            if p is None:
+                has_p = False
+                p_parts.append(np.zeros(end - start, np.float32))
+            else:
+                p_parts.append(np.asarray(p, np.float32).reshape(-1))
+        yhat[:, h] = np.concatenate(yh_parts)
+        p_out[:, h] = np.concatenate(p_parts)
+
+        for i, (_sku, _t_idx) in enumerate(origins):
+            demand_paths[i].append(float(yhat[i, h]))
+
+    return {
+        "y_true": y_true,
+        "yhat": yhat,
+        "p": p_out if has_p else None,
+        "skus": skus,
+    }
+
+
 def rollout_sequence(
     timelines: Dict[str, SkuTimeline],
     origins: Sequence[Tuple[str, int]],
@@ -379,10 +482,14 @@ def horizon_metrics(
     p: Optional[np.ndarray],
     skus: np.ndarray,
     volume_map: dict,
-    report_horizons: Sequence[int] = (1, 7, 14),
+    report_horizons: Sequence[int] = (1, 7, 14, 21, 28),
     mase_scale: Optional[float] = None,
 ) -> dict:
-    """Per-horizon KPIs + mean over 1..H. Horizons are 1-indexed."""
+    """Per-horizon KPIs + mean over 1..H. Horizons are 1-indexed.
+
+    Callers typically pass horizons that fit within the rollout length H;
+    entries with h > H are skipped.
+    """
     H = y_true.shape[1]
     out = {"by_horizon": {}, "mean_1_to_H": {}}
     yt = y_true.reshape(-1)

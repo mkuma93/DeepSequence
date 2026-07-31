@@ -106,6 +106,33 @@ def test_inference_server_matches_batch_transform():
     assert end["SKU_A"].last_sale_quantity == states["SKU_A"].last_sale_quantity
 
 
+def test_series_local_rate_features_causal():
+    df = _synthetic_sku_panel()
+    feats, _ = transform_panel(
+        df,
+        intermittent_names=[
+            "days_since_last_sale",
+            "last_sale_quantity",
+            "lifetime_cumsum",
+            "rolling_nonzero_rate",
+            "rolling_mean_size",
+            "age_normalized_cumsum",
+        ],
+        rate_window=4,
+        return_states=True,
+    )
+    # Before any obs
+    assert feats.loc[0, "rolling_nonzero_rate"] == 0.0
+    assert feats.loc[0, "age_normalized_cumsum"] == 0.0
+    # After first sale of 5 at index 1, index 2 sees rate 0.5 over [0,5]
+    assert feats.loc[2, "rolling_nonzero_rate"] == 0.5
+    assert feats.loc[2, "rolling_mean_size"] == 5.0
+    assert feats.loc[2, "age_normalized_cumsum"] == 2.5  # 5/2
+    # Same-day: index 1 must not include its own sale in rate stats
+    assert feats.loc[1, "rolling_nonzero_rate"] == 0.0
+    assert feats.loc[1, "age_normalized_cumsum"] == 0.0
+
+
 def test_feature_config_create_features_causal():
     import importlib.util
 

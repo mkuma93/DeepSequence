@@ -11,5 +11,13 @@
   "sku_embedding_dim": 8,
   "use_intermittent": true,
   "use_cross_layers": true,
-  "notes": "Sample training configuration for DeepSequence v1.6. Point --data_dir / DEEPSEQUENCE_DATA_DIR at your local panel; synthetic demo uses the notebook defaults."
+  "ds_preferred_stack": {
+    "output_activation": "softsign",
+    "trend_monotonic": true,
+    "holiday_monotonic": true,
+    "regressor_monotonic": true,
+    "context_aware_component_mixer": true,
+    "context_film_seasonal_holiday": false
+  },
+  "notes": "Sample training configuration for DeepSequence v1.6. Preferred builder stack is softsign + mono trend/holiday/regressor + context mixer (FiLM off). Point --data_dir / DEEPSEQUENCE_DATA_DIR at your local panel; synthetic demo uses the notebook defaults."
 }

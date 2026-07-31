@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Shared helpers for the v1.6 same-feature bake-off."""
+"""Shared helpers for the v1.6 same-feature bake-off.
+
+Ops metrics via ``kpi_block`` / ``inventory_cost_metrics``:
+
+  - Sale day shortfall → ``sales_revenue_loss_*`` (revenue loss).
+  - No-sale day stock sitting → ``inventory_holding_cost_zero`` (carrying cost).
+  - Combined: ``combined_ops_cost_h0p1``; decision economics
+    (``decision_economics_report``): cost vs r=C_lost/C_hold with crossover
+    selector between lower-overstock (TST) and lower-stockout (DS) profiles.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +23,250 @@ from sklearn.metrics import (
 )
 
 from deepsequence_hierarchical_attention.forecast_postprocess import round_forecast
+from deepsequence_hierarchical_attention.inventory_metrics import (
+    DEFAULT_CU_CO_RATIOS,
+    PRIMARY_COMBINED_OPS_METRIC,
+    PRIMARY_HOLDING_METRIC,
+    PRIMARY_INVENTORY_METRIC,
+    PRIMARY_SALES_REVENUE_LOSS_METRIC,
+    SERVICE_CRITICAL_INVENTORY_METRIC,
+    inventory_cost_from_kpi_summary,
+    inventory_cost_metrics,
+)
+
+
+def resolve_eval_seeds(
+    seed: int | None = 42,
+    data_seed: int | None = None,
+    train_seed: int | None = None,
+) -> tuple[int, int]:
+    """Split SKU-panel sampling from training RNG.
+
+    Legacy ``--seed`` sets both when ``--data_seed`` / ``--train_seed`` are omitted,
+    so existing bake-off commands stay bit-compatible.
+    """
+    base = 42 if seed is None else int(seed)
+    return (
+        base if data_seed is None else int(data_seed),
+        base if train_seed is None else int(train_seed),
+    )
+
+
+def add_panel_seed_args(parser) -> None:
+    """Shared CLI flags for apples-to-apples bake-off panels."""
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Legacy convenience seed: used for both data and training when "
+        "--data_seed / --train_seed are omitted.",
+    )
+    parser.add_argument(
+        "--data_seed",
+        type=int,
+        default=None,
+        help="Seed for SKU panel sampling only. Freeze this (or --sku_list) "
+        "so every model sees the same train/val/test.",
+    )
+    parser.add_argument(
+        "--train_seed",
+        type=int,
+        default=None,
+        help="Seed for TF/numpy training noise only (init, dropout, shuffle).",
+    )
+    parser.add_argument(
+        "--sku_list",
+        default=None,
+        help="Path to a frozen SKU list (JSON array or one id per line). "
+        "When set, skips sampling and uses this panel for all models.",
+    )
+    parser.add_argument(
+        "--save_sku_list",
+        default=None,
+        help="Write the chosen SKU ids to this path (JSON array) for reuse.",
+    )
+
+
+def select_eval_skus(
+    universe,
+    *,
+    max_skus: int,
+    data_seed: int,
+    sku_list_path: str | None = None,
+    save_sku_list_path: str | None = None,
+) -> list:
+    """Return the bake-off SKU panel (stable list; callers may wrap in set).
+
+    Prefer ``sku_list_path`` for locked comparisons. Otherwise sample
+    ``min(max_skus, len(universe))`` with ``data_seed``.
+    """
+    from pathlib import Path
+
+    universe = list(universe)
+    universe_set = set(universe)
+
+    if sku_list_path:
+        path = Path(sku_list_path)
+        text = path.read_text(encoding="utf-8").strip()
+        if not text:
+            raise SystemExit(f"Empty SKU list: {path}")
+        if text.startswith("["):
+            import json
+
+            chosen = json.loads(text)
+        else:
+            chosen = [line.strip() for line in text.splitlines() if line.strip()]
+        missing = [sku for sku in chosen if sku not in universe_set]
+        # Allow typed mismatch (e.g. int ids in CSV vs str in list)
+        if missing:
+            as_str = {str(sku) for sku in universe}
+            chosen = [str(sku) for sku in chosen]
+            missing = [sku for sku in chosen if sku not in as_str]
+            if missing:
+                raise SystemExit(
+                    f"{len(missing)} SKUs from {path} are not in the panel "
+                    f"(e.g. {missing[:3]})"
+                )
+            # Remap to native universe dtype
+            native = {str(sku): sku for sku in universe}
+            chosen = [native[sku] for sku in chosen]
+        if not chosen:
+            raise SystemExit(f"No SKUs resolved from {path}")
+    else:
+        n = min(int(max_skus), len(universe))
+        rng = np.random.default_rng(int(data_seed))
+        chosen = list(rng.choice(universe, size=n, replace=False))
+
+    if save_sku_list_path:
+        import json
+        from pathlib import Path
+
+        out = Path(save_sku_list_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        # Persist as strings for portability across loaders.
+        out.write_text(
+            json.dumps([str(sku) for sku in chosen], indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    return chosen
+
+
+def class_balance_pos_weight(y: np.ndarray) -> float:
+    """Data-driven BCE pos weight from this panel's class counts (neg/pos)."""
+    y = np.asarray(y).reshape(-1)
+    n_pos = float(np.sum(y > 0))
+    n_neg = float(np.sum(y <= 0))
+    return float(n_neg / max(n_pos, 1.0))
+
+
+def calibrate_iwmae_gate(
+    y_true: np.ndarray,
+    yhat: np.ndarray,
+    p: np.ndarray | None = None,
+    *,
+    scales: np.ndarray | None = None,
+    thresholds: np.ndarray | None = None,
+) -> dict:
+    """
+    Fit a post-hoc gate/scale on validation to minimize rounded IWMAE.
+
+    Applies ``yhat_cal = scale * where(p >= threshold, yhat, 0)``.
+    If ``p`` is None, only the scale is searched.
+    """
+    y_true = np.asarray(y_true, np.float64).reshape(-1)
+    yhat = np.maximum(np.asarray(yhat, np.float64).reshape(-1), 0.0)
+    if scales is None:
+        scales = np.linspace(0.35, 1.35, 21)
+    if thresholds is None:
+        thresholds = (
+            np.concatenate([[0.0], np.linspace(0.05, 0.85, 17)])
+            if p is not None
+            else np.asarray([0.0])
+        )
+    p_arr = None if p is None else np.asarray(p, np.float64).reshape(-1)
+
+    best = {"scale": 1.0, "threshold": 0.0, "iwmae_rounded": float("inf")}
+    for thr in thresholds:
+        masked = yhat if p_arr is None else np.where(p_arr >= thr, yhat, 0.0)
+        for scale in scales:
+            cand = scale * masked
+            score = kpi_block(y_true, cand)["iwmae_rounded"]
+            if score is not None and score < best["iwmae_rounded"]:
+                best = {
+                    "scale": float(scale),
+                    "threshold": float(thr),
+                    "iwmae_rounded": float(score),
+                }
+    return best
+
+
+def apply_iwmae_gate(
+    yhat: np.ndarray,
+    p: np.ndarray | None,
+    *,
+    scale: float = 1.0,
+    threshold: float = 0.0,
+) -> np.ndarray:
+    yhat = np.maximum(np.asarray(yhat, np.float64).reshape(-1), 0.0)
+    if p is not None and threshold > 0.0:
+        p = np.asarray(p, np.float64).reshape(-1)
+        yhat = np.where(p >= threshold, yhat, 0.0)
+    return (float(scale) * yhat).astype(np.float64)
+
+
+def calibrate_probability_temperature(
+    y_true: np.ndarray,
+    yhat: np.ndarray,
+    p: np.ndarray,
+    *,
+    temperatures: np.ndarray | None = None,
+) -> dict:
+    """
+    Fit a post-hoc temperature on ``p`` that minimizes rounded IWMAE.
+
+    Treats ``yhat = base * p`` and rebuilds ``yhat' = base * sigmoid(logit(p)/T)``.
+    ``T>1`` softens (lowers mean_p when p is mid-range); ``T<1`` sharpens.
+    """
+    y_true = np.asarray(y_true, np.float64).reshape(-1)
+    yhat = np.maximum(np.asarray(yhat, np.float64).reshape(-1), 0.0)
+    p = np.clip(np.asarray(p, np.float64).reshape(-1), 1e-6, 1.0 - 1e-6)
+    base = yhat / p
+    if temperatures is None:
+        temperatures = np.concatenate(
+            [np.linspace(0.5, 0.95, 10), [1.0], np.linspace(1.05, 2.5, 15)]
+        )
+
+    best = {"temperature": 1.0, "iwmae_rounded": float("inf")}
+    logit = np.log(p) - np.log(1.0 - p)
+    for t in temperatures:
+        p_cal = 1.0 / (1.0 + np.exp(-logit / float(t)))
+        cand = np.maximum(base * p_cal, 0.0)
+        score = kpi_block(y_true, cand, p_cal)["iwmae_rounded"]
+        if score is not None and score < best["iwmae_rounded"]:
+            best = {
+                "temperature": float(t),
+                "iwmae_rounded": float(score),
+                "mean_p": float(p_cal.mean()),
+            }
+    return best
+
+
+def apply_probability_temperature(
+    yhat: np.ndarray,
+    p: np.ndarray,
+    *,
+    temperature: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Apply temperature to ``p`` and rebuild ``yhat = (yhat/p) * p_cal``."""
+    yhat = np.maximum(np.asarray(yhat, np.float64).reshape(-1), 0.0)
+    p = np.clip(np.asarray(p, np.float64).reshape(-1), 1e-6, 1.0 - 1e-6)
+    if abs(float(temperature) - 1.0) < 1e-12:
+        return yhat.astype(np.float64), p.astype(np.float64)
+    base = yhat / p
+    logit = np.log(p) - np.log(1.0 - p)
+    p_cal = 1.0 / (1.0 + np.exp(-logit / float(temperature)))
+    return (base * p_cal).astype(np.float64), p_cal.astype(np.float64)
 
 
 def seasonal_naive_mae_scale(y: np.ndarray, season: int = 7) -> float | None:
@@ -174,10 +427,15 @@ def filter_aligned(df, holidays, sku_set):
     return df.loc[mask].reset_index(drop=True), holidays.loc[mask].reset_index(drop=True)
 
 def split_components(X, cfg):
+    if cfg.holiday_indices:
+        holiday = X[:, cfg.holiday_indices].astype(np.float32)
+    else:
+        # Model expects a 1-d holiday dummy when holidays are disabled
+        holiday = np.zeros((X.shape[0], 1), dtype=np.float32)
     return (
         X[:, cfg.trend_indices].astype(np.float32),
         X[:, cfg.seasonal_indices].astype(np.float32),
-        X[:, cfg.holiday_indices].astype(np.float32),
+        holiday,
         X[:, cfg.regressor_indices].astype(np.float32),
     )
 
@@ -203,12 +461,15 @@ def train_volume_terciles(train_df: pd.DataFrame) -> dict:
         }
     return mapping, stats
 
+
 def kpi_block(y, yhat, p=None, mase_scale: float | None = None):
     """Intermittent-aware forecast KPIs.
 
     All-day MAE alone is weak under high zero rates (near-zero forecasts look good).
     This block reports timing (occurrence), magnitude (sale days), scale-free error
-    (MASE), and inverse-frequency weighted MAE aligned with intermittent training.
+    (MASE), inverse-frequency weighted MAE, sales/revenue loss, and newsvendor
+    costs (see ``inventory_cost_metrics``; primary sales-loss key
+    ``sales_revenue_loss_units``).
     """
     y = np.asarray(y, np.float64).reshape(-1)
     yhat = np.maximum(np.asarray(yhat, np.float64).reshape(-1), 0.0)
@@ -270,6 +531,9 @@ def kpi_block(y, yhat, p=None, mase_scale: float | None = None):
         out["occ_f1"] = None
         out["underforecast_rate_nonzero"] = None
         out["hit_nonzero_rate"] = None
+
+    # Inventory / planning (always attached; does not change IWMAE primary)
+    out.update(inventory_cost_metrics(y, yhat))
 
     if p is not None and n and len(np.unique(nz.astype(int))) == 2:
         p = np.asarray(p, np.float64).reshape(-1)

@@ -48,6 +48,9 @@ cyclical_features:
     formula: "cos(2π * day_of_year / 365.25)"
     index: 6
 
+# Explicit daily lags {1,2,7} == default_lags_for_frequency("D").
+# Override: set metadata.lags: auto (with metadata.frequency) to refill from presets,
+# or metadata.lags: [..] / edit entries below. Explicit wins over auto.
 lag_features:
   - name: lag_1
     description: "Demand 1 day ago (causal shift)"
@@ -202,6 +205,9 @@ metadata:
   total_features: 28
   version: "1.6"
   last_updated: "2026-07-28"
+  frequency: daily
+  # Fourier: cyclical block uses DOW/month/year; model learnable defaults via
+  # fourier_periods_for_frequency("daily") → 7, 14, ~30.4, ~91.3, 365.25
   dataset_context: "Multi-country dataset (US, Australia, etc.) requires all 15 holidays"
   rationale: "Holiday distance features alone; binary is_* dropped as redundant (is_X ≡ days_from_X == 0). Causal lags 1/2/7 + intermittent retained. Same feature matrix for DS/LightGBM/TST/DeepAR."
   intermittent_features:

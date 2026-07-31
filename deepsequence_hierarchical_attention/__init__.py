@@ -7,6 +7,7 @@ Product surface (v1.6):
 3. Gated training losses (`losses`)
 4. Forecast post-process (`round_forecast`)
 5. Optional residual causal transformer head (`residual_transformer`)
+6. Optional hybrid temporal trunk (`hybrid_temporal`)
 """
 
 from .losses import (
@@ -20,7 +21,20 @@ from .losses import (
     tweedie_loss_config,
 )
 
-from .components_lightweight import build_hierarchical_model_lightweight
+from .components_lightweight import (
+    build_hierarchical_model_lightweight,
+    FOURIER_PERIODS_BY_FREQUENCY,
+    fourier_periods_for_frequency,
+    default_fourier_periods_for_frequency,
+)
+
+from .hybrid_temporal import build_hierarchical_model_hybrid
+
+from .frequency_presets import (
+    LAGS_BY_FREQUENCY,
+    default_lags_for_frequency,
+    normalize_frequency,
+)
 
 from .intermittent_features import (
     SKUDemandState,
@@ -70,6 +84,14 @@ __all__ = [
     "tweedie_loss_config",
     # Model
     "build_hierarchical_model_lightweight",
+    "build_hierarchical_model_hybrid",
+    "FOURIER_PERIODS_BY_FREQUENCY",
+    "fourier_periods_for_frequency",
+    "default_fourier_periods_for_frequency",
+    # Frequency-aware lag / period presets
+    "LAGS_BY_FREQUENCY",
+    "default_lags_for_frequency",
+    "normalize_frequency",
     # Causal intermittent features
     "SKUDemandState",
     "transform_panel",

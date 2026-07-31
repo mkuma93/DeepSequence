@@ -3,22 +3,25 @@
 Multi-horizon bake-off (v1.6, recursive rollout of 1-step models).
 
 Trains the same 1-step models as eval_same_features_compare.py, then
-recursively forecasts H=14 days ahead with known-future calendar/holidays
+recursively forecasts H days ahead with known-future calendar/holidays
 and predicted demand fed back into lags/intermittent state.
 
-Reports metrics at h=1,7,14 and mean over 1..H.
+Default report horizons are h=1,7,14 (and 21,28 when ``--horizon`` is large
+enough). DeepSequence uses the preferred builder stack by default
+(softsign + mono trend/holiday/regressor + context mixer; FiLM off) unless
+CLI overrides are passed.
 """
 
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import sys
 import time
 from pathlib import Path
 
-import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -34,10 +37,13 @@ from deepsequence_hierarchical_attention.components_lightweight import (
 from deepsequence_hierarchical_attention.losses import three_term_loss_config
 from train_lightweight_adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
 from eval_helpers import (
+    add_panel_seed_args,
     build_deepar,
     build_tft,
     build_transformer,
     filter_aligned,
+    resolve_eval_seeds,
+    select_eval_skus,
     split_components,
     train_mase_scale,
     train_volume_terciles,
@@ -63,11 +69,19 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--data_dir", default=None)
     p.add_argument("--max_skus", type=int, default=800)
-    p.add_argument("--epochs", type=int, default=10)
+    p.add_argument("--epochs", type=int, default=25)
     p.add_argument("--batch_size", type=int, default=1024)
     p.add_argument("--lookback", type=int, default=14)
     p.add_argument("--horizon", type=int, default=14)
-    p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--report_horizons",
+        default=None,
+        help=(
+            "Comma-separated horizons to report (1-indexed). "
+            "Default: 1,7,14 plus 21/28 when --horizon allows."
+        ),
+    )
+    add_panel_seed_args(p)
     p.add_argument(
         "--max_origins_per_sku",
         type=int,
@@ -79,7 +93,71 @@ def parse_args():
         "--out_json",
         default=str(ROOT / "eval_results_multihorizon_v16.json"),
     )
+    # DeepSequence builder overrides (None = preferred builder default:
+    # softsign + mono + mixer, FiLM off).
+    p.add_argument("--output_activation", default=None)
+    p.add_argument("--trend_monotonic", type=int, default=None)
+    p.add_argument("--holiday_monotonic", type=int, default=None)
+    p.add_argument("--regressor_monotonic", type=int, default=None)
+    p.add_argument("--context_aware_component_mixer", type=int, default=None)
+    p.add_argument("--context_film_seasonal_holiday", type=int, default=None)
     return p.parse_args()
+
+
+def _default_report_horizons(horizon: int) -> list[int]:
+    """Natural report points: weekly through H, plus free h=1."""
+    candidates = [1, 7, 14, 21, 28]
+    return [h for h in candidates if h <= int(horizon)]
+
+
+def _parse_report_horizons(raw: str | None, horizon: int) -> list[int]:
+    if raw is None or not str(raw).strip():
+        return _default_report_horizons(horizon)
+    out = []
+    for part in str(raw).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        h = int(part)
+        if h < 1 or h > int(horizon):
+            raise SystemExit(
+                f"report horizon {h} outside 1..{horizon}; raise --horizon or trim list"
+            )
+        out.append(h)
+    if not out:
+        raise SystemExit("--report_horizons produced an empty list")
+    return out
+
+
+def _ds_builder_kwargs(args) -> dict:
+    """Resolve DeepSequence stack kwargs from CLI (explicit overrides only).
+
+    Unset CLI flags keep the preferred builder defaults: softsign experts,
+    monotone trend/holiday/regressor, context-aware mixer on, calendar FiLM off.
+    """
+    sig = inspect.signature(build_hierarchical_model_lightweight)
+    defaults = {k: sig.parameters[k].default for k in (
+        "output_activation",
+        "trend_monotonic",
+        "holiday_monotonic",
+        "regressor_monotonic",
+        "context_aware_component_mixer",
+        "context_film_seasonal_holiday",
+    )}
+    out = dict(defaults)
+    if args.output_activation is not None:
+        out["output_activation"] = args.output_activation
+    for flag in (
+        "trend_monotonic",
+        "holiday_monotonic",
+        "regressor_monotonic",
+        "context_aware_component_mixer",
+        "context_film_seasonal_holiday",
+    ):
+        val = getattr(args, flag)
+        if val is not None:
+            out[flag] = bool(val)
+    return out
 
 
 def train_seq_three_term(model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, args, label):
@@ -109,7 +187,7 @@ def train_seq_three_term(model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, arg
         batch_size=args.batch_size,
         callbacks=[
             tf.keras.callbacks.EarlyStopping(
-                monitor="val_loss", patience=3, restore_best_weights=True, verbose=1
+                monitor="val_loss", patience=5, restore_best_weights=True, verbose=1
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
                 monitor="val_loss", factor=0.5, patience=2, min_lr=1e-5, verbose=1
@@ -168,8 +246,12 @@ def main():
     unknown = selected - set(ALL_MODELS)
     if unknown:
         raise SystemExit(f"Unknown --models: {sorted(unknown)}")
+    report_horizons = _parse_report_horizons(args.report_horizons, args.horizon)
 
-    tf.keras.utils.set_random_seed(args.seed)
+    data_seed, train_seed = resolve_eval_seeds(
+        args.seed, args.data_seed, args.train_seed
+    )
+    tf.keras.utils.set_random_seed(train_seed)
     data_dir_raw = args.data_dir or os.environ.get("DEEPSEQUENCE_DATA_DIR")
     if not data_dir_raw:
         raise SystemExit("Pass --data_dir or set DEEPSEQUENCE_DATA_DIR")
@@ -183,13 +265,18 @@ def main():
     h_va = pd.read_csv(data_dir / "holiday_features_val.csv")
     h_te = pd.read_csv(data_dir / "holiday_features_test.csv")
 
-    rng = np.random.default_rng(args.seed)
-    chosen = set(
-        rng.choice(
-            train_df["id_var"].unique(),
-            size=min(args.max_skus, train_df["id_var"].nunique()),
-            replace=False,
-        )
+    chosen_list = select_eval_skus(
+        train_df["id_var"].unique(),
+        max_skus=args.max_skus,
+        data_seed=data_seed,
+        sku_list_path=args.sku_list,
+        save_sku_list_path=args.save_sku_list,
+    )
+    chosen = set(chosen_list)
+    print(
+        f"Panel lock: data_seed={data_seed} train_seed={train_seed} "
+        f"n_skus={len(chosen)}"
+        + (f" sku_list={args.sku_list}" if args.sku_list else "")
     )
     train_df, h_tr = filter_aligned(train_df, h_tr, chosen)
     val_df, h_va = filter_aligned(val_df, h_va, chosen)
@@ -245,9 +332,12 @@ def main():
             "max_skus": args.max_skus,
             "n_skus": n_skus,
             "seed": args.seed,
+            "data_seed": data_seed,
+            "train_seed": train_seed,
+            "sku_list": args.sku_list,
             "lookback": args.lookback,
             "horizon": args.horizon,
-            "report_horizons": [1, 7, 14],
+            "report_horizons": list(report_horizons),
             "max_origins_per_sku": args.max_origins_per_sku,
             "zero_rate": zero_rate,
             "feature_contract": f"feature_config v{cfg.config['metadata']['version']}",
@@ -258,9 +348,12 @@ def main():
                 "After observing day t, forecast t+1..t+H. Known-future calendar/holidays; "
                 "recursive demand into lags/intermittent. Same 1-step models as v1.6 bake-off."
             ),
+            "ds_stack": _ds_builder_kwargs(args),
         },
         "models": {},
     }
+    ds_stack = results["config"]["ds_stack"]
+    print(f"DS stack: {ds_stack}")
 
     # ------------------------------------------------------------------
     # Train DeepSequence
@@ -280,6 +373,7 @@ def main():
             use_cross_layers=True,
             use_intermittent=True,
             n_changepoints=15,
+            **ds_stack,
         )
         _ = base(
             [*(np.zeros((1, x.shape[1]), np.float32) for x in tr), np.zeros((1, 1), np.int32)],
@@ -302,6 +396,10 @@ def main():
         ds_model.compile(optimizer=tf.keras.optimizers.Adam(0.0025))
         ytr = {"final_forecast": y_train.reshape(-1, 1), "base_forecast": y_train.reshape(-1, 1)}
         yva = {"final_forecast": y_val.reshape(-1, 1), "base_forecast": y_val.reshape(-1, 1)}
+        try:
+            n_params = int(base.count_params())
+        except Exception:
+            n_params = None
         t0 = time.time()
         ds_model.fit(
             [*tr, sku_train],
@@ -311,12 +409,13 @@ def main():
             batch_size=args.batch_size,
             callbacks=[
                 tf.keras.callbacks.EarlyStopping(
-                    monitor="val_loss", patience=3, restore_best_weights=True, verbose=1
+                    monitor="val_loss", patience=5, restore_best_weights=True, verbose=1
                 )
             ],
             verbose=2,
         )
         results["models"].setdefault("deepsequence", {})["train_seconds"] = time.time() - t0
+        results["models"]["deepsequence"]["n_params"] = n_params
 
     # ------------------------------------------------------------------
     # Train LightGBM
@@ -324,6 +423,8 @@ def main():
     lgb_model = None
     if "lightgbm" in selected:
         print("\n=== LightGBM train ===")
+        import lightgbm as lgb
+
         Xlgb_tr = np.concatenate([X_train_n, sku_train.astype(np.float32)], axis=1)
         Xlgb_va = np.concatenate([X_val_n, sku_val.astype(np.float32)], axis=1)
         lgb_model = lgb.LGBMRegressor(
@@ -456,6 +557,7 @@ def main():
             roll["p"],
             roll["skus"],
             volume_map,
+            report_horizons=report_horizons,
             mase_scale=mase_scale,
         )
         results["models"]["deepsequence"].update(
@@ -481,6 +583,7 @@ def main():
             roll["p"],
             roll["skus"],
             volume_map,
+            report_horizons=report_horizons,
             mase_scale=mase_scale,
         )
         results["models"]["lightgbm"].update(
@@ -489,6 +592,10 @@ def main():
 
     for name, model in seq_models.items():
         print(f"\n=== {name} multi-horizon rollout ===")
+        try:
+            results["models"][name]["n_params"] = int(model.count_params())
+        except Exception:
+            results["models"][name]["n_params"] = None
         t0 = time.time()
         roll = rollout_sequence(
             timelines,
@@ -507,6 +614,7 @@ def main():
             roll["p"],
             roll["skus"],
             volume_map,
+            report_horizons=report_horizons,
             mase_scale=mase_scale,
         )
         results["models"][name].update(
@@ -518,7 +626,8 @@ def main():
     # ------------------------------------------------------------------
     results["mase_scale_season7"] = mase_scale
     comparison = {}
-    for key in ("1", "7", "14", "mean"):
+    compare_keys = [str(h) for h in report_horizons] + ["mean"]
+    for key in compare_keys:
         comparison[key] = []
         for model, payload in results["models"].items():
             if key == "mean":
@@ -541,6 +650,13 @@ def main():
                     "bias": block.get("bias"),
                     "bias_nonzero": block.get("bias_nonzero"),
                     "aucroc": block.get("aucroc"),
+                    "sales_revenue_loss_units": block.get(
+                        "sales_revenue_loss_units"
+                    ),
+                    "inventory_holding_cost_zero": block.get(
+                        "inventory_holding_cost_zero"
+                    ),
+                    "combined_ops_cost_h0p1": block.get("combined_ops_cost_h0p1"),
                 }
             )
         comparison[key] = sorted(
@@ -553,11 +669,12 @@ def main():
     results["comparison"] = comparison
 
     out_path = Path(args.out_json)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(results, indent=2))
     print("\n" + "=" * 70)
     print("MULTI-HORIZON COMPARISON (recursive; primary sort: iwmae_rounded)")
     print("=" * 70)
-    for key in ("1", "7", "14", "mean"):
+    for key in compare_keys:
         print(f"\n[h={key}]")
         for row in comparison[key]:
             print(
@@ -567,6 +684,14 @@ def main():
                 f"under={row.get('underforecast_rate_nonzero')} "
                 f"bias={row['bias']:.3f}"
             )
+            rev = row.get("sales_revenue_loss_units")
+            hold = row.get("inventory_holding_cost_zero")
+            ops = row.get("combined_ops_cost_h0p1")
+            if rev is not None and hold is not None and ops is not None:
+                print(
+                    f"  {'':28s} rev_loss={rev:.3f} hold0={hold:.3f} "
+                    f"ops_h0.1={ops:.3f}"
+                )
     print(f"\nWrote {out_path}")
 
 

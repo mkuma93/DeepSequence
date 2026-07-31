@@ -186,11 +186,6 @@ class AdaptiveWeightedModel(keras.Model):
         self.nonzero_aucpr = keras.metrics.AUC(curve='PR', name='nonzero_aucpr')
         self.nonzero_aucroc = keras.metrics.AUC(curve='ROC', name='nonzero_aucroc')
     
-    def build(self, input_shape):
-        """Build the wrapper model - delegates to base_model"""
-        # Base model is already built, so just mark this wrapper as built
-        super().build(input_shape)
-    
     def call(self, inputs, training=None):
         return self.base_model(inputs, training=training)
 

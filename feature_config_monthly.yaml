@@ -1,0 +1,114 @@
+# Feature Configuration — Monthly intermittent panels (e.g. Monash Car Parts)
+# Version: 1.7-monthly
+# Date: 2026-07-29
+#
+# Shared calendar: trend + Fourier only (no holiday block at month grain)
+# Regressor: lags 1/2/12 + intermittent gap / last qty / lifetime cumsum
+# (same intermittent block as prior bake-offs; no rolling rate features)
+#
+# Lags: {1,2,12} == default_lags_for_frequency("M"). Explicit lag_features
+# match the generic monthly preset (short + seasonal year lag).
+# Fourier cyclical: P=3 (quarter) + P=12 (year); learnable model defaults are
+# fourier_periods_for_frequency("monthly") → [3, 6, 12].
+
+trend_features:
+  - name: month_index
+    description: "Absolute month index (year*12 + month) for trend/changepoints"
+    source_column: "ds"
+    transformation: "months_since_epoch"
+    index: 0
+
+cyclical_features:
+  - name: quarter_sin
+    source: month_index
+    period: 3
+    index: 1
+  - name: quarter_cos
+    source: month_index
+    period: 3
+    index: 2
+  - name: calendar_month_sin
+    source: month_of_year
+    period: 12
+    index: 3
+  - name: calendar_month_cos
+    source: month_of_year
+    period: 12
+    index: 4
+
+lag_features:
+  - name: lag_1
+    description: "Demand 1 month ago"
+    lag: 1
+    index: 5
+  - name: lag_2
+    description: "Demand 2 months ago"
+    lag: 2
+    index: 6
+  - name: lag_12
+    description: "Demand 12 months ago (year; series-specific level)"
+    lag: 12
+    index: 7
+
+intermittent_features:
+  - name: months_since_last_sale
+    description: "Months since last Quantity>0 strictly before t; -1 if never sold"
+    index: 8
+  - name: last_sale_quantity
+    description: "Last non-zero Quantity strictly before t; 0 if never sold"
+    index: 9
+  - name: lifetime_cumsum
+    description: "Sum of Quantity strictly before t"
+    index: 10
+
+holiday_features: []
+
+binary_holiday_features: []
+
+feature_order:
+  - month_index
+  - quarter_sin
+  - quarter_cos
+  - calendar_month_sin
+  - calendar_month_cos
+  - lag_1
+  - lag_2
+  - lag_12
+  - months_since_last_sale
+  - last_sale_quantity
+  - lifetime_cumsum
+
+model_architecture:
+  trend_component:
+    description: "Long-term trend from month index"
+    feature_indices: [0]
+    feature_names: [month_index]
+  seasonal_component:
+    description: "Quarter Fourier (P=3) + calendar-month annual phase (P=12)"
+    feature_indices: [1, 2, 3, 4]
+    feature_names:
+      [quarter_sin, quarter_cos, calendar_month_sin, calendar_month_cos]
+  regressor_component:
+    description: "Causal lags 1/2/12 + intermittent monthly state"
+    feature_indices: [5, 6, 7, 8, 9, 10]
+    feature_names:
+      [lag_1, lag_2, lag_12, months_since_last_sale, last_sale_quantity, lifetime_cumsum]
+  holiday_component:
+    description: "Disabled at monthly grain (shared calendar already in Fourier)"
+    feature_indices: []
+    feature_names: []
+
+metadata:
+  version: "1.7-monthly"
+  total_features: 11
+  created_date: "2026-07-29"
+  frequency: monthly
+  description: "Monthly: thin calendar + lags 1/2/12 + classic intermittent; no holidays"
+  holiday_encoding: none
+  intermittent_features:
+    gap_unit: months
+    cold_start_days_since_sentinel: -1.0
+  # Explicit feature-calendar periods (subset of monthly Fourier preset).
+  fourier_periods_months: [3, 12]
+  # Matches default_lags_for_frequency("M")={1,2,12}.
+  lag_periods_months: [1, 2, 12]

@@ -136,9 +136,12 @@ model = build_hierarchical_model_lightweight(
     hidden_dim=48,
     use_intermittent=True,
     use_cross_layers=True,
+    horizon=1,       # set H > 1 for direct multi-horizon outputs
+    use_sku=False,   # disable ID personalization for no-SKU pooling
 )
 
-# Compile with the gated DeepSequence loss (or use examples/AdaptiveWeightedModel)
+# Compile directly with the gated DeepSequence loss. For adaptive multi-term
+# weighting, use examples/AdaptiveWeightedModel as the sole weighting layer.
 zero_rate = 0.9
 cfg = three_term_loss_config(zero_rate, alpha_bce=0.2, w_gated=1.0, w_mag=1.0)
 model.compile(

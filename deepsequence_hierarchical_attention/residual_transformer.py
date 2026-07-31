@@ -3,15 +3,17 @@ Causal residual transformer head for intermittent demand.
 
 Design contract
 ---------------
-1. Holiday / seasonal / regressor are absorbed into DeepSequence ``y_struct``.
+1. Holiday / seasonal / regressor are absorbed into lag-based DeepSequence
+   ``y_struct`` / ``base_forecast`` (do not strip lags from DS).
 2. DeepSequence gate ``p_ds`` is **preserved**, not re-learned:
    - ``p_ds`` is carried at every lookback step
-   - a time-distributed multiply scales the temporal representation by ``p_ds``
    - final forecast uses the same DS probability at predict step ``t``
+   - optional soft encoder mix (default off) can softly scale hidden states
+     by ``p_ds``; a hard TD multiply zeros capacity on quiet days and hurts IWMAE
 
     residual = y - y_struct
-    h_τ      = Encoder(seq)_τ * p_ds_τ          # TimeDistributed gate
-    delta    = Head(h_t)
+    h_τ      = Encoder(seq)_τ                   # optional soft * p_ds
+    delta    = Head(h_t)                        # zero-init → identity start
     base     = relu(y_struct_t + delta)
     yhat     = base * p_ds_t                   # DS gate kept
 
@@ -44,6 +46,51 @@ P_DS_CHANNEL_INDEX = 3
 DEFAULT_CHANNEL_COLS = ("y_struct", "y", "resid", "p_ds")
 
 
+@tf.keras.utils.register_keras_serializable(
+    package="deepsequence_hierarchical_attention"
+)
+class SoftEncoderGateMix(tf.keras.layers.Layer):
+    """x ← x * (1 - mix + mix * p); mix=0 leaves the encoder ungated."""
+
+    def __init__(self, mix: float = 0.0, **kwargs):
+        super().__init__(**kwargs)
+        self.mix = float(np.clip(mix, 0.0, 1.0))
+
+    def call(self, inputs):
+        x, p = inputs
+        if self.mix <= 0.0:
+            return x
+        scale = (1.0 - self.mix) + self.mix * p
+        return x * scale
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({"mix": self.mix})
+        return cfg
+
+
+@tf.keras.utils.register_keras_serializable(
+    package="deepsequence_hierarchical_attention"
+)
+class TakeLastTimestep(tf.keras.layers.Layer):
+    def call(self, inputs):
+        return inputs[:, -1, :]
+
+    def get_config(self):
+        return super().get_config()
+
+
+@tf.keras.utils.register_keras_serializable(
+    package="deepsequence_hierarchical_attention"
+)
+class PassThrough(tf.keras.layers.Layer):
+    def call(self, inputs):
+        return inputs
+
+    def get_config(self):
+        return super().get_config()
+
+
 def build_residual_transformer(
     lookback: int,
     n_channels: int,
@@ -54,6 +101,7 @@ def build_residual_transformer(
     sku_emb_dim: int = 8,
     p_ds_channel_index: int = P_DS_CHANNEL_INDEX,
     preserve_ds_gate: bool = True,
+    encoder_gate_mix: float = 0.0,
     name: str = "residual_transformer",
 ) -> tf.keras.Model:
     """
@@ -61,8 +109,9 @@ def build_residual_transformer(
 
     When ``preserve_ds_gate=True`` (default):
       - extracts ``p_ds`` sequence from ``seq[..., p_ds_channel_index]``
-      - TimeDistributed multiply: hidden_τ ← hidden_τ * p_ds_τ
       - final = relu(y_struct + delta) * p_ds_t  (no new sigmoid gate)
+      - ``encoder_gate_mix`` (default 0) optionally soft-scales hidden states;
+        hard TD multiply is intentionally *not* the default
 
     When ``preserve_ds_gate=False`` (legacy): learns a fresh sigmoid gate.
     """
@@ -78,13 +127,11 @@ def build_residual_transformer(
     x = tf.keras.layers.LayerNormalization()(x)
 
     if preserve_ds_gate:
-        # (B, L, 1) DS probability at each timestamp — never re-learned here
         p_seq = hist[:, :, p_ds_channel_index : p_ds_channel_index + 1]
-        # Time-distributed multiply: preserve DS gate across the lookback
-        x = tf.keras.layers.Multiply(name="td_gate_multiply")([x, p_seq])
-        p_t = tf.keras.layers.Lambda(
-            lambda z: z[:, -1, :], name="p_ds_t"
-        )(p_seq)
+        x = SoftEncoderGateMix(mix=encoder_gate_mix, name="soft_encoder_gate")(
+            [x, p_seq]
+        )
+        p_t = TakeLastTimestep(name="p_ds_t")(p_seq)
     else:
         p_t = None
 
@@ -100,14 +147,21 @@ def build_residual_transformer(
         ff = tf.keras.layers.Dense(d_model, name=f"ff_down_{b}")(ff)
         x = tf.keras.layers.LayerNormalization(name=f"ln_ff_{b}")(x + ff)
 
-    h = x[:, -1, :]
+    h = TakeLastTimestep(name="readout_t")(x)
     h = tf.keras.layers.Dense(32, activation="relu")(h)
-    delta = tf.keras.layers.Dense(1, activation="linear", name="delta")(h)
+    # Zero-init delta so training starts at the lag-based DeepSequence forecast.
+    delta = tf.keras.layers.Dense(
+        1,
+        activation="linear",
+        kernel_initializer="zeros",
+        bias_initializer="zeros",
+        name="delta",
+    )(h)
     base = tf.keras.layers.Add(name="base_forecast")([y_struct_t, delta])
     base = tf.keras.layers.Activation("relu", name="base_relu")(base)
 
     if preserve_ds_gate:
-        p = tf.keras.layers.Lambda(lambda z: z, name="non_zero_probability")(p_t)
+        p = PassThrough(name="non_zero_probability")(p_t)
     else:
         p = tf.keras.layers.Dense(1, activation="sigmoid", name="non_zero_probability")(h)
 

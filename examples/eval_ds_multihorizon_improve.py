@@ -33,7 +33,10 @@ from deepsequence_hierarchical_attention.components_lightweight import (
 from deepsequence_hierarchical_attention.losses import weighted_bce_loss, masked_mae_loss
 from train_lightweight_adaptive_loss import AdaptiveWeightedModel
 from eval_helpers import (
+    add_panel_seed_args,
     filter_aligned,
+    resolve_eval_seeds,
+    select_eval_skus,
     split_components,
     train_mase_scale,
     train_volume_terciles,
@@ -54,7 +57,7 @@ def parse_args():
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--batch_size", type=int, default=1024)
     p.add_argument("--horizon", type=int, default=14)
-    p.add_argument("--seed", type=int, default=42)
+    add_panel_seed_args(p)
     p.add_argument("--max_origins_per_sku", type=int, default=8)
     p.add_argument(
         "--out_json",
@@ -192,7 +195,10 @@ def calibrate_bias(y_true, yhat, grid=None):
 
 def main():
     args = parse_args()
-    tf.keras.utils.set_random_seed(args.seed)
+    data_seed, train_seed = resolve_eval_seeds(
+        args.seed, args.data_seed, args.train_seed
+    )
+    tf.keras.utils.set_random_seed(train_seed)
     data_dir_raw = args.data_dir or os.environ.get("DEEPSEQUENCE_DATA_DIR")
     if not data_dir_raw:
         raise SystemExit("Pass --data_dir or set DEEPSEQUENCE_DATA_DIR")
@@ -206,13 +212,18 @@ def main():
     h_va = pd.read_csv(data_dir / "holiday_features_val.csv")
     h_te = pd.read_csv(data_dir / "holiday_features_test.csv")
 
-    rng = np.random.default_rng(args.seed)
-    chosen = set(
-        rng.choice(
-            train_df["id_var"].unique(),
-            size=min(args.max_skus, train_df["id_var"].nunique()),
-            replace=False,
-        )
+    chosen_list = select_eval_skus(
+        train_df["id_var"].unique(),
+        max_skus=args.max_skus,
+        data_seed=data_seed,
+        sku_list_path=args.sku_list,
+        save_sku_list_path=args.save_sku_list,
+    )
+    chosen = set(chosen_list)
+    print(
+        f"Panel lock: data_seed={data_seed} train_seed={train_seed} "
+        f"n_skus={len(chosen)}"
+        + (f" sku_list={args.sku_list}" if args.sku_list else "")
     )
     train_df, h_tr = filter_aligned(train_df, h_tr, chosen)
     val_df, h_va = filter_aligned(val_df, h_va, chosen)
@@ -286,6 +297,9 @@ def main():
             "max_skus": args.max_skus,
             "n_skus": n_skus,
             "seed": args.seed,
+            "data_seed": data_seed,
+            "train_seed": train_seed,
+            "sku_list": args.sku_list,
             "horizon": args.horizon,
             "epochs": args.epochs,
             "zero_rate": zero_rate,

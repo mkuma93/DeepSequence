@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
-import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -38,12 +38,15 @@ from deepsequence_hierarchical_attention.components_lightweight import (
 from deepsequence_hierarchical_attention.losses import three_term_loss_config
 from train_lightweight_adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
 from eval_helpers import (
+    add_panel_seed_args,
     build_deepar,
     build_tft,
     build_transformer,
     filter_aligned,
     kpi_block,
     predict_seq,
+    resolve_eval_seeds,
+    select_eval_skus,
     split_components,
     strata_report,
     train_mase_scale,
@@ -67,15 +70,26 @@ def parse_args():
         help="Panel data directory (or set DEEPSEQUENCE_DATA_DIR). Required for a real bake-off run.",
     )
     p.add_argument("--max_skus", type=int, default=800)
-    p.add_argument("--epochs", type=int, default=10)
+    p.add_argument("--epochs", type=int, default=25)
     p.add_argument("--batch_size", type=int, default=1024)
     p.add_argument("--lookback", type=int, default=14)
-    p.add_argument("--seed", type=int, default=42)
+    add_panel_seed_args(p)
     p.add_argument(
         "--models",
         default=",".join(ALL_MODELS),
         help=f"Comma-separated subset of: {','.join(ALL_MODELS)}",
     )
+    p.add_argument(
+        "--ds_train_gate_calibrate",
+        action="store_true",
+        default=False,
+        help=(
+            "Opt-in train-time gate calibration for DeepSequence: prior zero_rate, "
+            "raw regressors→gate, learnable logit scale, softplus p-scale, rate-match."
+        ),
+    )
+    p.add_argument("--ds_gate_prob_scale_init", type=float, default=0.85)
+    p.add_argument("--ds_gate_rate_match_weight", type=float, default=0.01)
     p.add_argument(
         "--merge_json",
         default=None,
@@ -182,7 +196,7 @@ def train_seq_three_term(model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, arg
         batch_size=args.batch_size,
         callbacks=[
             tf.keras.callbacks.EarlyStopping(
-                monitor="val_loss", patience=3, restore_best_weights=True, verbose=1
+                monitor="val_loss", patience=5, restore_best_weights=True, verbose=1
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
                 monitor="val_loss", factor=0.5, patience=2, min_lr=1e-5, verbose=1
@@ -203,7 +217,10 @@ def main():
         raise SystemExit(f"Unknown --models: {sorted(unknown)}. Choose from {ALL_MODELS}")
     need_seq = bool(selected & {"deepar_lite", "temporal_transformer", "tft_lite"})
 
-    tf.keras.utils.set_random_seed(args.seed)
+    data_seed, train_seed = resolve_eval_seeds(
+        args.seed, args.data_seed, args.train_seed
+    )
+    tf.keras.utils.set_random_seed(train_seed)
     data_dir_raw = args.data_dir or os.environ.get("DEEPSEQUENCE_DATA_DIR")
     if not data_dir_raw:
         raise SystemExit(
@@ -219,13 +236,18 @@ def main():
     h_va = pd.read_csv(data_dir / "holiday_features_val.csv")
     h_te = pd.read_csv(data_dir / "holiday_features_test.csv")
 
-    rng = np.random.default_rng(args.seed)
-    chosen = set(
-        rng.choice(
-            train_df["id_var"].unique(),
-            size=min(args.max_skus, train_df["id_var"].nunique()),
-            replace=False,
-        )
+    chosen_list = select_eval_skus(
+        train_df["id_var"].unique(),
+        max_skus=args.max_skus,
+        data_seed=data_seed,
+        sku_list_path=args.sku_list,
+        save_sku_list_path=args.save_sku_list,
+    )
+    chosen = set(chosen_list)
+    print(
+        f"Panel lock: data_seed={data_seed} train_seed={train_seed} "
+        f"n_skus={len(chosen)}"
+        + (f" sku_list={args.sku_list}" if args.sku_list else "")
     )
     train_df, h_tr = filter_aligned(train_df, h_tr, chosen)
     val_df, h_va = filter_aligned(val_df, h_va, chosen)
@@ -286,6 +308,9 @@ def main():
                 "max_skus": args.max_skus,
                 "n_skus": n_skus,
                 "seed": args.seed,
+                "data_seed": data_seed,
+                "train_seed": train_seed,
+                "sku_list": args.sku_list,
                 "lookback": args.lookback,
                 "zero_rate": zero_rate,
                 "feature_contract": f"feature_config v{cfg.config['metadata']['version']} + Quantity in sequence hist",
@@ -310,6 +335,14 @@ def main():
 
     if "deepsequence" in selected:
         print("\n=== DeepSequence (same features) ===")
+        train_cal = bool(args.ds_train_gate_calibrate)
+        nz_target = max(1e-6, 1.0 - float(zero_rate))
+        if train_cal:
+            print(
+                "  train-time gate calibration ON "
+                f"(prior={zero_rate:.3f}, p_scale_init={args.ds_gate_prob_scale_init}, "
+                f"rate_match_w={args.ds_gate_rate_match_weight})"
+            )
         base = build_hierarchical_model_lightweight(
             n_temporal_features=len(cfg.trend_indices),
             n_fourier_features=len(cfg.seasonal_indices),
@@ -322,6 +355,17 @@ def main():
             use_cross_layers=True,
             use_intermittent=True,
             n_changepoints=15,
+            gate_use_raw_regressors=train_cal,
+            intermittent_prior_zero_rate=zero_rate if train_cal else None,
+            intermittent_learnable_logit_scale=train_cal,
+            intermittent_logit_scale_init=1.0,
+            gate_prob_scale=train_cal,
+            gate_prob_scale_init=float(args.ds_gate_prob_scale_init),
+            gate_prob_scale_trainable=True,
+            gate_rate_match_weight=(
+                float(args.ds_gate_rate_match_weight) if train_cal else 0.0
+            ),
+            gate_rate_match_target=nz_target if train_cal else None,
         )
         _ = base(
             [*(np.zeros((1, x.shape[1]), np.float32) for x in tr), np.zeros((1, 1), np.int32)],
@@ -353,7 +397,7 @@ def main():
             batch_size=args.batch_size,
             callbacks=[
                 tf.keras.callbacks.EarlyStopping(
-                    monitor="val_loss", patience=3, restore_best_weights=True, verbose=1
+                    monitor="val_loss", patience=5, restore_best_weights=True, verbose=1
                 )
             ],
             verbose=2,
@@ -372,6 +416,8 @@ def main():
 
     if "lightgbm" in selected:
         print("\n=== LightGBM L1 (same features) ===")
+        import lightgbm as lgb
+
         Xlgb_tr = np.concatenate([X_train, sku_train.astype(np.float32)], axis=1)
         Xlgb_va = np.concatenate([X_val, sku_val.astype(np.float32)], axis=1)
         Xlgb_te = np.concatenate([X_test, sku_test.astype(np.float32)], axis=1)
@@ -475,6 +521,15 @@ def main():
                     "aucpr": block.get("aucpr"),
                     "bias": block.get("bias"),
                     "bias_nonzero": block.get("bias_nonzero"),
+                    "inventory_nv_cost_rounded_cu2": block.get(
+                        "inventory_nv_cost_rounded_cu2"
+                    ),
+                    "inventory_holding_proxy_zero": block.get(
+                        "inventory_holding_proxy_zero"
+                    ),
+                    "inventory_stockout_proxy_nz": block.get(
+                        "inventory_stockout_proxy_nz"
+                    ),
                 }
             )
     for band in comparison:
@@ -501,8 +556,11 @@ def main():
     for band in ("overall", "low", "mid", "high"):
         print(f"\n[{band}]")
         for row in comparison[band]:
+            nv = row.get("inventory_nv_cost_rounded_cu2")
+            nv_s = f"{nv:.3f}" if nv is not None else "n/a"
             print(
                 f"  {row['model']:32s} iwmae={row['iwmae_rounded']:.3f} "
+                f"nv_cu2={nv_s} "
                 f"mae={row['mae_rounded']:.3f} nz={row['mae_nonzero']:.3f} "
                 f"mase={row.get('mase_rounded')} occ_f1={row.get('occ_f1')} "
                 f"under={row.get('underforecast_rate_nonzero')} "

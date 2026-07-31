@@ -87,6 +87,8 @@ def _build_lightweight(d, **kwargs):
 def test_lightweight_outputs_zero_inflated_heads(synthetic_zero_inflated):
     d = synthetic_zero_inflated
     model = _build_lightweight(d)
+    assert not hasattr(model, "forecast_uncertainty")
+    assert not hasattr(model, "classification_uncertainty")
 
     assert set(model.output_names) >= {
         "final_forecast",
@@ -236,6 +238,151 @@ def test_build_lightweight_model_without_typeerror():
         n_changepoints=10,
     )
     assert "final_forecast" in model.output_names
+
+
+def test_no_sku_path_ignores_sku_ids(synthetic_zero_inflated):
+    d = synthetic_zero_inflated
+    model = _build_lightweight(d, use_sku=False)
+    common = [feature[:32] for feature in d["x"][:4]]
+    sku_a = np.zeros((32, 1), dtype=np.int32)
+    sku_b = np.full((32, 1), d["n_skus"] - 1, dtype=np.int32)
+
+    out_a = model(common + [sku_a], training=False)
+    out_b = model(common + [sku_b], training=False)
+    for name in out_a:
+        np.testing.assert_allclose(
+            out_a[name].numpy(),
+            out_b[name].numpy(),
+            rtol=1e-6,
+            atol=1e-6,
+        )
+
+
+def test_lightweight_model_keras_round_trip(
+    synthetic_zero_inflated, tmp_path
+):
+    d = synthetic_zero_inflated
+    model = _build_lightweight(d, use_sku=False)
+    expected = model(d["x"], training=False)
+    path = tmp_path / "lightweight.keras"
+    model.save(path)
+
+    restored = tf.keras.models.load_model(path)
+    actual = restored(d["x"], training=False)
+    for name in expected:
+        np.testing.assert_allclose(
+            expected[name].numpy(),
+            actual[name].numpy(),
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
+
+def test_component_attention_skips_disabled_components(synthetic_zero_inflated):
+    """Disabled components must not absorb attention mass."""
+    d = synthetic_zero_inflated
+    model = _build_lightweight(d, n_holiday_features=0)
+    probe = tf.keras.Model(
+        model.inputs, model.get_layer("component_attention_softmax").output
+    )
+    x = [
+        d["x"][0][:32],
+        d["x"][1][:32],
+        np.zeros((32, 1), dtype=np.float32),
+        d["x"][3][:32],
+        d["x"][4][:32],
+    ]
+    weights = probe(x, training=False).numpy()
+
+    holiday_index = 2
+    np.testing.assert_allclose(weights[:, holiday_index], 0.0, atol=1e-12)
+    np.testing.assert_allclose(weights.sum(axis=-1), 1.0, rtol=1e-5, atol=1e-5)
+
+
+def test_multi_horizon_gate_trains_intermittent_handler(synthetic_zero_inflated):
+    """The multi-horizon occurrence gate must build on the handler, not bypass it."""
+    d = synthetic_zero_inflated
+    horizon = 4
+    model = _build_lightweight(d, horizon=horizon)
+    assert "intermittent" in {layer.name for layer in model.layers}
+
+    handler = model.get_layer("intermittent")
+    with tf.GradientTape() as tape:
+        outputs = model(d["x"], training=True)
+        gate = tf.reduce_sum(outputs["non_zero_probability"])
+    grads = tape.gradient(gate, handler.trainable_variables)
+
+    assert handler.trainable_variables
+    assert all(g is not None for g in grads)
+    assert outputs["non_zero_probability"].shape[-1] == horizon
+
+
+def test_seasonal_component_honors_output_activation(synthetic_zero_inflated):
+    d = synthetic_zero_inflated
+    model = _build_lightweight(d, output_activation="sparse_amplify")
+    activation = model.get_layer("seasonal").output_layer.activation
+    assert getattr(activation, "__name__", "") == "sparse_amplify"
+
+
+def test_builder_default_expert_output_activation_is_softsign(synthetic_zero_inflated):
+    """Expert scalars default to softsign; magnitude/gate/DCN stay non-softsign."""
+    import inspect
+
+    from deepsequence_hierarchical_attention.components_lightweight import (
+        HolidayComponentLightweight,
+        RegressorComponentLightweight,
+        SeasonalComponentLightweight,
+        TrendComponentLightweight,
+        build_hierarchical_model_lightweight,
+    )
+
+    sig = inspect.signature(build_hierarchical_model_lightweight)
+    assert sig.parameters["output_activation"].default == "softsign"
+    for cls in (
+        TrendComponentLightweight,
+        SeasonalComponentLightweight,
+        HolidayComponentLightweight,
+        RegressorComponentLightweight,
+    ):
+        assert inspect.signature(cls.__init__).parameters["output_activation"].default == (
+            "softsign"
+        )
+
+    d = synthetic_zero_inflated
+    # Legacy (non-mono) paths expose Dense output_layer with softsign.
+    model = _build_lightweight(
+        d,
+        trend_monotonic=False,
+        holiday_monotonic=False,
+        regressor_monotonic=False,
+    )
+    for name in ("trend", "seasonal", "holiday", "regressor"):
+        act = model.get_layer(name).output_layer.activation
+        assert getattr(act, "__name__", str(act)) == "softsign"
+
+    # Heads that must stay linear / softplus / sigmoid — not softsign.
+    base = model.get_layer("base_forecast")
+    assert getattr(base.activation, "__name__", str(base.activation)) == "softplus"
+    cross = model.get_layer("base_forecast_cross")
+    act_name = getattr(cross.activation, "__name__", None)
+    assert act_name in (None, "linear") or cross.activation is None
+
+
+def test_attention_entropy_penalty_has_no_self_cancelling_scale(
+    synthetic_zero_inflated,
+):
+    """Entropy scale must be a fixed constant, never a trainable weight."""
+    d = synthetic_zero_inflated
+    # Legacy regressor path owns MaskedEntropyAttention; mono PWL skips it.
+    model = _build_lightweight(d, regressor_monotonic=False)
+    assert not [
+        weight.name
+        for weight in model.trainable_weights
+        if "entropy_scale" in weight.name
+    ]
+    attn = model.get_layer("regressor").attention
+    assert attn.entropy_scale == pytest.approx(attn.DEFAULT_ENTROPY_SCALE)
+    assert attn.entropy_scale == pytest.approx(0.69815, rel=1e-3)
 
 
 def test_sku_personalization_changes_forecast(synthetic_zero_inflated):

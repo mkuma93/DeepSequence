@@ -4,6 +4,14 @@ Ensures all models use the exact same feature specification.
 
 Regressor lag + intermittent features are built causally via
 ``intermittent_features.transform_panel`` (history with ds < t only).
+
+Lag / Fourier frequency defaults
+--------------------------------
+Explicit ``lag_features`` (or ``metadata.lags: [..]``) always win.
+If ``metadata.lags`` is ``auto`` (or lag_features is empty) and
+``metadata.frequency`` is set (D/W/M/Q), lags fill from
+``default_lags_for_frequency``. Daily locked configs keep ``{1,2,7}``;
+monthly YAML keeps ``{1,2,12}`` (== ``default_lags_for_frequency("M")``).
 """
 
 from __future__ import annotations
@@ -12,9 +20,16 @@ import yaml
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Tuple, Union
+from typing import Dict, List, Mapping, Optional, Tuple, Union
 
 try:
+    from deepsequence_hierarchical_attention.frequency_presets import (
+        coerce_lag_list,
+        default_fourier_periods_for_frequency,
+        default_lags_for_frequency,
+        is_auto_lags_spec,
+        normalize_frequency,
+    )
     from deepsequence_hierarchical_attention.intermittent_features import (
         INTERMITTENT_FEATURE_NAMES,
         SKUDemandState,
@@ -32,6 +47,13 @@ except ImportError:  # running from examples/ without package install
     _pkg = Path(__file__).resolve().parents[1] / "deepsequence_hierarchical_attention"
     if str(_pkg.parent) not in sys.path:
         sys.path.insert(0, str(_pkg.parent))
+    from deepsequence_hierarchical_attention.frequency_presets import (
+        coerce_lag_list,
+        default_fourier_periods_for_frequency,
+        default_lags_for_frequency,
+        is_auto_lags_spec,
+        normalize_frequency,
+    )
     from deepsequence_hierarchical_attention.intermittent_features import (
         INTERMITTENT_FEATURE_NAMES,
         SKUDemandState,
@@ -46,7 +68,11 @@ except ImportError:  # running from examples/ without package install
 
 
 class FeatureConfig:
-    """Load and validate feature configuration from YAML."""
+    """Load and validate feature configuration from YAML.
+
+    Frequency-aware lags: see module docstring. After load,
+    ``lag_periods`` reflects either explicit YAML lags or frequency presets.
+    """
 
     def __init__(self, config_path=None):
         candidates = []
@@ -78,8 +104,134 @@ class FeatureConfig:
         with open(resolved, "r") as f:
             self.config = yaml.safe_load(f)
 
+        self._resolve_frequency_defaults()
         self._validate_config()
         self.config_path = str(resolved)
+
+    def _metadata(self) -> dict:
+        return self.config.setdefault("metadata", {})
+
+    @property
+    def frequency(self) -> Optional[str]:
+        """Canonical frequency if ``metadata.frequency`` / ``freq`` is set."""
+        meta = self.config.get("metadata", {}) or {}
+        raw = meta.get("frequency", meta.get("freq"))
+        if raw is None:
+            return None
+        return normalize_frequency(raw)
+
+    def _resolve_frequency_defaults(self) -> None:
+        """Fill lags from frequency presets when YAML requests auto / omits them."""
+        meta = self._metadata()
+        lags_spec = meta.get("lags", meta.get("lag_periods"))
+        lag_features = self.config.get("lag_features")
+        freq_raw = meta.get("frequency", meta.get("freq"))
+
+        explicit_list = isinstance(lags_spec, (list, tuple))
+        auto = is_auto_lags_spec(lags_spec)
+        missing_features = lag_features is None or lag_features == []
+
+        if explicit_list:
+            lags = coerce_lag_list(lags_spec)
+            self._materialize_lag_features(lags)
+            meta["lags_resolved_from"] = "metadata.lags"
+            return
+
+        if auto or missing_features:
+            if freq_raw is None:
+                if auto:
+                    raise ValueError(
+                        "metadata.lags is 'auto' but metadata.frequency is unset"
+                    )
+                return
+            lags = default_lags_for_frequency(freq_raw)
+            self._materialize_lag_features(lags)
+            meta["lags"] = "auto" if auto else meta.get("lags", "auto")
+            meta["lags_resolved_from"] = f"default_lags_for_frequency({freq_raw!r})"
+            return
+
+        # Explicit lag_features: leave as-is (daily {1,2,7}, monthly {1,2,12}, …)
+        meta.setdefault("lags_resolved_from", "lag_features")
+
+    def _materialize_lag_features(self, lags: List[int]) -> None:
+        """Replace lag_features names/lags; keep starting index when possible."""
+        existing = self.config.get("lag_features") or []
+        start_index = int(existing[0]["index"]) if existing else None
+        if start_index is None:
+            # After trend + cyclical
+            n_before = len(self.config.get("trend_features", [])) + len(
+                self.config.get("cyclical_features", [])
+            )
+            start_index = n_before
+
+        old_names = [f["name"] for f in existing]
+        new_features = []
+        for i, lag in enumerate(lags):
+            new_features.append(
+                {
+                    "name": f"lag_{lag}",
+                    "description": f"Demand {lag} step(s) ago (causal shift)",
+                    "lag": int(lag),
+                    "index": start_index + i,
+                }
+            )
+        self.config["lag_features"] = new_features
+
+        new_names = [f["name"] for f in new_features]
+        if old_names and "feature_order" in self.config:
+            order = list(self.config["feature_order"])
+            # Replace old lag names in-place when counts match; else splice
+            if len(old_names) == len(new_names):
+                name_map = dict(zip(old_names, new_names))
+                self.config["feature_order"] = [name_map.get(n, n) for n in order]
+            else:
+                # Drop old lag names, insert new ones at first lag position
+                first_pos = min(
+                    (order.index(n) for n in old_names if n in order),
+                    default=start_index,
+                )
+                order = [n for n in order if n not in old_names]
+                for j, name in enumerate(new_names):
+                    order.insert(first_pos + j, name)
+                self.config["feature_order"] = order
+                self._metadata()["total_features"] = len(order)
+
+        arch = self.config.get("model_architecture", {})
+        reg = arch.get("regressor_component")
+        if reg is not None and old_names:
+            names = list(reg.get("feature_names", []))
+            if len(old_names) == len(new_names):
+                name_map = dict(zip(old_names, new_names))
+                reg["feature_names"] = [name_map.get(n, n) for n in names]
+            else:
+                # Keep intermittent tail; replace lag head
+                rest = [n for n in names if n not in old_names]
+                reg["feature_names"] = new_names + rest
+                # Indices: lag block then intermittent (assumes contiguous)
+                lag_idx = [start_index + i for i in range(len(new_names))]
+                inter_start = start_index + len(new_names)
+                inter_idx = list(
+                    range(inter_start, inter_start + len(rest))
+                )
+                reg["feature_indices"] = lag_idx + inter_idx
+
+    def resolved_fourier_periods(self) -> Optional[List[float]]:
+        """Fourier periods from metadata or frequency presets (None if unknown)."""
+        meta = self.config.get("metadata", {}) or {}
+        for key in (
+            "fourier_periods",
+            "fourier_periods_months",
+            "fourier_periods_days",
+        ):
+            if key in meta and meta[key] is not None:
+                spec = meta[key]
+                if is_auto_lags_spec(spec):
+                    break
+                return [float(x) for x in spec]
+        freq = self.frequency
+        if freq is None:
+            return None
+        return default_fourier_periods_for_frequency(freq)
 
     def _validate_config(self):
         """Validate configuration is complete and consistent."""
@@ -175,7 +327,7 @@ class FeatureConfig:
     def create_features(
         self,
         df: pd.DataFrame,
-        holiday_features_df: pd.DataFrame,
+        holiday_features_df: Optional[pd.DataFrame] = None,
         prior_states: Optional[Mapping[str, SKUDemandState]] = None,
         return_states: bool = False,
         days_since_sentinel: float = -1.0,
@@ -192,6 +344,7 @@ class FeatureConfig:
             df: DataFrame with columns ['ds', 'id_var', 'Quantity']
             holiday_features_df: Holiday distance features aligned to ``df``
                 rows **before** sorting (same length / order as input df).
+                Optional when the config has no holiday features.
             prior_states: Optional warm-start SKU states
             return_states: If True, also return end-of-panel states
             days_since_sentinel: Value when SKU never sold before t
@@ -199,6 +352,8 @@ class FeatureConfig:
         Returns:
             features_df, or (features_df, states) if return_states
         """
+        if holiday_features_df is None:
+            holiday_features_df = pd.DataFrame(index=range(len(df)))
         if len(holiday_features_df) != len(df):
             raise ValueError(
                 f"holiday_features_df length {len(holiday_features_df)} "
@@ -224,21 +379,40 @@ class FeatureConfig:
             if transformation == "days_since_epoch":
                 epoch = pd.Timestamp("1970-01-01")
                 features[name] = (df_sorted[source_col] - epoch).dt.days.values.astype(float)
+            elif transformation == "months_since_epoch":
+                ds = pd.to_datetime(df_sorted[source_col])
+                features[name] = (ds.dt.year * 12 + ds.dt.month).astype(float).to_numpy()
             else:
                 raise ValueError(f"Unknown transformation: {transformation}")
 
-        day_of_week = df_sorted["ds"].dt.dayofweek.values
-        month = df_sorted["ds"].dt.month.values
-        day_of_year = df_sorted["ds"].dt.dayofyear.values
+        ds = pd.to_datetime(df_sorted["ds"])
+        day_of_week = ds.dt.dayofweek.values
+        month = ds.dt.month.values
+        day_of_year = ds.dt.dayofyear.values
+        month_index = (ds.dt.year * 12 + ds.dt.month).astype(float).to_numpy()
 
         for feat_config in self.config["cyclical_features"]:
             name = feat_config["name"]
-            if "dow" in name:
-                period, value = 7, day_of_week
+            # Explicit source/period (monthly profile) or legacy name heuristics (daily)
+            if "source" in feat_config and "period" in feat_config:
+                source = feat_config["source"]
+                period = float(feat_config["period"])
+                if source == "month_index":
+                    value = month_index
+                elif source == "month_of_year":
+                    value = month.astype(float)
+                elif source == "day_of_week":
+                    value = day_of_week.astype(float)
+                elif source == "day_of_year":
+                    value = day_of_year.astype(float)
+                else:
+                    raise ValueError(f"Unknown cyclical source: {source}")
+            elif "dow" in name:
+                period, value = 7.0, day_of_week.astype(float)
             elif "month" in name:
-                period, value = 12, month
+                period, value = 12.0, month.astype(float)
             elif "year" in name:
-                period, value = 365.25, day_of_year
+                period, value = 365.25, day_of_year.astype(float)
             else:
                 raise ValueError(f"Unknown cyclical feature: {name}")
             if "sin" in name:
@@ -249,6 +423,13 @@ class FeatureConfig:
         # Causal lags + intermittent regressor features
         meta = self.config.get("metadata", {}).get("intermittent_features", {})
         sentinel = float(meta.get("cold_start_days_since_sentinel", days_since_sentinel))
+        gap_unit = str(meta.get("gap_unit", "days"))
+        rate_window = int(
+            meta.get(
+                "rate_window",
+                self.config.get("metadata", {}).get("rate_window", 12),
+            )
+        )
         causal_df, end_states = transform_panel(
             df_sorted,
             id_col="id_var",
@@ -257,6 +438,9 @@ class FeatureConfig:
             lags=self.lag_periods,
             prior_states=prior_states,
             days_since_sentinel=sentinel,
+            gap_unit=gap_unit,
+            intermittent_names=self.intermittent_names,
+            rate_window=rate_window,
             return_states=True,
         )
         for col in causal_df.columns:
@@ -274,18 +458,53 @@ class FeatureConfig:
         features_df = pd.DataFrame(ordered)
 
         expected_holidays = self.holiday_names
-        actual_holidays = [c for c in holiday_sorted.columns if c.startswith("days_from_")]
-        missing = set(expected_holidays) - set(actual_holidays)
-        if missing:
-            raise ValueError(f"Missing holiday features: {missing}")
+        holiday_encoding = str(
+            self.config.get("metadata", {}).get("holiday_encoding", "days_from")
+        )
+        if expected_holidays:
+            if holiday_encoding in ("month_has", "months_from"):
+                try:
+                    from holiday_calendar import (
+                        month_has_holiday_features,
+                        months_from_holiday_features,
+                    )
+                except ImportError:
+                    from examples.holiday_calendar import (  # type: ignore
+                        month_has_holiday_features,
+                        months_from_holiday_features,
+                    )
+                prefix = "months_from_" if holiday_encoding == "months_from" else "month_has_"
+                keys = []
+                for name in expected_holidays:
+                    if not name.startswith(prefix):
+                        raise ValueError(
+                            f"{holiday_encoding} encoding expects names {prefix}*, got {name}"
+                        )
+                    keys.append(name.replace(prefix, "", 1))
+                if holiday_encoding == "months_from":
+                    built = months_from_holiday_features(df_sorted["ds"], holiday_keys=keys)
+                else:
+                    built = month_has_holiday_features(df_sorted["ds"], holiday_keys=keys)
+                holiday_subset = built[[f"{prefix}{k}" for k in keys]].reset_index(drop=True)
+                features_df = pd.concat([features_df, holiday_subset], axis=1)
+            else:
+                actual_holidays = [
+                    c for c in holiday_sorted.columns if c.startswith("days_from_")
+                ]
+                missing = set(expected_holidays) - set(actual_holidays)
+                if missing:
+                    raise ValueError(f"Missing holiday features: {missing}")
+                holiday_subset = holiday_sorted[expected_holidays].reset_index(drop=True)
+                features_df = pd.concat([features_df, holiday_subset], axis=1)
 
-        holiday_subset = holiday_sorted[expected_holidays].reset_index(drop=True)
-        features_df = pd.concat([features_df, holiday_subset], axis=1)
-
-        binary_holiday_names = self.binary_holiday_names
-        if binary_holiday_names:
-            for dist_name, binary_name in zip(expected_holidays, binary_holiday_names):
-                features_df[binary_name] = (holiday_sorted[dist_name].values == 0).astype(int)
+                binary_holiday_names = self.binary_holiday_names
+                if binary_holiday_names:
+                    for dist_name, binary_name in zip(expected_holidays, binary_holiday_names):
+                        features_df[binary_name] = (
+                            holiday_sorted[dist_name].values == 0
+                        ).astype(int)
+        elif len(holiday_features_df.columns) > 0 and len(holiday_sorted.columns) > 0:
+            pass
 
         if list(features_df.columns) != self.feature_names:
             raise ValueError(
