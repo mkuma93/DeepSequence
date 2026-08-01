@@ -34,7 +34,7 @@ If images do not render in Cursor’s markdown preview (common with Google Drive
 
 ## Figure 5. End-to-end architecture
 
-Code-faithful labels on slide art: trend time index · fixed Fourier (ω optional) · Regressor (lags + intermittent state) · monotone maps only on trend/holiday/regressor · mixer query = SKU ⊕ lag/state · shared \(e_i\).
+Trend time index; fixed Fourier (learnable \(\omega\) optional); four experts (Trend, Seasonal, Holiday, Regressor with lags+state); shared \(e_i\) → FiLM / mixer / gate; Level-1 + context mixer \(q=\mathrm{SKU}\oplus\mathrm{Dense}(\mathrm{context})\); DCN cross default OFF; \(\hat{y}=p\cdot b\).
 
 ![End-to-end architecture](paper_figures/fig_m5_architecture.png)
 

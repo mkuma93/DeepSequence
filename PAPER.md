@@ -178,13 +178,13 @@ p_{i,t}=\sigma\bigl(g(x_{i,t}, e_i)\bigr),\quad
 \hat{y}_{i,t}=p_{i,t}\cdot b_{i,t}.
 \]
 
-Interpretation: \(p\) is the predicted probability that demand occurs; \(b\) is the predicted magnitude given structural drivers; the product is a soft Bernoulli–magnitude expectation. Optional per-SKU zero-rate priors can bias gate logits from historical zero rates (secondary). Cross-network layers default off.
+Interpretation: \(p\) is the predicted probability that demand occurs; \(b\) is the predicted magnitude given structural drivers; the product is a soft Bernoulli–magnitude expectation. Optional per-SKU zero-rate priors can bias gate logits from historical zero rates (secondary). DCN-style cross-network layers default **OFF** (optional ablation path in Figure 5).
 
 ![Figure 5. End-to-end DeepSequence architecture.](paper_figures/fig_m5_architecture.png)
 
 [Open PNG](paper_figures/fig_m5_architecture.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_m5_architecture.png)
 
-*Figure 5. End-to-end stack: trend time index + fixed Fourier (learnable \(\omega\) optional) + holiday distances + lags/intermittent state → Trend / Seasonal / Holiday / Regressor experts (monotone maps on trend/holiday/regressor only) → Level-1 → mixer query \(q=[e_i;\mathrm{Dense}(\mathrm{lag/state})]\) → gate \(\hat{y}=p\cdot b\). Shared SKU embedding \(e_i\) (purple) fans out to FiLM, mixer, and gate.*
+*Figure 5. End-to-end architecture: trend time index; fixed Fourier (default; learnable \(\omega\) optional); holiday distances; lag/intermittent state → four experts (Trend, Seasonal, Holiday, Regressor with lags+state) with Softsign + SKU FiLM → Level-1 intra-expert attention → context mixer with \(q=\mathrm{SKU}\oplus\mathrm{Dense}(\mathrm{context})\) → occurrence–magnitude gate \(\hat{y}=p\cdot b\). Shared SKU embedding \(e_i\) (purple) conditions FiLM, mixer, and gate; DCN cross defaults OFF.*
 
 ### 3.9 Training objective
 
@@ -609,7 +609,7 @@ For reliable local viewing when markdown preview fails: open [`paper_figures/VIE
 | `paper_figures/fig_m2_monotone_softplus.png` | Figure 2 — softplus-PWL monotone maps |
 | `paper_figures/fig_m3_level1_attention.png` | Figure 3 — Level-1 selection attention |
 | `paper_figures/fig_m4_context_mixer.png` | Figure 4 — context-aware Level-2 mixer |
-| `paper_figures/fig_m5_architecture.png` | Figure 5 — end-to-end architecture (code-faithful labels; shared \(e_i\); \(\hat{y}=p\cdot b\)) |
+| `paper_figures/fig_m5_architecture.png` | Figure 5 — end-to-end architecture (shared \(e_i\); DCN off; \(\hat{y}=p\cdot b\)) |
 | `paper_figures/fig1_daily_iwmae_horizon.png` | Figure 6 — daily multi-seed IWMAE vs horizon |
 | `paper_figures/fig3_daily_decision_pi_horizon.png` | Figure 7 — daily multi-seed mid-\(\pi\) vs horizon |
 | `paper_figures/fig2_carparts_iwmae_horizon.png` | Figure 8 — Car Parts IWMAE (+ Prophet bake-off panel) |

@@ -98,11 +98,11 @@
 </section>
 <section id="fig5" class="card">
   <h2>Figure 5. End-to-end architecture</h2>
-  <p class="meta">Code-faithful labels: trend time index · fixed Fourier (ω opt.) · Regressor (lags+state) · monotone maps on trend/holiday/regressor only · mixer query = SKU ⊕ lag/state · shared \(e_i\) → FiLM / mixer / gate ·
+  <p class="meta">Trend time index · fixed Fourier (ω optional) · four experts (Trend / Seasonal / Holiday / Regressor+lags+state) · shared \(e_i\) → FiLM / mixer / gate · \(q=\mathrm{SKU}\oplus\mathrm{Dense}(\mathrm{context})\) · DCN OFF · \(\hat{y}=p\cdot b\) ·
     <a href="fig_m5_architecture.png">fig_m5_architecture.png</a>
     · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_m5_architecture.png">GitHub</a>
     · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_m5_architecture.png">raw</a></p>
-  <img src="fig_m5_architecture.png" alt="Figure 5. End-to-end architecture (code-faithful labels)" loading="lazy" />
+  <img src="fig_m5_architecture.png" alt="Figure 5. End-to-end DeepSequence architecture" loading="lazy" />
 </section>
 <section id="fig6" class="card">
   <h2>Figure 6. Daily multi-seed IWMAE vs horizon</h2>
