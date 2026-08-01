@@ -222,6 +222,73 @@ class SumWeightedComponents(keras.layers.Layer):
 
 
 @keras.saving.register_keras_serializable(package=KERAS_PACKAGE)
+class MultiplicativeComponentCombine(keras.layers.Layer):
+    """Prophet-style multiplicative combine of softsign Level-2 experts.
+
+    Stacked experts ``e = [T, S, H, R]`` (post softsign / SKU FiLM) and mixer
+    weights ``α`` yield
+
+    .. math::
+
+        b_{\\mathrm{pre}}
+        = \\mathrm{softplus}(e_T)
+          \\prod_{k \\in \\{S,H,R\\}}
+          \\max\\bigl(\\varepsilon,\\, 1 + \\alpha_k e_k\\bigr)
+
+    Softsign experts live in ``(-1, 1)`` and ``α_k ∈ (0, 1]``, so
+    ``α_k e_k ∈ (-1, 1)`` and each factor is positive after the ``ε`` floor.
+    Inactive experts (via ``component_flags``) are skipped; if trend is off the
+    product starts from ones. Mixer entropy / attention still run upstream —
+    only the *combine* changes vs additive ``Σ α_k e_k``.
+    """
+
+    def __init__(self, component_flags=None, eps=1e-3, **kwargs):
+        super().__init__(**kwargs)
+        flags = list(component_flags) if component_flags is not None else [
+            True, True, True, True
+        ]
+        if len(flags) != 4:
+            raise ValueError(
+                "component_flags must have length 4 [trend, seasonal, "
+                f"holiday, regressor]; got {len(flags)}"
+            )
+        self.component_flags = [bool(f) for f in flags]
+        self.eps = float(eps)
+
+    def call(self, inputs):
+        stacked, weights = inputs  # [batch, 4], [batch, 4]
+        trend = stacked[:, 0:1]
+        if self.component_flags[0]:
+            base = tf.nn.softplus(trend)
+        else:
+            base = tf.ones_like(trend)
+
+        out = base
+        for index in (1, 2, 3):
+            if not self.component_flags[index]:
+                continue
+            expert = stacked[:, index : index + 1]
+            alpha = weights[:, index : index + 1]
+            out = out * tf.maximum(
+                tf.cast(self.eps, stacked.dtype),
+                1.0 + alpha * expert,
+            )
+        return out
+
+    def compute_output_shape(self, input_shape):
+        stacked_shape = input_shape[0]
+        return (stacked_shape[0], 1)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "component_flags": list(self.component_flags),
+            "eps": self.eps,
+        })
+        return config
+
+
+@keras.saving.register_keras_serializable(package=KERAS_PACKAGE)
 class HorizonGateFromBaseProbability(keras.layers.Layer):
     """Per-horizon occurrence gate anchored on the learned base probability.
 
@@ -2681,8 +2748,22 @@ def _build_component_attention(
     entropy_weight,
     l2_weight,
     component_flags=None,
+    component_combine='additive',
+    multiplicative_eps=1e-3,
 ):
-    """Combine component outputs with learned entropy-regularized attention."""
+    """Combine component outputs with learned entropy-regularized attention.
+
+    ``component_combine``:
+      - ``'additive'`` (default / locked): ``Σ_k α_k e_k``
+      - ``'multiplicative'``: Prophet-like
+        ``softplus(e_T) Π_{k∈{S,H,R}} max(ε, 1 + α_k e_k)``
+    """
+    combine = str(component_combine).lower().strip()
+    if combine not in ('additive', 'multiplicative'):
+        raise ValueError(
+            "component_combine must be 'additive' or 'multiplicative', "
+            f"got {component_combine!r}"
+        )
     stacked_components = StackComponentsLayer(
         name='stack_components'
     )(component_outputs)
@@ -2723,6 +2804,17 @@ def _build_component_attention(
         entropy_weight=entropy_weight,
         name='component_entropy_loss',
     )(entropy)
+    if combine == 'multiplicative':
+        flags = (
+            list(component_flags)
+            if component_flags is not None
+            else [True] * len(component_outputs)
+        )
+        return MultiplicativeComponentCombine(
+            component_flags=flags,
+            eps=multiplicative_eps,
+            name='multiplicative_component_combine',
+        )([stacked_components, attention_weights])
     weighted_components = Multiply(name='apply_attention_weights')(
         [stacked_components, attention_weights]
     )
@@ -3175,6 +3267,8 @@ def build_hierarchical_model_lightweight(
     context_aware_component_mixer=True,
     component_mixer_context_dim=None,
     context_film_seasonal_holiday=False,
+    component_combine='additive',
+    multiplicative_eps=1e-3,
 ):
     """
     Build lightweight hierarchical model with masked entropy attention.
@@ -3258,6 +3352,14 @@ def build_hierarchical_model_lightweight(
             (softplus scale near 1 at init + softsign shift). Trend and
             regressor are unchanged. Default False (preferred softsign + mono
             + mixer stack); set True to enable calendar FiLM.
+        component_combine: How Level-2 mixes expert scalars after attention.
+            ``'additive'`` (default, locked bake-off) is ``Σ α_k e_k``.
+            ``'multiplicative'`` is Prophet-like
+            ``softplus(e_T) Π max(ε, 1 + α_k e_k)`` over seasonal/holiday/
+            regressor (see ``MultiplicativeComponentCombine``). Does not change
+            L1 / FiLM / gate; cross-layers stay off by default.
+        multiplicative_eps: Positive floor for multiplicative factors
+            (default ``1e-3``). Ignored when ``component_combine='additive'``.
     
     Returns:
         model: Keras Model
@@ -3269,6 +3371,18 @@ def build_hierarchical_model_lightweight(
     level1_selection_attention = bool(level1_selection_attention)
     context_aware_component_mixer = bool(context_aware_component_mixer)
     context_film_seasonal_holiday = bool(context_film_seasonal_holiday)
+    component_combine = str(component_combine).lower().strip()
+    if component_combine not in ('additive', 'multiplicative'):
+        raise ValueError(
+            "component_combine must be 'additive' or 'multiplicative', "
+            f"got {component_combine!r}"
+        )
+    multiplicative_eps = float(multiplicative_eps)
+    if multiplicative_eps <= 0.0 or multiplicative_eps >= 1.0:
+        raise ValueError(
+            "multiplicative_eps must be in (0, 1), "
+            f"got {multiplicative_eps}"
+        )
     if fourier_periods is None and fourier_frequency is not None:
         fourier_periods = fourier_periods_for_frequency(fourier_frequency)
     (
@@ -3398,7 +3512,8 @@ def build_hierarchical_model_lightweight(
 
     logger.debug(
         "Component presence: trend=%s seasonal=%s holiday=%s regressor=%s; "
-        "cross=%s intermittent=%s horizon=%d sku=%s context_film=%s",
+        "cross=%s intermittent=%s horizon=%d sku=%s context_film=%s "
+        "component_combine=%s",
         presence['trend'],
         presence['seasonal'],
         presence['holiday'],
@@ -3408,6 +3523,7 @@ def build_hierarchical_model_lightweight(
         horizon,
         use_sku,
         context_film_seasonal_holiday,
+        component_combine,
     )
     if use_learnable_fourier:
         periods = (
@@ -3446,6 +3562,8 @@ def build_hierarchical_model_lightweight(
         component_entropy_weight,
         component_attention_l2,
         component_flags=component_flags,
+        component_combine=component_combine,
+        multiplicative_eps=multiplicative_eps,
     )
     base_forecast = _combine_component_forecasts(
         base_forecast_attention,

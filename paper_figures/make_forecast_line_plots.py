@@ -17,6 +17,11 @@ Country-calendar + binary qualitative (rebuilds days_from_* per sku prefix):
   python paper_figures/make_forecast_line_plots.py --only daily --epochs 30 \\
     --feature_config_daily feature_config_daily_country_holiday.yaml \\
     --fig_prefix_daily fig_forecast_daily_country_hol --holiday_markers 1
+
+Additive vs multiplicative Level-2 combine (same SKUs/seed; no TST):
+  python paper_figures/make_forecast_line_plots.py --only daily_combine \\
+    --epochs 20 --feature_config_daily feature_config_daily_country_holiday.yaml \\
+    --fig_prefix_daily fig_forecast_daily_mult --holiday_markers 1
 """
 
 from __future__ import annotations
@@ -212,7 +217,20 @@ def _build_1step_windows(train_df, val_df, X_train, X_val, lookback: int):
     return X, np.asarray(ys, np.float32), np.asarray(skus), np.asarray(splits), n_channels
 
 
-def _train_ds(cfg, tr, va, y_train, y_val, sku_train, sku_val, zero_rate, n_skus, epochs, batch):
+def _train_ds(
+    cfg,
+    tr,
+    va,
+    y_train,
+    y_val,
+    sku_train,
+    sku_val,
+    zero_rate,
+    n_skus,
+    epochs,
+    batch,
+    component_combine="additive",
+):
     _, sku_rates = resolve_sku_zero_rates(y_train, sku_train, n_skus=n_skus)
     base = build_hierarchical_model_lightweight(
         n_temporal_features=len(cfg.trend_indices),
@@ -224,6 +242,7 @@ def _train_ds(cfg, tr, va, y_train, y_val, sku_train, sku_val, zero_rate, n_skus
         sku_embedding_dim=4,
         dropout_rate=0.23,
         n_changepoints=15,
+        component_combine=component_combine,
     )
     _ = base(
         [*(np.zeros((1, x.shape[1]), np.float32) for x in tr), np.zeros((1, 1), np.int32)],
@@ -261,6 +280,60 @@ def _train_ds(cfg, tr, va, y_train, y_val, sku_train, sku_val, zero_rate, n_skus
         verbose=2,
     )
     return model
+
+
+def _series_cv(yhat) -> float:
+    y = np.asarray(yhat, dtype=np.float64)
+    mu = float(np.mean(np.abs(y)))
+    if mu < 1e-12:
+        return 0.0
+    return float(np.std(y) / mu)
+
+
+def _iwmae(y_true, y_hat) -> float:
+    """Tiny intermittent-weighted MAE: weight positive days more."""
+    y = np.asarray(y_true, dtype=np.float64).reshape(-1)
+    p = np.asarray(y_hat, dtype=np.float64).reshape(-1)
+    w = np.where(y > 0, 1.0, 0.25)
+    return float(np.average(np.abs(y - p), weights=w))
+
+
+def _plot_add_vs_mul_panel(series_dict, title, stem, holiday_marks=False):
+    n = len(series_dict)
+    fig, axes = plt.subplots(n, 1, figsize=(11.5, 2.7 * n), sharex=False)
+    if n == 1:
+        axes = [axes]
+    for ax, (sku, d) in zip(axes, series_dict.items()):
+        dates = pd.to_datetime(d["dates"])
+        if holiday_marks:
+            _mark_holidays(ax, dates, d.get("holiday_dates") or [])
+        ax.plot(dates, d["y"], color=C_ACT, lw=1.4, label="Actual", drawstyle="steps-mid")
+        ax.plot(dates, d["additive"], color=C_DS, lw=1.5, label="Additive mix", alpha=0.95)
+        ax.plot(
+            dates,
+            d["multiplicative"],
+            color="#8e24aa",
+            lw=1.5,
+            ls="--",
+            label="Multiplicative mix",
+            alpha=0.95,
+        )
+        ax.set_ylabel("Demand", fontsize=9, color=INK, family=FONT)
+        cv_a = d.get("cv_additive")
+        cv_m = d.get("cv_multiplicative")
+        subtitle = sku
+        if cv_a is not None and cv_m is not None:
+            subtitle = f"{sku}  ·  CV add={cv_a:.2f} mul={cv_m:.2f}"
+        ax.set_title(subtitle, fontsize=10, color=INK, family=FONT, loc="left")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.tick_params(labelsize=8)
+        ax.set_ylim(bottom=0)
+        ax.legend(loc="upper right", fontsize=8, frameon=False)
+    axes[-1].set_xlabel("Date", fontsize=9, color=INK, family=FONT)
+    fig.suptitle(title, fontsize=13, fontweight="bold", color=INK, family=FONT, y=1.01)
+    fig.tight_layout()
+    _save_fig(fig, stem)
 
 
 def _train_tst(Xseq, yseq, sku_seq, split_seq, n_skus, n_channels, lookback, zero_rate, epochs, batch, sku_rates):
@@ -440,7 +513,18 @@ def run_daily(args):
 
     print("=== train DeepSequence (daily) ===")
     ds_model = _train_ds(
-        cfg, tr, va, y_train, y_val, sku_train, sku_val, zero_rate, n_skus, args.epochs, args.batch_size
+        cfg,
+        tr,
+        va,
+        y_train,
+        y_val,
+        sku_train,
+        sku_val,
+        zero_rate,
+        n_skus,
+        args.epochs,
+        args.batch_size,
+        component_combine=getattr(args, "component_combine", "additive"),
     )
 
     print("=== train TST (daily) ===")
@@ -645,6 +729,266 @@ def run_daily(args):
     print("daily forecasts done")
 
 
+def run_daily_combine_compare(args):
+    """Train additive vs multiplicative Level-2 combine on the same daily subset."""
+    data_dir = Path(args.data_dir)
+    locked = json.loads(Path(args.sku_list_daily).read_text())
+    pool = list(dict.fromkeys(DAILY_PLOT_SKUS + [s for s in locked if s not in DAILY_PLOT_SKUS]))
+    chosen_list = pool[: args.max_skus]
+    plot_skus = [s for s in DAILY_PLOT_SKUS if s in chosen_list]
+    print(f"Daily combine-compare train SKUs={len(chosen_list)} plot={plot_skus}")
+
+    train_df = pd.read_csv(data_dir / "train_split.csv", parse_dates=["ds"])
+    val_df = pd.read_csv(data_dir / "val_split.csv", parse_dates=["ds"])
+    test_df = pd.read_csv(data_dir / "test_split.csv", parse_dates=["ds"])
+    h_tr = pd.read_csv(data_dir / "holiday_features_train.csv")
+    h_va = pd.read_csv(data_dir / "holiday_features_val.csv")
+    h_te = pd.read_csv(data_dir / "holiday_features_test.csv")
+    chosen = set(chosen_list)
+    train_df, h_tr = filter_aligned(train_df, h_tr, chosen)
+    val_df, h_va = filter_aligned(val_df, h_va, chosen)
+    test_df, h_te = filter_aligned(test_df, h_te, chosen)
+
+    cats = pd.Categorical(train_df["id_var"].astype(str))
+    sku_map = {str(k): i for i, k in enumerate(cats.categories)}
+    n_skus = len(sku_map)
+
+    def enc(df):
+        return df["id_var"].astype(str).map(sku_map).astype(np.int32).to_numpy().reshape(-1, 1)
+
+    y_train = train_df["Quantity"].to_numpy(np.float32)
+    y_val = val_df["Quantity"].to_numpy(np.float32)
+    sku_train, sku_val = enc(train_df), enc(val_df)
+    zero_rate = float((y_train == 0).mean())
+
+    cfg_path = args.feature_config_daily
+    cfg = load_feature_config(cfg_path) if cfg_path else load_feature_config()
+    stem_os = args.fig_prefix_daily + "_onestep"
+    stem_rec = args.fig_prefix_daily + "_recursive"
+    use_hol_marks = bool(cfg.binary_holiday_names) or bool(args.holiday_markers)
+    use_country = _country_calendar_enabled(cfg)
+
+    if use_country:
+        print("rebuilding holiday distances from per-country calendars (sku_id prefix)")
+        h_tr = _rebuild_holidays_for_split(train_df, cfg)
+        h_va = _rebuild_holidays_for_split(val_df, cfg)
+        h_te = _rebuild_holidays_for_split(test_df, cfg)
+    else:
+        h_tr = _attach_binary_holidays(h_tr, cfg)
+        h_va = _attach_binary_holidays(h_va, cfg)
+        h_te = _attach_binary_holidays(h_te, cfg)
+
+    Xtr_df, states = cfg.create_features(train_df, h_tr, return_states=True)
+    Xva_df, states = cfg.create_features(val_df, h_va, prior_states=states, return_states=True)
+    Xte_df, _ = cfg.create_features(test_df, h_te, prior_states=states, return_states=True)
+    X_train = Xtr_df.to_numpy(np.float32)
+    X_val = Xva_df.to_numpy(np.float32)
+    X_test = Xte_df.to_numpy(np.float32)
+    t_idx = cfg.trend_indices[0]
+    tmin = float(X_train[:, t_idx].min())
+    tmax = float(X_train[:, t_idx].max())
+    span = max(tmax - tmin, 1.0)
+    epoch = pd.Timestamp("1970-01-01")
+    raw_tr = (pd.to_datetime(train_df["ds"]) - epoch).dt.days.to_numpy(np.float64)
+    tmin_raw, tmax_raw = float(raw_tr.min()), float(raw_tr.max())
+    span_raw = max(tmax_raw - tmin_raw, 1.0)
+    X_train_n, X_val_n, X_test_n = X_train.copy(), X_val.copy(), X_test.copy()
+    for X in (X_train_n, X_val_n, X_test_n):
+        X[:, t_idx] = (X[:, t_idx] - tmin) / span
+    tr = split_components(X_train_n, cfg)
+    va = split_components(X_val_n, cfg)
+    te = split_components(X_test_n, cfg)
+
+    models = {}
+    for mode in ("additive", "multiplicative"):
+        print(f"=== train DeepSequence ({mode} combine) ===")
+        tf.keras.utils.set_random_seed(args.seed)
+        models[mode] = _train_ds(
+            cfg,
+            tr,
+            va,
+            y_train,
+            y_val,
+            sku_train,
+            sku_val,
+            zero_rate,
+            n_skus,
+            args.epochs,
+            args.batch_size,
+            component_combine=mode,
+        )
+
+    sku_test = enc(test_df)
+    preds = {}
+    for mode, model in models.items():
+        pred = model.predict([*te, sku_test], batch_size=4096, verbose=0)
+        preds[mode] = np.asarray(pred["final_forecast"]).reshape(-1)
+
+    hol_block_names = cfg.holiday_block_names
+    n_dist = len(cfg.holiday_names)
+    onestep = {}
+    dump_onestep = {
+        "protocol": "one_step_test_additive_vs_multiplicative",
+        "seed": args.seed,
+        "formula": (
+            "b_pre = softplus(e_T) * Π_{k in {S,H,R}} max(eps, 1 + alpha_k * e_k); "
+            "then softplus magnitude Dense + gate p*b (unchanged)"
+        ),
+        "component_combine": ["additive", "multiplicative"],
+        "skus": {},
+        "summary": {},
+    }
+    iw_add_all, iw_mul_all = [], []
+    for sku in plot_skus:
+        m = test_df["id_var"].astype(str).to_numpy() == sku
+        if not m.any():
+            continue
+        y = test_df.loc[m, "Quantity"].to_numpy(np.float64)
+        add = preds["additive"][m].astype(np.float64)
+        mul = preds["multiplicative"][m].astype(np.float64)
+        hol_dates = []
+        if use_hol_marks and hol_block_names:
+            # Mark days with any binary holiday flag if present.
+            hol_cols = [c for c in hol_block_names if c.startswith("is_")]
+            if hol_cols:
+                te_hol = h_te.loc[m]
+                for i, row in te_hol.reset_index(drop=True).iterrows():
+                    if any(float(row.get(c, 0) or 0) > 0.5 for c in hol_cols):
+                        hol_dates.append(str(pd.to_datetime(test_df.loc[m, "ds"].iloc[i]))[:10])
+        d = {
+            "dates": [str(x)[:10] for x in pd.to_datetime(test_df.loc[m, "ds"])],
+            "y": y.tolist(),
+            "additive": add.tolist(),
+            "multiplicative": mul.tolist(),
+            "holiday_dates": hol_dates,
+            "cv_additive": _series_cv(add),
+            "cv_multiplicative": _series_cv(mul),
+            "iwmae_additive": _iwmae(y, add),
+            "iwmae_multiplicative": _iwmae(y, mul),
+        }
+        onestep[sku] = d
+        dump_onestep["skus"][sku] = d
+        iw_add_all.append(d["iwmae_additive"])
+        iw_mul_all.append(d["iwmae_multiplicative"])
+
+    dump_onestep["summary"] = {
+        "mean_iwmae_additive": float(np.mean(iw_add_all)) if iw_add_all else None,
+        "mean_iwmae_multiplicative": float(np.mean(iw_mul_all)) if iw_mul_all else None,
+        "mean_cv_additive": float(np.mean([d["cv_additive"] for d in onestep.values()]))
+        if onestep
+        else None,
+        "mean_cv_multiplicative": float(
+            np.mean([d["cv_multiplicative"] for d in onestep.values()])
+        )
+        if onestep
+        else None,
+    }
+    _plot_add_vs_mul_panel(
+        onestep,
+        "Daily one-step — additive vs multiplicative Level-2 combine",
+        stem_os,
+        holiday_marks=use_hol_marks,
+    )
+    (OUT / f"{stem_os}.json").write_text(json.dumps(dump_onestep, indent=2))
+    print(
+        "one-step IWMAE "
+        f"add={dump_onestep['summary']['mean_iwmae_additive']} "
+        f"mul={dump_onestep['summary']['mean_iwmae_multiplicative']} | "
+        f"CV add={dump_onestep['summary']['mean_cv_additive']} "
+        f"mul={dump_onestep['summary']['mean_cv_multiplicative']}"
+    )
+
+    # Short recursive path from a shared origin (same helpers as daily recursive plot).
+    panel = pd.concat(
+        [
+            train_df.assign(split="train"),
+            val_df.assign(split="val"),
+            test_df.assign(split="test"),
+        ],
+        ignore_index=True,
+    )
+    hol = pd.concat([h_tr, h_va, h_te], ignore_index=True)
+    timelines = build_sku_timelines(panel, hol, hol_block_names or cfg.holiday_names)
+    origin_mask = {}
+    for sku, g in panel.groupby(panel["id_var"].astype(str), sort=False):
+        g = g.sort_values("ds", kind="mergesort")
+        origin_mask[str(sku)] = (g["split"].to_numpy() == "test")
+    H = args.horizon_daily
+    origins_all = collect_origins(
+        timelines,
+        sku_map,
+        horizon=H,
+        origin_split_mask=origin_mask,
+        max_origins_per_sku=1,
+        seed=args.seed,
+    )
+    origins = [o for o in origins_all if o[0] in plot_skus]
+    print(f"daily combine-compare recursive origins: {len(origins)} H={H}")
+
+    rolls = {}
+    for mode, model in models.items():
+
+        def _predict(X, sku, _model=model):
+            parts = split_components(X, cfg)
+            pred = _model.predict([*parts, sku], batch_size=512, verbose=0)
+            return (
+                np.asarray(pred["final_forecast"]).reshape(-1),
+                np.asarray(pred["non_zero_probability"]).reshape(-1),
+            )
+
+        rolls[mode] = rollout_tabular(
+            timelines,
+            origins,
+            sku_map,
+            _predict,
+            cfg.lag_periods,
+            tmin_raw,
+            span_raw,
+            H,
+        )
+
+    h_short, h_long = 7, min(28, H)
+    horiz = {}
+    dump_h = {
+        "protocol": "recursive_additive_vs_multiplicative",
+        "seed": args.seed,
+        "horizon": H,
+        "skus": {},
+    }
+    for i, (sku, t_idx_o) in enumerate(origins):
+        d = {
+            "y": rolls["additive"]["y_true"][i].astype(np.float64).tolist(),
+            "additive": rolls["additive"]["yhat"][i].astype(np.float64).tolist(),
+            "multiplicative": rolls["multiplicative"]["yhat"][i].astype(np.float64).tolist(),
+            "origin_idx": int(t_idx_o),
+            "origin_date": str(pd.Timestamp(timelines[sku].dates[t_idx_o]))[:10],
+            "cv_additive": _series_cv(rolls["additive"]["yhat"][i]),
+            "cv_multiplicative": _series_cv(rolls["multiplicative"]["yhat"][i]),
+        }
+        horiz[sku] = d
+        dump_h["skus"][sku] = d
+
+    if horiz:
+        plot_dict = {
+            sku: {
+                "y": d["y"],
+                "ds": d["additive"],
+                "baseline": d["multiplicative"],
+            }
+            for sku, d in horiz.items()
+        }
+        _plot_horizon_panel(
+            plot_dict,
+            "Daily recursive — additive vs multiplicative Level-2 combine",
+            stem_rec,
+            "Multiplicative",
+            h_short,
+            h_long,
+        )
+        (OUT / f"{stem_rec}.json").write_text(json.dumps(dump_h, indent=2))
+    print("daily combine-compare done")
+
+
 def run_carparts(args):
     data_dir = Path(args.carparts_dir)
     locked = json.loads(Path(args.sku_list_carparts).read_text())
@@ -845,7 +1189,7 @@ def parse_args():
     p.add_argument("--lookback_daily", type=int, default=14)
     p.add_argument("--horizon_daily", type=int, default=28)
     p.add_argument("--horizon_carparts", type=int, default=6)
-    p.add_argument("--only", choices=("daily", "carparts", "both"), default="both")
+    p.add_argument("--only", choices=("daily", "carparts", "both", "daily_combine"), default="both")
     p.add_argument(
         "--feature_config_daily",
         default=None,
@@ -862,16 +1206,25 @@ def parse_args():
         default=0,
         help="Force holiday axvlines on one-step plots (1/0). Auto-on when binaries present.",
     )
+    p.add_argument(
+        "--component_combine",
+        choices=("additive", "multiplicative"),
+        default="additive",
+        help="Level-2 expert combine for --only daily/carparts (default additive).",
+    )
     return p.parse_args()
 
 
 def main():
     args = parse_args()
     t0 = time.time()
-    if args.only in ("daily", "both"):
-        run_daily(args)
-    if args.only in ("carparts", "both"):
-        run_carparts(args)
+    if args.only == "daily_combine":
+        run_daily_combine_compare(args)
+    else:
+        if args.only in ("daily", "both"):
+            run_daily(args)
+        if args.only in ("carparts", "both"):
+            run_carparts(args)
     print(f"all done in {time.time() - t0:.1f}s")
 
 

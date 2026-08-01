@@ -162,7 +162,17 @@ The Level-2 query is
 q_{i,t} = \bigl[\, e_i \,;\; \mathrm{Dense}(c_{i,t}) \,\bigr],
 \]
 
-where \(e_i\) is an optional SKU embedding and \(c_{i,t}\) are regressor-block regime signals (lags, days/months since last sale, and related intermittent state)—**not** calendar, Fourier, or holiday distances, which remain inside their experts. Temperature-softmax weights over stacked expert scalars (entropy + orthogonality regularization) yield the mixed base. This is *component* reweighting, not temporal self-attention over a lookback window. Ablating the mixer (SKU-only or stack-only Level-2) is a protocol comparison; locked runs keep the context mixer on.
+where \(e_i\) is an optional SKU embedding and \(c_{i,t}\) are regressor-block regime signals (lags, days/months since last sale, and related intermittent state)—**not** calendar, Fourier, or holiday distances, which remain inside their experts. Temperature-softmax weights over stacked expert scalars (entropy + orthogonality regularization) yield the mixed base. By default the Level-2 combine is **additive** \(\sum_k \alpha_k e_k\) (locked bake-off). An opt-in Prophet-like **multiplicative** path is available via ``component_combine='multiplicative'``:
+
+\[
+b_{\mathrm{pre}}
+=
+\mathrm{softplus}(e_T)
+\prod_{k\in\{S,H,R\}}
+\max\bigl(\varepsilon,\ 1+\alpha_k e_k\bigr),
+\]
+
+with softsign experts in \((-1,1)\) and \(\varepsilon=10^{-3}\) for stability; magnitude Dense(softplus) and gate \(\hat{y}=p\cdot b\) are unchanged. This is a qualitative / ablation option—not a claimed bake-off win. This is *component* reweighting, not temporal self-attention over a lookback window. Ablating the mixer (SKU-only or stack-only Level-2) is a protocol comparison; locked runs keep the context mixer on.
 
 ![Figure 4. Context-aware component mixer.](paper_figures/fig_m4_context_mixer.png)
 

@@ -75,6 +75,7 @@ def test_lightweight_builder_removed_dead_api_and_uncertainty_path():
         "context_aware_component_mixer",
         "context_film_seasonal_holiday",
         "level1_selection_attention",
+        "component_combine",
     } <= builder_args
 
     # Expert output_activation default is softsign (signed, milder than tanh).
@@ -93,6 +94,7 @@ def test_lightweight_builder_removed_dead_api_and_uncertainty_path():
     assert named_defaults.get("trend_monotonic") is True
     assert named_defaults.get("holiday_monotonic") is True
     assert named_defaults.get("regressor_monotonic") is True
+    assert named_defaults.get("component_combine") == "additive"
 
     source = (SRC_ROOT / "components_lightweight.py").read_text(encoding="utf-8")
     assert "forecast_uncertainty" not in source
@@ -137,6 +139,7 @@ def test_graph_helper_layers_are_keras_serializable():
         "ComponentEntropyLoss",
         "PrintAttentionWeights",
         "SumWeightedComponents",
+        "MultiplicativeComponentCombine",
         "OrthogonalityPenalty",
     }
     decorated = set()
