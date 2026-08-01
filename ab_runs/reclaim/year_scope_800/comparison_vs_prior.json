@@ -1,0 +1,184 @@
+{
+  "protocol": {
+    "n_skus": 800,
+    "seed": 42,
+    "sku_list": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/recompare/sku_list_daily_data42.json",
+    "holiday": "US days_from_* distance_scope=year",
+    "stack": "softsign + mono + L1 attn + mixer on + cross off + additive",
+    "locked_already_year_scoped": true
+  },
+  "h1_iwmae_rounded": {
+    "year_scope": {
+      "deepsequence": 4.114562385144611,
+      "lightgbm": 4.566760334322878,
+      "temporal_transformer": 4.010235619193612
+    },
+    "prior_softsign_mono_mixer": {
+      "deepsequence": 4.045174874056161,
+      "temporal_transformer": 3.991285377915531
+    },
+    "delta": {
+      "deepsequence": {
+        "year_scope": 4.114562385144611,
+        "prior": 4.045174874056161,
+        "delta_year_minus_prior": 0.06938751108844965
+      },
+      "lightgbm": {
+        "year_scope": 4.566760334322878,
+        "prior": null,
+        "delta_year_minus_prior": null
+      },
+      "temporal_transformer": {
+        "year_scope": 4.010235619193612,
+        "prior": 3.991285377915531,
+        "delta_year_minus_prior": 0.01895024127808087
+      }
+    }
+  },
+  "mh_iwmae_rounded": {
+    "deepar_lite": {
+      "1": {
+        "year_scope": null,
+        "prior_multiseed_s42": 4.153730305887858,
+        "delta_year_minus_prior": null
+      },
+      "7": {
+        "year_scope": null,
+        "prior_multiseed_s42": 5.169235524234774,
+        "delta_year_minus_prior": null
+      },
+      "14": {
+        "year_scope": null,
+        "prior_multiseed_s42": 5.0058094603388685,
+        "delta_year_minus_prior": null
+      },
+      "28": {
+        "year_scope": null,
+        "prior_multiseed_s42": 7.211872462977592,
+        "delta_year_minus_prior": null
+      },
+      "60": {
+        "year_scope": null,
+        "prior_multiseed_s42": 4.696130482515926,
+        "delta_year_minus_prior": null
+      }
+    },
+    "deepsequence": {
+      "1": {
+        "year_scope": 4.035189475096706,
+        "prior_multiseed_s42": 4.035189475096706,
+        "delta_year_minus_prior": 0.0
+      },
+      "7": {
+        "year_scope": 4.380770909288969,
+        "prior_multiseed_s42": 4.380770909288969,
+        "delta_year_minus_prior": 0.0
+      },
+      "14": {
+        "year_scope": 4.21082840844264,
+        "prior_multiseed_s42": 4.21082840844264,
+        "delta_year_minus_prior": 0.0
+      },
+      "28": {
+        "year_scope": 6.416658991910611,
+        "prior_multiseed_s42": 6.416658991910611,
+        "delta_year_minus_prior": 0.0
+      },
+      "60": {
+        "year_scope": 3.891100494447214,
+        "prior_multiseed_s42": 3.891100494447214,
+        "delta_year_minus_prior": 0.0
+      }
+    },
+    "lightgbm": {
+      "1": {
+        "year_scope": 4.451433454008903,
+        "prior_multiseed_s42": 4.451433454008903,
+        "delta_year_minus_prior": 0.0
+      },
+      "7": {
+        "year_scope": 4.688254109398693,
+        "prior_multiseed_s42": 4.688254109398693,
+        "delta_year_minus_prior": 0.0
+      },
+      "14": {
+        "year_scope": 4.61450774835337,
+        "prior_multiseed_s42": 4.61450774835337,
+        "delta_year_minus_prior": 0.0
+      },
+      "28": {
+        "year_scope": 6.866033679142354,
+        "prior_multiseed_s42": 6.866033679142354,
+        "delta_year_minus_prior": 0.0
+      },
+      "60": {
+        "year_scope": 4.374971163356817,
+        "prior_multiseed_s42": 4.374971163356817,
+        "delta_year_minus_prior": 0.0
+      }
+    },
+    "temporal_transformer": {
+      "1": {
+        "year_scope": 3.8650105154351624,
+        "prior_multiseed_s42": 3.8603402922253225,
+        "delta_year_minus_prior": 0.004670223209839897
+      },
+      "7": {
+        "year_scope": 4.347344619235764,
+        "prior_multiseed_s42": 4.323104012164445,
+        "delta_year_minus_prior": 0.024240607071318365
+      },
+      "14": {
+        "year_scope": 4.229399815995463,
+        "prior_multiseed_s42": 4.176523080271252,
+        "delta_year_minus_prior": 0.05287673572421081
+      },
+      "28": {
+        "year_scope": 6.930033694625709,
+        "prior_multiseed_s42": 6.877155319975199,
+        "delta_year_minus_prior": 0.052878374650509485
+      },
+      "60": {
+        "year_scope": 4.559655609179425,
+        "prior_multiseed_s42": 4.4945979989127585,
+        "delta_year_minus_prior": 0.0650576102666669
+      }
+    },
+    "tft_lite": {
+      "1": {
+        "year_scope": null,
+        "prior_multiseed_s42": 4.009850099515187,
+        "delta_year_minus_prior": null
+      },
+      "7": {
+        "year_scope": null,
+        "prior_multiseed_s42": 4.565501249057666,
+        "delta_year_minus_prior": null
+      },
+      "14": {
+        "year_scope": null,
+        "prior_multiseed_s42": 4.588457401028189,
+        "delta_year_minus_prior": null
+      },
+      "28": {
+        "year_scope": null,
+        "prior_multiseed_s42": 6.891130346600269,
+        "delta_year_minus_prior": null
+      },
+      "60": {
+        "year_scope": null,
+        "prior_multiseed_s42": 4.308353942095127,
+        "delta_year_minus_prior": null
+      }
+    }
+  },
+  "prior_artifacts": {
+    "h1": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/reclaim/daily_h1_softsign_mono_mixer.json",
+    "mh": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/reclaim/multiseed/daily_s42_mh60.json"
+  },
+  "carparts_monthly_note": "Locked monthly feature_config_monthly.yaml has holiday_encoding: none; Car Parts bake-off does not consume daily holiday_features_*.csv.",
+  "pending": [
+    "multi-seed 43\u201346 year-scope retest (not run in this pass)",
+    "optional country+year Jubilant rebuild (protocol change vs locked US)"
+  ]
+}

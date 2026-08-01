@@ -70,3 +70,4 @@ data/raw/
 
 # Large regenerated holiday CSVs from year-scope probe (rebuild via script)
 paper_figures/year_scope_retest/daily_holiday_year_scope_us/
+ab_runs/reclaim/year_scope_800/holiday_features_year/

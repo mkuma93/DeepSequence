@@ -101,7 +101,61 @@ def parse_args():
         "--out_json",
         default=str(ROOT / "eval_results_same_features_v16_distance_holidays.json"),
     )
+    # DeepSequence stack overrides (None = preferred builder defaults:
+    # softsign + mono + mixer on + L1 attn on + cross off + additive).
+    p.add_argument("--output_activation", default=None)
+    p.add_argument("--trend_monotonic", type=int, default=None)
+    p.add_argument("--holiday_monotonic", type=int, default=None)
+    p.add_argument("--regressor_monotonic", type=int, default=None)
+    p.add_argument("--context_aware_component_mixer", type=int, default=None)
+    p.add_argument("--context_film_seasonal_holiday", type=int, default=None)
+    p.add_argument("--level1_selection_attention", type=int, default=None)
+    p.add_argument(
+        "--use_cross_layers",
+        type=int,
+        default=None,
+        help="DCN cross on component outputs (1/0). None = builder default (False).",
+    )
     return p.parse_args()
+
+
+def _ds_builder_kwargs(args) -> dict:
+    """Resolve DeepSequence stack kwargs from CLI (explicit overrides only)."""
+    import inspect
+
+    sig = inspect.signature(build_hierarchical_model_lightweight)
+    defaults = {
+        k: sig.parameters[k].default
+        for k in (
+            "output_activation",
+            "trend_monotonic",
+            "holiday_monotonic",
+            "regressor_monotonic",
+            "context_aware_component_mixer",
+            "context_film_seasonal_holiday",
+            "level1_selection_attention",
+            "use_cross_layers",
+        )
+    }
+    out = dict(defaults)
+    for key in (
+        "output_activation",
+        "trend_monotonic",
+        "holiday_monotonic",
+        "regressor_monotonic",
+        "context_aware_component_mixer",
+        "context_film_seasonal_holiday",
+        "level1_selection_attention",
+        "use_cross_layers",
+    ):
+        val = getattr(args, key, None)
+        if val is None:
+            continue
+        if key == "output_activation":
+            out[key] = str(val)
+        else:
+            out[key] = bool(int(val))
+    return out
 
 
 def build_full_feature_sequences(
@@ -360,9 +414,14 @@ def main():
                 f"(prior={zero_rate:.3f}, p_scale_init={args.ds_gate_prob_scale_init}, "
                 f"rate_match_w={args.ds_gate_rate_match_weight})"
             )
+        ds_stack = _ds_builder_kwargs(args)
         print(
             f"  per-SKU BCE imbalance ON "
             f"(panel_zr={zero_rate:.3f}, n_skus={n_skus})"
+        )
+        print(
+            "  ds_stack="
+            + ", ".join(f"{k}={v}" for k, v in ds_stack.items())
         )
         base = build_hierarchical_model_lightweight(
             n_temporal_features=len(cfg.trend_indices),
@@ -373,7 +432,6 @@ def main():
             hidden_dim=48,
             sku_embedding_dim=4,
             dropout_rate=0.23,
-            use_cross_layers=True,
             use_intermittent=True,
             n_changepoints=15,
             gate_use_raw_regressors=train_cal,
@@ -388,6 +446,7 @@ def main():
                 float(args.ds_gate_rate_match_weight) if train_cal else 0.0
             ),
             gate_rate_match_target=nz_target if train_cal else None,
+            **ds_stack,
         )
         _ = base(
             [*(np.zeros((1, x.shape[1]), np.float32) for x in tr), np.zeros((1, 1), np.int32)],

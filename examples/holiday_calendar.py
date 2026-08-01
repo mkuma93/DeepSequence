@@ -15,8 +15,8 @@ import pandas as pd
 # Distance scope for days_from_* / months_from_*:
 #   "year"    — signed distance to this calendar year's occurrence only
 #               (Prophet-like within-year; resets at year boundary).
-#   "nearest" — signed distance to nearest occurrence across years
-#               (legacy; matches locked holiday_features_*.csv until regenerated).
+#               Locked jubilant holiday_features_*.csv already match year.
+#   "nearest" — signed distance to nearest occurrence across years (legacy contrast).
 DistanceScope = Literal["year", "nearest"]
 DEFAULT_DISTANCE_SCOPE: DistanceScope = "year"
 
@@ -756,9 +756,10 @@ def build_country_holiday_distances(
     Country is taken from ``country_col`` if present, else parsed from
     ``{Country}_{code}`` in ``sku_col``.
 
-    Default ``distance_scope='year'`` (within-year reset). Locked bake-off
-    ``holiday_features_*.csv`` files remain nearest-style until regenerated;
-    pass ``distance_scope='nearest'`` only when reproducing those CSVs.
+    Default ``distance_scope='year'`` (within-year reset). Locked jubilant
+    ``holiday_features_*.csv`` already match year-scope US rebuilds (max abs 0);
+    pass ``distance_scope='nearest'`` only for explicit nearest-across-years
+    contrasts.
     """
     if country_col is not None and country_col in df.columns:
         countries = df[country_col].tolist()

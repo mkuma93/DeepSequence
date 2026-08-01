@@ -1,0 +1,75 @@
+{
+  "distance_scope": "year",
+  "calendar": "US",
+  "holiday_keys": [
+    "NewYear",
+    "MLK",
+    "Presidents",
+    "Valentine",
+    "Easter",
+    "Mothers",
+    "Memorial",
+    "Fathers",
+    "July4",
+    "Labor",
+    "Halloween",
+    "Thanksgiving",
+    "BlackFriday",
+    "Christmas",
+    "NewYearEve"
+  ],
+  "jubilant_data_dir": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/jubilant/data",
+  "year_scope_data_dir": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/reclaim/year_scope_800/holiday_features_year",
+  "note": "Apples-to-apples protocol fix vs locked US holiday key set. Country-aware calendars are optional (B) and not used here.",
+  "splits": {
+    "holiday_features_train.csv": {
+      "rows": 3211905,
+      "sha256_year": "4586b819a9c5a75d775068f4c29547cfb9e026d20166a6ac6b4a13deb5980931",
+      "sha256_locked": "3a8db6849e98a980b94fe4ab7f2891301b3d103c35bfa22a4be0b68c5102876f",
+      "max_abs_vs_locked": 0.0,
+      "n_rows_differ_vs_locked": 0,
+      "sample_n": 20000,
+      "max_abs_vs_nearest_sample": 385.0,
+      "n_rows_differ_vs_nearest_sample": 19952,
+      "example_row0": {
+        "ds": "2010-06-07 00:00:00",
+        "days_from_Christmas_year": -201.0,
+        "days_from_Christmas_locked": -201.0,
+        "days_from_Christmas_nearest_sample": 164.0
+      }
+    },
+    "holiday_features_val.csv": {
+      "rows": 688987,
+      "sha256_year": "03a5a05de59873a9224c50a8db58ce636001541a8aa2c8749850224a9f1a4a30",
+      "sha256_locked": "04f932c055f03cefcfd333297d44333175b10e4c410081903223247f7734551f",
+      "max_abs_vs_locked": 0.0,
+      "n_rows_differ_vs_locked": 0,
+      "sample_n": 20000,
+      "max_abs_vs_nearest_sample": 365.0,
+      "n_rows_differ_vs_nearest_sample": 19838,
+      "example_row0": {
+        "ds": "2011-06-03 00:00:00",
+        "days_from_Christmas_year": -205.0,
+        "days_from_Christmas_locked": -205.0,
+        "days_from_Christmas_nearest_sample": 160.0
+      }
+    },
+    "holiday_features_test.csv": {
+      "rows": 692312,
+      "sha256_year": "5739876205e18ffda41facc5632444e35e1cdd911782398d0320b0dd4ddee0bc",
+      "sha256_locked": "fd5f93da8d84f436744082d7d18d7415124ef2203f84bb7c4010329ffe424348",
+      "max_abs_vs_locked": 0.0,
+      "n_rows_differ_vs_locked": 0,
+      "sample_n": 20000,
+      "max_abs_vs_nearest_sample": 365.0,
+      "n_rows_differ_vs_nearest_sample": 19971,
+      "example_row0": {
+        "ds": "2011-08-20 00:00:00",
+        "days_from_Christmas_year": -127.0,
+        "days_from_Christmas_locked": -127.0,
+        "days_from_Christmas_nearest_sample": -127.0
+      }
+    }
+  },
+  "locked_already_year_scoped": true
+}
