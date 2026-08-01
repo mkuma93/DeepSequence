@@ -16,9 +16,11 @@ from holiday_calendar import (  # noqa: E402
     NA_DISTANCE_DAYS,
     binary_holiday_features,
     build_country_holiday_distances,
+    build_country_month_holiday_features,
     country_from_sku_id,
     days_from_holiday_features,
     holiday_dates_for_year,
+    month_has_holiday_features,
     normalize_country,
 )
 
@@ -157,3 +159,51 @@ def test_us_calendar_matches_legacy_defaults():
     idx = dates[dates == "2024-11-28"].index[0]
     assert dist.loc[idx, "days_from_Thanksgiving"] == 0.0
     assert dist.loc[idx, "days_from_BlackFriday"] == -1.0
+
+
+def test_month_has_us_november_thanksgiving():
+    dates = pd.Series([pd.Timestamp(2024, 11, 1), pd.Timestamp(2024, 7, 1)])
+    mh = month_has_holiday_features(dates, country="US")
+    assert mh.loc[0, "month_has_Thanksgiving"] == 1.0
+    assert mh.loc[0, "month_has_BlackFriday"] == 1.0
+    assert mh.loc[0, "month_has_July4"] == 0.0
+    assert mh.loc[1, "month_has_July4"] == 1.0
+
+
+def test_month_has_uk_july4_off_and_labor_on():
+    # UK Early May bank holiday is Labor slot; July4 N/A → month_has 0
+    dates = pd.Series([pd.Timestamp(2011, 5, 1), pd.Timestamp(2011, 7, 1)])
+    mh = month_has_holiday_features(dates, country="UK")
+    assert mh.loc[0, "month_has_Labor"] == 1.0
+    assert mh.loc[1, "month_has_July4"] == 0.0
+
+
+def test_build_country_month_has_carparts_defaults_us():
+    """Monash Car Parts T#### ids have no country prefix → default US."""
+    df = pd.DataFrame(
+        {
+            "id_var": ["T1851", "United Kingdom_1"],
+            "ds": [pd.Timestamp(2024, 7, 1), pd.Timestamp(2011, 5, 1)],
+            "Quantity": [1.0, 1.0],
+        }
+    )
+    hol = build_country_month_holiday_features(
+        df, encoding="month_has", default_country="US"
+    )
+    assert hol.loc[0, "month_has_July4"] == 1.0  # US default for T1851
+    assert hol.loc[1, "month_has_Labor"] == 1.0  # UK Early May
+    assert hol.loc[1, "month_has_July4"] == 0.0
+
+
+def test_months_from_country_sentinel_for_na():
+    df = pd.DataFrame(
+        {
+            "id_var": ["United Kingdom_1"],
+            "ds": [pd.Timestamp(2011, 7, 1)],
+            "Quantity": [1.0],
+        }
+    )
+    hol = build_country_month_holiday_features(
+        df, encoding="months_from", default_country="US"
+    )
+    assert hol.loc[0, "months_from_July4"] == NA_DISTANCE_DAYS

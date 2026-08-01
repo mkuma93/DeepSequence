@@ -1,13 +1,14 @@
-# Feature Configuration — Monthly forecast-only (month_has holidays)
-# Version: 1.7-monthly-month-has-forecast
+# Feature Configuration — Monthly forecast-only (country month_has holidays)
+# Version: 1.7-monthly-country-hol-forecast
 # Date: 2026-08-01
 #
 # NOT the locked Car Parts bake-off contract (feature_config_monthly.yaml
-# keeps holiday_encoding: none). This YAML enables single-country month_has_*
-# (metadata.holiday_country, default US) for qualitative / forecast-only
-# experiments. For country-local calendars use
-# feature_config_monthly_country_holiday.yaml. Recursive assemble_monthly_row
-# accepts an optional holiday_values vector when rolling out with holidays.
+# keeps holiday_encoding: none). Enables month_has_* rebuilt from
+# per-country calendars (same shared keys / country rules as daily).
+#
+# Car Parts Monash ids are bare T#### with no country prefix → default US
+# calendar (metadata.holiday_country_default). Daily Online Retail panels
+# parse country from id_var prefix when present.
 
 trend_features:
   - name: month_index
@@ -137,7 +138,7 @@ model_architecture:
     feature_names:
       [lag_1, lag_2, lag_12, months_since_last_sale, last_sale_quantity, lifetime_cumsum]
   holiday_component:
-    description: "month_has_* binary indicators (forecast-only; not locked bake-off)"
+    description: "month_has_* from country-local calendars (forecast-only)"
     feature_indices: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
     feature_names:
       [month_has_NewYear, month_has_MLK, month_has_Presidents, month_has_Valentine,
@@ -146,13 +147,30 @@ model_architecture:
        month_has_BlackFriday, month_has_Christmas, month_has_NewYearEve]
 
 metadata:
-  version: "1.7-monthly-month-has-forecast"
+  version: "1.7-monthly-country-hol-forecast"
   total_features: 26
   created_date: "2026-08-01"
   frequency: monthly
-  description: "Forecast-only monthly with month_has holidays; locked carparts YAML stays holiday-free"
+  description: >
+    Forecast-only monthly with country-aware month_has holidays; locked
+    carparts YAML stays holiday_encoding: none
   holiday_encoding: month_has
-  holiday_country: US
+  holiday_calendar: country
+  holiday_country_default: US
+  # Optional explicit column; otherwise parsed from id_var prefix before `_`.
+  # holiday_country_column: country
+  supported_calendars:
+    - US
+    - UK
+    - AU
+    - IE
+    - FR
+    - DE
+    - NL
+    - EU
+  dataset_context: >
+    Car Parts has no country on id_var (T####); default US calendar applies.
+    Online Retail-style prefixes use the same country rules as daily.
   intermittent_features:
     gap_unit: months
     cold_start_days_since_sentinel: -1.0

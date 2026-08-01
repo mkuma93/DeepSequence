@@ -172,7 +172,13 @@ def mh_metrics(y_true, yhat, p, report_horizons=None, mase_scale=None):
     return out
 
 
-def assemble_monthly_row(date, state, lag_periods, tmin, span):
+def assemble_monthly_row(date, state, lag_periods, tmin, span, holiday_values=None):
+    """Assemble one monthly feature row (locked 11-dim; optional holiday tail).
+
+    ``holiday_values`` appends forecast-only month_has_* / months_from_* when
+    using a gated holiday YAML. Locked bake-off calls omit it (holiday_encoding
+    none → 11 features).
+    """
     date = pd.Timestamp(date).normalize()
     mi = float(date.year * 12 + date.month)
     month = float(date.month)
@@ -193,6 +199,8 @@ def assemble_monthly_row(date, state, lag_periods, tmin, span):
             float(feats["lifetime_cumsum"]),
         ]
     )
+    if holiday_values is not None:
+        row.extend(np.asarray(holiday_values, dtype=np.float32).reshape(-1).tolist())
     return np.asarray(row, np.float32)
 
 

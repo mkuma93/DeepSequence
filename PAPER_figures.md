@@ -112,6 +112,20 @@ Trend time index; fixed Fourier (learnable \(\omega\) optional); four experts (T
 
 [Open PNG](paper_figures/fig_forecast_daily_country_hol_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_country_hol_recursive.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_country_hol_recursive.png)
 
+## Figure 22. Car Parts one-step (country month_has, default US)
+
+Qualitative only (seed 42; 20 epochs). Car Parts `T####` ids have no country → US calendar. Locked monthly bake-off stays `holiday_encoding: none`.
+
+![Car Parts country month_has one-step](paper_figures/fig_forecast_carparts_country_hol_onestep.png)
+
+[Open PNG](paper_figures/fig_forecast_carparts_country_hol_onestep.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_carparts_country_hol_onestep.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_carparts_country_hol_onestep.png)
+
+## Figure 23. Car Parts recursive (country month_has, default US)
+
+![Car Parts country month_has recursive](paper_figures/fig_forecast_carparts_country_hol_recursive.png)
+
+[Open PNG](paper_figures/fig_forecast_carparts_country_hol_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_carparts_country_hol_recursive.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_carparts_country_hol_recursive.png)
+
 ## Figure 18. Additive vs multiplicative Level-2 combine (one-step)
 
 Qualitative only (same SKUs/seed; country-holiday feature config). Default bake-off remains additive \(\sum \alpha_k e_k\); multiplicative is \(\mathrm{softplus}(e_T)\prod \max(\varepsilon,1+\alpha_k e_k)\). **Not** a claimed bake-off win.

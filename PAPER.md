@@ -487,7 +487,21 @@ Locked bake-off features remain **distance-only** (`days_from_*`; v1.6). Separat
 
 *Figure 17. Recursive rollouts under country calendars; qualitative conclusion unchanged vs Figure 15.*
 
-**Takeaway.** Enabling binary holiday indicators—even with **country-correct** calendars—does **not**, on this qualitative panel, produce visible holiday-driven forecast spikes. Remaining limits: (i) intermittency dominated by lag/gate rather than calendar; (ii) HolidayComponent still maps channels through absolute-distance-style monotone hinges, so \(0/1\) binaries are a weak inductive fit; (iii) small qualitative SKU pool. Locked IWMAE tables are unchanged. A gated monthly `month_has` forecast config exists (`feature_config_monthly_month_has.yaml`) but was not used to regenerate Car Parts plots (locked monthly assemble path has no holiday block).
+**Takeaway.** Enabling binary holiday indicators—even with **country-correct** calendars—does **not**, on this qualitative panel, produce visible holiday-driven forecast spikes. Remaining limits: (i) intermittency dominated by lag/gate rather than calendar; (ii) HolidayComponent still maps channels through absolute-distance-style monotone hinges, so \(0/1\) binaries are a weak inductive fit; (iii) small qualitative SKU pool. Locked IWMAE tables are unchanged.
+
+**Monthly Car Parts (`month_has`).** Locked bake-off keeps `feature_config_monthly.yaml` with `holiday_encoding: none`. A gated forecast-only config (`feature_config_monthly_country_holiday.yaml`) adds 15 `month_has_*` channels rebuilt from the same country calendars as daily. Monash Car Parts `id_var`s are bare `T####` with **no country prefix**, so the run uses **`holiday_country_default: US`** (documented; configurable). Qualitative dump: same three plot SKUs, seed 42, 20 epochs, vs a matched no-holiday control on the same pool.
+
+![Figure 22. Car Parts one-step with country month_has (default US).](paper_figures/fig_forecast_carparts_country_hol_onestep.png)
+
+[Open PNG](paper_figures/fig_forecast_carparts_country_hol_onestep.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_carparts_country_hol_onestep.png)
+
+*Figure 22. Monthly one-step test window under country-aware `month_has_*` (US default). DeepSequence stays near a flat mean rate (\(\hat{y}\approx 0.4\)–\(0.6\)); red markers fire on nearly every month because the shared US key set puts at least one holiday in each calendar month of this window—so an “any-holiday” flag has no variance. Per-key correlations on six points are unstable (e.g. Halloween vs Christmas signs flip) and do **not** show holiday-matched spikes. Matched no-holiday control IWMAE on these three SKUs is slightly better (\(\Delta\mathrm{IWMAE}\approx +0.03\) to \(+0.06\) with holidays)—**not** a claimed bake-off win.*
+
+![Figure 23. Car Parts recursive with country month_has (default US).](paper_figures/fig_forecast_carparts_country_hol_recursive.png)
+
+[Open PNG](paper_figures/fig_forecast_carparts_country_hol_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_carparts_country_hol_recursive.png)
+
+*Figure 23. Recursive \(h{=}1..2\) / \(h{=}1..6\) under the same monthly holiday config. Rollouts remain mean-rate-like; holidays do not recover sparse sale lumps. Locked Car Parts IWMAE bake-off is unchanged.*
 
 ### 5.8 Spike-aware loss diagnostics (daily, qualitative)
 

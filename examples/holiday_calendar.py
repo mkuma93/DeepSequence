@@ -440,6 +440,118 @@ def months_from_holiday_features(
     return pd.DataFrame(out)
 
 
+def month_has_holiday_features_by_country(
+    dates: pd.Series,
+    countries: Sequence[str],
+    holiday_keys: Sequence[str] = HOLIDAY_KEYS,
+    default_country: str = "US",
+) -> pd.DataFrame:
+    """
+    Row-wise country calendars with a unified ``month_has_*`` schema.
+
+    N/A local holidays stay 0 for that country/month.
+    """
+    ds = pd.to_datetime(dates).reset_index(drop=True)
+    if len(ds) != len(countries):
+        raise ValueError(
+            f"dates length {len(ds)} != countries length {len(countries)}"
+        )
+    codes = np.asarray(
+        [normalize_country(c, default=default_country) for c in countries],
+        dtype=object,
+    )
+    out = {
+        f"month_has_{k}": np.zeros(len(ds), dtype=np.float32) for k in holiday_keys
+    }
+    for code in sorted(set(codes.tolist())):
+        mask = codes == code
+        if not mask.any():
+            continue
+        built = month_has_holiday_features(
+            ds.loc[mask],
+            holiday_keys=holiday_keys,
+            country=code,
+        )
+        for k in holiday_keys:
+            col = f"month_has_{k}"
+            out[col][mask] = built[col].to_numpy(dtype=np.float32)
+    return pd.DataFrame(out)
+
+
+def months_from_holiday_features_by_country(
+    dates: pd.Series,
+    countries: Sequence[str],
+    holiday_keys: Sequence[str] = HOLIDAY_KEYS,
+    default_country: str = "US",
+) -> pd.DataFrame:
+    """Row-wise country calendars with a unified ``months_from_*`` schema."""
+    ds = pd.to_datetime(dates).reset_index(drop=True)
+    if len(ds) != len(countries):
+        raise ValueError(
+            f"dates length {len(ds)} != countries length {len(countries)}"
+        )
+    codes = np.asarray(
+        [normalize_country(c, default=default_country) for c in countries],
+        dtype=object,
+    )
+    out = {
+        f"months_from_{k}": np.full(len(ds), NA_DISTANCE_DAYS, dtype=np.float32)
+        for k in holiday_keys
+    }
+    for code in sorted(set(codes.tolist())):
+        mask = codes == code
+        if not mask.any():
+            continue
+        built = months_from_holiday_features(
+            ds.loc[mask],
+            holiday_keys=holiday_keys,
+            country=code,
+        )
+        for k in holiday_keys:
+            col = f"months_from_{k}"
+            out[col][mask] = built[col].to_numpy(dtype=np.float32)
+    return pd.DataFrame(out)
+
+
+def build_country_month_holiday_features(
+    df: pd.DataFrame,
+    holiday_keys: Sequence[str] = HOLIDAY_KEYS,
+    encoding: str = "month_has",
+    sku_col: str = "id_var",
+    date_col: str = "ds",
+    country_col: Optional[str] = None,
+    default_country: str = "US",
+) -> pd.DataFrame:
+    """
+    Build aligned monthly holiday frame for a panel.
+
+    ``encoding`` is ``month_has`` or ``months_from``. Country is taken from
+    ``country_col`` if present, else parsed from ``{Country}_{code}`` in
+    ``sku_col`` (falls back to ``default_country`` when the prefix is not a
+    known calendar — e.g. Monash Car Parts ``T####`` ids).
+    """
+    enc = str(encoding).lower()
+    if country_col is not None and country_col in df.columns:
+        countries = df[country_col].tolist()
+    else:
+        countries = countries_from_sku_ids(df[sku_col], default=default_country)
+    if enc == "months_from":
+        return months_from_holiday_features_by_country(
+            df[date_col],
+            countries,
+            holiday_keys=holiday_keys,
+            default_country=default_country,
+        )
+    if enc == "month_has":
+        return month_has_holiday_features_by_country(
+            df[date_col],
+            countries,
+            holiday_keys=holiday_keys,
+            default_country=default_country,
+        )
+    raise ValueError(f"Unsupported monthly holiday encoding: {encoding}")
+
+
 def days_from_holiday_features(
     dates: pd.Series,
     holiday_keys: Sequence[str] = HOLIDAY_KEYS,

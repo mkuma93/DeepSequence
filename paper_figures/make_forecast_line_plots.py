@@ -22,6 +22,11 @@ Additive vs multiplicative Level-2 combine (same SKUs/seed; no TST):
   python paper_figures/make_forecast_line_plots.py --only daily_combine \\
     --epochs 20 --feature_config_daily feature_config_daily_country_holiday.yaml \\
     --fig_prefix_daily fig_forecast_daily_mult --holiday_markers 1
+
+Monthly Car Parts country month_has (forecast-only; locked YAML stays none):
+  python paper_figures/make_forecast_line_plots.py --only carparts --epochs 20 \\
+    --feature_config_monthly feature_config_monthly_country_holiday.yaml \\
+    --fig_prefix_carparts fig_forecast_carparts_country_hol --holiday_markers 1
 """
 
 from __future__ import annotations
@@ -61,6 +66,10 @@ from holiday_calendar import (
     RETAIL_WINDOW_KEYS,
     binary_holiday_features,
     build_country_holiday_distances,
+    build_country_month_holiday_features,
+    country_from_sku_id,
+    month_has_holiday_features,
+    months_from_holiday_features,
 )
 from multihorizon_rollout import (
     build_sku_timelines,
@@ -989,6 +998,47 @@ def run_daily_combine_compare(args):
     print("daily combine-compare done")
 
 
+def _monthly_holiday_vector_for_date(date, cfg, sku_id):
+    """Return ordered holiday feature vector for one month, or None if disabled."""
+    if not cfg.holiday_names:
+        return None
+    meta = cfg.config.get("metadata", {}) or {}
+    encoding = str(meta.get("holiday_encoding", "none")).lower()
+    if encoding not in ("month_has", "months_from"):
+        return None
+    prefix = "months_from_" if encoding == "months_from" else "month_has_"
+    keys = [n.replace(prefix, "", 1) for n in cfg.holiday_names]
+    default_country = str(
+        meta.get("holiday_country_default", meta.get("holiday_country", "US"))
+    )
+    country = country_from_sku_id(sku_id, default=default_country)
+    dates = pd.Series([pd.Timestamp(date)])
+    if encoding == "months_from":
+        built = months_from_holiday_features(dates, holiday_keys=keys, country=country)
+    else:
+        built = month_has_holiday_features(dates, holiday_keys=keys, country=country)
+    return built[[f"{prefix}{k}" for k in keys]].to_numpy(np.float32).reshape(-1)
+
+
+def _month_has_mark_dates(dates, sku_id, cfg):
+    """Calendar months (YYYY-MM-DD) that contain any local holiday."""
+    if not cfg.holiday_names:
+        return []
+    meta = cfg.config.get("metadata", {}) or {}
+    encoding = str(meta.get("holiday_encoding", "none")).lower()
+    if encoding != "month_has":
+        return []
+    keys = [n.replace("month_has_", "", 1) for n in cfg.holiday_names]
+    default_country = str(
+        meta.get("holiday_country_default", meta.get("holiday_country", "US"))
+    )
+    country = country_from_sku_id(sku_id, default=default_country)
+    ds = pd.to_datetime(pd.Series(dates))
+    built = month_has_holiday_features(ds, holiday_keys=keys, country=country)
+    any_hol = built.to_numpy(np.float32).max(axis=1) > 0.5
+    return [str(pd.Timestamp(d).normalize().date()) for d, flag in zip(ds, any_hol) if flag]
+
+
 def run_carparts(args):
     data_dir = Path(args.carparts_dir)
     locked = json.loads(Path(args.sku_list_carparts).read_text())
@@ -1021,7 +1071,61 @@ def run_carparts(args):
     sku_train, sku_val = enc(train_df), enc(val_df)
     zero_rate = float((y_train == 0).mean())
 
-    cfg = load_feature_config(str(ROOT / "feature_config_monthly.yaml"))
+    cfg_path = Path(args.feature_config_monthly or (ROOT / "feature_config_monthly.yaml"))
+    if not cfg_path.is_absolute():
+        cfg_path = ROOT / cfg_path
+    cfg = load_feature_config(str(cfg_path))
+    fig_prefix = str(args.fig_prefix_carparts or "fig_forecast_carparts")
+    meta = cfg.config.get("metadata", {}) or {}
+    use_country = _country_calendar_enabled(cfg)
+    default_country = str(
+        meta.get("holiday_country_default", meta.get("holiday_country", "US"))
+    )
+    print(
+        f"feature_config={cfg_path.name} n_feat={cfg.total_features} "
+        f"n_holiday={len(cfg.holiday_indices)} holiday_encoding={meta.get('holiday_encoding')} "
+        f"holiday_calendar={meta.get('holiday_calendar', 'static')} "
+        f"default_country={default_country}"
+    )
+    if use_country and cfg.holiday_names:
+        enc_name = str(meta.get("holiday_encoding", "month_has"))
+        print(
+            f"rebuilding monthly holidays ({enc_name}) from country calendars "
+            f"(sku prefix / default={default_country})"
+        )
+        keys = [
+            n.replace("month_has_", "", 1).replace("months_from_", "", 1)
+            for n in cfg.holiday_names
+        ]
+        country_col = meta.get("holiday_country_column")
+        h_tr = build_country_month_holiday_features(
+            train_df,
+            holiday_keys=keys,
+            encoding=enc_name,
+            sku_col="id_var",
+            date_col="ds",
+            country_col=country_col if country_col in train_df.columns else None,
+            default_country=default_country,
+        )
+        h_va = build_country_month_holiday_features(
+            val_df,
+            holiday_keys=keys,
+            encoding=enc_name,
+            sku_col="id_var",
+            date_col="ds",
+            country_col=country_col if country_col in val_df.columns else None,
+            default_country=default_country,
+        )
+        h_te = build_country_month_holiday_features(
+            test_df,
+            holiday_keys=keys,
+            encoding=enc_name,
+            sku_col="id_var",
+            date_col="ds",
+            country_col=country_col if country_col in test_df.columns else None,
+            default_country=default_country,
+        )
+
     Xtr_df, states = cfg.create_features(train_df, h_tr, return_states=True)
     Xva_df, states = cfg.create_features(val_df, h_va, prior_states=states, return_states=True)
     Xte_df, _ = cfg.create_features(test_df, h_te, prior_states=states, return_states=True)
@@ -1045,7 +1149,18 @@ def run_carparts(args):
 
     print("=== train DeepSequence (carparts) ===")
     ds_model = _train_ds(
-        cfg, tr, va, y_train, y_val, sku_train, sku_val, zero_rate, n_skus, args.epochs, args.batch_size
+        cfg,
+        tr,
+        va,
+        y_train,
+        y_val,
+        sku_train,
+        sku_val,
+        zero_rate,
+        n_skus,
+        args.epochs,
+        args.batch_size,
+        component_combine=args.component_combine,
     )
 
     # one-step DS + TSB on test
@@ -1069,27 +1184,71 @@ def run_carparts(args):
         mask = s["ds"] < np.datetime64(pd.Timestamp(row.ds))
         yhat_tsb[i] = croston_variants(s["y"][mask])["tsb"]
 
+    use_hol_marks = bool(cfg.holiday_names) or bool(args.holiday_markers)
     onestep = {}
-    dump_onestep = {"protocol": "one_step_test", "seed": args.seed, "skus": {}}
+    dump_onestep = {
+        "protocol": "one_step_test",
+        "seed": args.seed,
+        "feature_config": str(cfg_path.name),
+        "holiday_encoding": meta.get("holiday_encoding"),
+        "holiday_calendar": meta.get("holiday_calendar", "static"),
+        "holiday_country_default": default_country,
+        "skus": {},
+        "metrics": {},
+    }
+    hol_flag_all = np.zeros(len(test_df), dtype=np.float64)
+    if cfg.holiday_names and str(meta.get("holiday_encoding", "")).lower() == "month_has":
+        hol_cols = [c for c in Xte_df.columns if c.startswith("month_has_")]
+        if hol_cols:
+            hol_flag_all = Xte_df[hol_cols].to_numpy(np.float64).max(axis=1)
+
     for sku in plot_skus:
         m = test_df["id_var"].astype(str).to_numpy() == sku
         if not m.any():
             continue
+        dates = [str(x)[:10] for x in pd.to_datetime(test_df.loc[m, "ds"])]
+        y_sku = test_df.loc[m, "Quantity"].to_numpy(np.float64)
+        ds_sku = yhat_ds[m].astype(np.float64)
+        base_sku = yhat_tsb[m].astype(np.float64)
+        hol_dates = _month_has_mark_dates(dates, sku, cfg) if use_hol_marks else []
+        hol_flag = hol_flag_all[m]
+        corr = float("nan")
+        if hol_flag.std() > 1e-12 and ds_sku.std() > 1e-12:
+            corr = float(np.corrcoef(ds_sku, hol_flag)[0, 1])
         d = {
-            "dates": [str(x)[:10] for x in pd.to_datetime(test_df.loc[m, "ds"])],
-            "y": test_df.loc[m, "Quantity"].to_numpy(np.float64).tolist(),
-            "ds": yhat_ds[m].astype(np.float64).tolist(),
-            "baseline": yhat_tsb[m].astype(np.float64).tolist(),
+            "dates": dates,
+            "y": y_sku.tolist(),
+            "ds": ds_sku.tolist(),
+            "baseline": base_sku.tolist(),
+            "holiday_dates": hol_dates,
+            "iwmae_ds": _iwmae(y_sku, ds_sku),
+            "iwmae_baseline": _iwmae(y_sku, base_sku),
+            "corr_yhat_month_has_any": corr,
         }
         onestep[sku] = d
         dump_onestep["skus"][sku] = d
+        dump_onestep["metrics"][sku] = {
+            "iwmae_ds": d["iwmae_ds"],
+            "iwmae_baseline": d["iwmae_baseline"],
+            "corr_yhat_month_has_any": corr,
+        }
+
+    title_os = "Car Parts (monthly) — one-step forecasts (test window)"
+    if use_country and cfg.holiday_names:
+        title_os = (
+            f"Car Parts monthly — country month_has "
+            f"(default {default_country}; no country on T#### ids)"
+        )
+    elif cfg.holiday_names:
+        title_os = "Car Parts monthly — one-step with month_has holidays"
     _plot_onestep_panel(
         onestep,
-        "Car Parts (monthly) — one-step forecasts (test window)",
-        "fig_forecast_carparts_onestep",
+        title_os,
+        f"{fig_prefix}_onestep",
         "TSB",
+        holiday_marks=use_hol_marks,
     )
-    (OUT / "fig_forecast_carparts_onestep.json").write_text(json.dumps(dump_onestep, indent=2))
+    (OUT / f"{fig_prefix}_onestep.json").write_text(json.dumps(dump_onestep, indent=2))
 
     # Recursive MH with monthly feature assembler (not daily rollout_tabular).
     from eval_public_carparts_mh_all import assemble_monthly_row
@@ -1106,6 +1265,10 @@ def run_carparts(args):
         "protocol": "recursive_monthly_from_pre_test_origin",
         "seed": args.seed,
         "horizon": H,
+        "feature_config": str(cfg_path.name),
+        "holiday_encoding": meta.get("holiday_encoding"),
+        "holiday_calendar": meta.get("holiday_calendar", "static"),
+        "holiday_country_default": default_country,
         "skus": {},
     }
     for sku in plot_skus:
@@ -1127,43 +1290,57 @@ def run_carparts(args):
         for d, q in zip(dates[: origin_i + 1], ys[: origin_i + 1]):
             st.update(pd.Timestamp(d), float(q))
         y_true = ys[first_test : first_test + H]
-        yhat_ds = np.zeros(H, np.float64)
-        yhat_tsb = np.zeros(H, np.float64)
+        yhat_ds_h = np.zeros(H, np.float64)
+        yhat_tsb_h = np.zeros(H, np.float64)
         y_hist_tsb = list(ys[: origin_i + 1].astype(float))
         for h in range(H):
             date = pd.Timestamp(dates[first_test + h])
-            feat = assemble_monthly_row(date, st, lag_periods, tmin_raw, span_raw)
+            hol_vec = _monthly_holiday_vector_for_date(date, cfg, sku)
+            feat = assemble_monthly_row(
+                date, st, lag_periods, tmin_raw, span_raw, holiday_values=hol_vec
+            )
             Xrow = feat.reshape(1, -1).astype(np.float32)
             parts = split_components(Xrow, cfg)
             sk = np.array([[sku_map[sku]]], np.int32)
             pred = ds_model.predict([*parts, sk], verbose=0)
             yh = float(np.asarray(pred["final_forecast"]).reshape(-1)[0])
-            yhat_ds[h] = max(yh, 0.0)
-            st.update(date, yhat_ds[h])
+            yhat_ds_h[h] = max(yh, 0.0)
+            st.update(date, yhat_ds_h[h])
             tsb = croston_variants(np.asarray(y_hist_tsb, float))["tsb"]
-            yhat_tsb[h] = tsb
+            yhat_tsb_h[h] = tsb
             y_hist_tsb.append(tsb)
         d = {
             "y": y_true.tolist(),
-            "ds": yhat_ds.tolist(),
-            "baseline": yhat_tsb.tolist(),
+            "ds": yhat_ds_h.tolist(),
+            "baseline": yhat_tsb_h.tolist(),
             "origin_date": str(dates[origin_i])[:10],
             "test_start": str(dates[first_test])[:10],
+            "iwmae_ds": _iwmae(y_true, yhat_ds_h),
+            "iwmae_baseline": _iwmae(y_true, yhat_tsb_h),
         }
         horiz[sku] = d
         dump_h["skus"][sku] = d
 
     if horiz:
+        title_rec = "Car Parts recursive forecasts from pre-test origin (DS vs TSB)"
+        if use_country and cfg.holiday_names:
+            title_rec = (
+                f"Car Parts recursive — country month_has "
+                f"(default {default_country})"
+            )
+        elif cfg.holiday_names:
+            title_rec = "Car Parts recursive — month_has holidays"
         _plot_horizon_panel(
             horiz,
-            "Car Parts recursive forecasts from pre-test origin (DS vs TSB)",
-            "fig_forecast_carparts_recursive",
+            title_rec,
+            f"{fig_prefix}_recursive",
             "TSB",
             2,
             H,
         )
-        (OUT / "fig_forecast_carparts_recursive.json").write_text(json.dumps(dump_h, indent=2))
+        (OUT / f"{fig_prefix}_recursive.json").write_text(json.dumps(dump_h, indent=2))
     print("carparts forecasts done")
+
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -1201,10 +1378,24 @@ def parse_args():
         help="Stem prefix for daily figs (e.g. fig_forecast_daily_binary_hol).",
     )
     p.add_argument(
+        "--feature_config_monthly",
+        default=None,
+        help=(
+            "Override monthly feature YAML "
+            "(e.g. feature_config_monthly_country_holiday.yaml). "
+            "Default locked bake-off: feature_config_monthly.yaml."
+        ),
+    )
+    p.add_argument(
+        "--fig_prefix_carparts",
+        default="fig_forecast_carparts",
+        help="Stem prefix for carparts figs (e.g. fig_forecast_carparts_country_hol).",
+    )
+    p.add_argument(
         "--holiday_markers",
         type=int,
         default=0,
-        help="Force holiday axvlines on one-step plots (1/0). Auto-on when binaries present.",
+        help="Force holiday axvlines on one-step plots (1/0). Auto-on when binaries/month_has present.",
     )
     p.add_argument(
         "--component_combine",

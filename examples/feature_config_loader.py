@@ -486,15 +486,40 @@ class FeatureConfig:
                             f"{holiday_encoding} encoding expects names {prefix}*, got {name}"
                         )
                     keys.append(name.replace(prefix, "", 1))
-                country = str(meta.get("holiday_country", "US"))
-                if holiday_encoding == "months_from":
-                    built = months_from_holiday_features(
-                        df_sorted["ds"], holiday_keys=keys, country=country
+                if holiday_calendar_mode in ("country", "per_country", "country_aware"):
+                    try:
+                        from holiday_calendar import (
+                            build_country_month_holiday_features,
+                        )
+                    except ImportError:
+                        from examples.holiday_calendar import (  # type: ignore
+                            build_country_month_holiday_features,
+                        )
+                    country_col = meta.get("holiday_country_column")
+                    built = build_country_month_holiday_features(
+                        df_sorted,
+                        holiday_keys=keys,
+                        encoding=holiday_encoding,
+                        sku_col="id_var",
+                        date_col="ds",
+                        country_col=country_col if country_col in df_sorted.columns else None,
+                        default_country=str(
+                            meta.get(
+                                "holiday_country_default",
+                                meta.get("holiday_country", "US"),
+                            )
+                        ),
                     )
                 else:
-                    built = month_has_holiday_features(
-                        df_sorted["ds"], holiday_keys=keys, country=country
-                    )
+                    country = str(meta.get("holiday_country", "US"))
+                    if holiday_encoding == "months_from":
+                        built = months_from_holiday_features(
+                            df_sorted["ds"], holiday_keys=keys, country=country
+                        )
+                    else:
+                        built = month_has_holiday_features(
+                            df_sorted["ds"], holiday_keys=keys, country=country
+                        )
                 holiday_subset = built[[f"{prefix}{k}" for k in keys]].reset_index(drop=True)
                 features_df = pd.concat([features_df, holiday_subset], axis=1)
             else:
