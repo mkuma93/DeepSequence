@@ -708,14 +708,20 @@ def main():
     # ------------------------------------------------------------------
     results["mase_scale_season7"] = mase_scale
     comparison = {}
+    comparison_cum = {}
     compare_keys = [str(h) for h in report_horizons] + ["mean"]
     for key in compare_keys:
         comparison[key] = []
+        comparison_cum[key] = []
         for model, payload in results["models"].items():
             if key == "mean":
                 block = payload.get("mean_1_to_H", {}).get("overall", {})
+                cum_block = {}
             else:
                 block = payload.get("by_horizon", {}).get(key, {}).get("overall", {})
+                cum_block = (
+                    payload.get("by_horizon_cum", {}).get(key, {}).get("overall", {})
+                )
             if not block:
                 continue
             comparison[key].append(
@@ -724,6 +730,9 @@ def main():
                     "mae_rounded": block.get("mae_all_rounded"),
                     "mae_nonzero": block.get("mae_nonzero"),
                     "iwmae_rounded": block.get("iwmae_rounded"),
+                    "cummae": cum_block.get("cummae"),
+                    "cummae_rounded": cum_block.get("cummae_rounded"),
+                    "cum_iwmae_rounded": cum_block.get("cum_iwmae_rounded"),
                     "mase_rounded": block.get("mase_rounded"),
                     "occ_f1": block.get("occ_f1"),
                     "underforecast_rate_nonzero": block.get(
@@ -741,6 +750,17 @@ def main():
                     "combined_ops_cost_h0p1": block.get("combined_ops_cost_h0p1"),
                 }
             )
+            if cum_block:
+                comparison_cum[key].append(
+                    {
+                        "model": model,
+                        "cummae": cum_block.get("cummae"),
+                        "cummae_rounded": cum_block.get("cummae_rounded"),
+                        "cum_iwmae": cum_block.get("cum_iwmae"),
+                        "cum_iwmae_rounded": cum_block.get("cum_iwmae_rounded"),
+                        "iwmae_rounded": block.get("iwmae_rounded"),
+                    }
+                )
         comparison[key] = sorted(
             comparison[key],
             key=lambda r: (
@@ -748,7 +768,18 @@ def main():
                 r["iwmae_rounded"] if r["iwmae_rounded"] is not None else 1e9,
             ),
         )
+        if comparison_cum[key]:
+            comparison_cum[key] = sorted(
+                comparison_cum[key],
+                key=lambda r: (
+                    r["cummae_rounded"] is None,
+                    r["cummae_rounded"] if r["cummae_rounded"] is not None else 1e9,
+                ),
+            )
     results["comparison"] = comparison
+    results["comparison_cum"] = {
+        k: v for k, v in comparison_cum.items() if v
+    }
 
     out_path = Path(args.out_json)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -759,12 +790,15 @@ def main():
     for key in compare_keys:
         print(f"\n[h={key}]")
         for row in comparison[key]:
+            cum_s = ""
+            if row.get("cummae_rounded") is not None:
+                cum_s = f" cummae={row['cummae_rounded']:.3f}"
             print(
                 f"  {row['model']:28s} iwmae={row['iwmae_rounded']:.3f} "
                 f"mae={row['mae_rounded']:.3f} nz={row['mae_nonzero']:.3f} "
                 f"mase={row.get('mase_rounded')} occ_f1={row.get('occ_f1')} "
                 f"under={row.get('underforecast_rate_nonzero')} "
-                f"bias={row['bias']:.3f}"
+                f"bias={row['bias']:.3f}{cum_s}"
             )
             rev = row.get("sales_revenue_loss_units")
             hold = row.get("inventory_holding_cost_zero")
@@ -773,6 +807,21 @@ def main():
                 print(
                     f"  {'':28s} rev_loss={rev:.3f} hold0={hold:.3f} "
                     f"ops_h0.1={ops:.3f}"
+                )
+    if results["comparison_cum"]:
+        print("\n" + "=" * 70)
+        print("CUMULATIVE MAE (planning sum error; sort: cummae_rounded)")
+        print("=" * 70)
+        for key in [str(h) for h in report_horizons]:
+            rows = results["comparison_cum"].get(key) or []
+            if not rows:
+                continue
+            print(f"\n[CumMAE h={key}]")
+            for row in rows:
+                print(
+                    f"  {row['model']:28s} cummae={row['cummae_rounded']:.3f} "
+                    f"cum_iwmae={row.get('cum_iwmae_rounded')} "
+                    f"(pointwise iwmae={row.get('iwmae_rounded')})"
                 )
     print(f"\nWrote {out_path}")
 

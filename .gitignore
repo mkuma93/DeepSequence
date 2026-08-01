@@ -71,3 +71,10 @@ data/raw/
 # Large regenerated holiday CSVs from year-scope probe (rebuild via script)
 paper_figures/year_scope_retest/daily_holiday_year_scope_us/
 ab_runs/reclaim/year_scope_800/holiday_features_year/
+
+# Weekly panel CSVs (rebuild via examples/prepare_weekly_panel.py)
+ab_runs/weekly/**/*.csv
+!ab_runs/weekly/README.md
+!ab_runs/weekly/**/meta.json
+!ab_runs/weekly/**/README.md
+!ab_runs/weekly/*.json

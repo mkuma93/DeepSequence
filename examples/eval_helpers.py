@@ -497,6 +497,57 @@ def train_volume_terciles(train_df: pd.DataFrame) -> dict:
     return mapping, stats
 
 
+def cummae_from_rollout(
+    y_true: np.ndarray,
+    yhat: np.ndarray,
+    p: np.ndarray | None = None,
+    report_horizons: list[int] | tuple[int, ...] | None = None,
+    mase_scale: float | None = None,
+) -> dict:
+    """Lead-time cumulative MAE / CumIWMAE for multi-horizon rollouts.
+
+    For each origin and horizon ``H``::
+
+        CumMAE(H) = mean |sum_{h=1..H} yhat - sum_{h=1..H} y|
+
+    CumIWMAE applies the same inverse-frequency weights as ``kpi_block`` on the
+    *cumulative* series (weight by whether the H-step cumulative actual is >0).
+    Pointwise IWMAE is unchanged; this is additive reporting only.
+
+    Returns ``{"by_horizon": {H: kpi_block(...), ...}}`` with each block also
+    carrying ``cummae`` / ``cummae_rounded`` / ``cum_iwmae`` aliases for the
+    cumulative MAE fields (same numeric values as ``mae_all`` / ``iwmae`` on
+    the cumsummed series).
+    """
+    y_true = np.asarray(y_true, np.float64)
+    yhat = np.maximum(np.asarray(yhat, np.float64), 0.0)
+    if y_true.ndim != 2 or yhat.shape != y_true.shape:
+        raise ValueError(
+            f"y_true/yhat must be [n_origins, H]; got {y_true.shape} / {yhat.shape}"
+        )
+    H = y_true.shape[1]
+    if report_horizons is None:
+        report_horizons = list(range(1, H + 1))
+    yt_c = np.cumsum(y_true, axis=1)
+    yh_c = np.cumsum(yhat, axis=1)
+    # Gate probability at step H is the natural one-step companion; for CumIWMAE
+    # we still weight by cumulative occurrence, so p is optional decorative.
+    out = {"by_horizon": {}}
+    for h in report_horizons:
+        if h < 1 or h > H:
+            continue
+        col = h - 1
+        pp = None if p is None else np.asarray(p, np.float64)[:, col]
+        block = kpi_block(yt_c[:, col], yh_c[:, col], pp, mase_scale=mase_scale)
+        # Explicit CumMAE aliases (planning-horizon cumulative error).
+        block["cummae"] = block["mae_all"]
+        block["cummae_rounded"] = block["mae_all_rounded"]
+        block["cum_iwmae"] = block["iwmae"]
+        block["cum_iwmae_rounded"] = block["iwmae_rounded"]
+        out["by_horizon"][str(h)] = block
+    return out
+
+
 def kpi_block(y, yhat, p=None, mase_scale: float | None = None):
     """Intermittent-aware forecast KPIs.
 

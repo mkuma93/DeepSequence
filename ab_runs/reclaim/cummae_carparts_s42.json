@@ -1,0 +1,334 @@
+{
+  "source": {
+    "dataset": "Monash Car Parts",
+    "protocol": "fixed origin = first test month; forecast H test months",
+    "horizon": 6,
+    "n_skus": 800,
+    "seed": 42,
+    "data_seed": 42,
+    "train_seed": 42,
+    "sku_list": "ab_runs/recompare/sku_list_carparts_data42.json",
+    "use_sku_deepsequence": false,
+    "feature_version": "1.7-monthly",
+    "volume_stats": {
+      "low": {
+        "n_skus": 267,
+        "train_volume_sum": 1204.0,
+        "train_volume_mean_sku": 4.50936329588015,
+        "train_volume_min": 2.0,
+        "train_volume_max": 8.0,
+        "train_zero_rate": 0.9104004609622587
+      },
+      "mid": {
+        "n_skus": 266,
+        "train_volume_sum": 3892.0,
+        "train_volume_mean_sku": 14.631578947368421,
+        "train_volume_min": 8.0,
+        "train_volume_max": 24.0,
+        "train_zero_rate": 0.7770387507229612
+      },
+      "high": {
+        "n_skus": 267,
+        "train_volume_sum": 11249.0,
+        "train_volume_mean_sku": 42.1310861423221,
+        "train_volume_min": 24.0,
+        "train_volume_max": 78.0,
+        "train_zero_rate": 0.5384615384615384
+      }
+    },
+    "models": [
+      "croston",
+      "deepar_lite",
+      "deepsequence",
+      "lightgbm",
+      "sba",
+      "temporal_transformer",
+      "tft_lite",
+      "tsb"
+    ],
+    "report_horizons": [
+      1,
+      2,
+      6
+    ],
+    "ds_stack": {
+      "output_activation": "softsign",
+      "trend_monotonic": true,
+      "holiday_monotonic": true,
+      "regressor_monotonic": true,
+      "context_aware_component_mixer": true,
+      "context_film_seasonal_holiday": false,
+      "use_cross_layers": false,
+      "use_sku": false,
+      "note": "softsign + mono + mixer + Level-1 attention; FiLM off"
+    }
+  },
+  "metric": "CumMAE(H)=mean|sum_{h=1..H} yhat - sum y|",
+  "primary_rank_unchanged": "iwmae_rounded (pointwise)",
+  "by_horizon": {
+    "1": [
+      {
+        "model": "lightgbm",
+        "cummae": 0.4909223010011192,
+        "cummae_rounded": 0.41875,
+        "cum_iwmae": 0.8891352179835695,
+        "cum_iwmae_rounded": 0.8668815805039634,
+        "iwmae_rounded": 0.8668815805039634
+      },
+      {
+        "model": "tsb",
+        "cummae": 0.5800708331773058,
+        "cummae_rounded": 0.52375,
+        "cum_iwmae": 0.8498305425100687,
+        "cum_iwmae_rounded": 0.8154008438818567,
+        "iwmae_rounded": 0.8154008438818567
+      },
+      {
+        "model": "deepar_lite",
+        "cummae": 0.5561799514573067,
+        "cummae_rounded": 0.54125,
+        "cum_iwmae": 0.8803886603360567,
+        "cum_iwmae_rounded": 0.8477759375369691,
+        "iwmae_rounded": 0.8477759375369691
+      },
+      {
+        "model": "temporal_transformer",
+        "cummae": 0.5777854187041521,
+        "cummae_rounded": 0.5575,
+        "cum_iwmae": 0.8869957942283875,
+        "cum_iwmae_rounded": 0.8459718443156277,
+        "iwmae_rounded": 0.8459718443156277
+      },
+      {
+        "model": "deepsequence",
+        "cummae": 0.5743209991697222,
+        "cummae_rounded": 0.5725,
+        "cum_iwmae": 0.8824519898482864,
+        "cum_iwmae_rounded": 0.8410031941322609,
+        "iwmae_rounded": 0.8410031941322609
+      },
+      {
+        "model": "tft_lite",
+        "cummae": 0.6448203966103029,
+        "cummae_rounded": 0.61625,
+        "cum_iwmae": 0.8924268208669118,
+        "cum_iwmae_rounded": 0.8658760203478055,
+        "iwmae_rounded": 0.8658760203478055
+      },
+      {
+        "model": "sba",
+        "cummae": 0.7034909143159166,
+        "cummae_rounded": 0.67125,
+        "cum_iwmae": 1.01855095448805,
+        "cum_iwmae_rounded": 1.0194309712528098,
+        "iwmae_rounded": 1.0194309712528098
+      },
+      {
+        "model": "croston",
+        "cummae": 0.7213176305219531,
+        "cummae_rounded": 0.69,
+        "cum_iwmae": 1.023553530827254,
+        "cum_iwmae_rounded": 1.026341732718167,
+        "iwmae_rounded": 1.026341732718167
+      }
+    ],
+    "2": [
+      {
+        "model": "lightgbm",
+        "cummae": 0.7917940850706782,
+        "cummae_rounded": 0.715,
+        "cum_iwmae": 0.9910829976316817,
+        "cum_iwmae_rounded": 0.9366232746044215,
+        "iwmae_rounded": 0.8337535014005604
+      },
+      {
+        "model": "deepsequence",
+        "cummae": 0.9189257348328829,
+        "cummae_rounded": 0.86,
+        "cum_iwmae": 1.049126294886959,
+        "cum_iwmae_rounded": 0.9882448658960835,
+        "iwmae_rounded": 0.7340336134453782
+      },
+      {
+        "model": "tsb",
+        "cummae": 0.9615882798470556,
+        "cummae_rounded": 0.90375,
+        "cum_iwmae": 1.044653053013191,
+        "cum_iwmae_rounded": 0.993364942206262,
+        "iwmae_rounded": 0.7031746031746032
+      },
+      {
+        "model": "deepar_lite",
+        "cummae": 0.9757260660687461,
+        "cummae_rounded": 0.92625,
+        "cum_iwmae": 1.0720595579977208,
+        "cum_iwmae_rounded": 1.02602120974077,
+        "iwmae_rounded": 0.7466853408029881
+      },
+      {
+        "model": "temporal_transformer",
+        "cummae": 0.9893576308770571,
+        "cummae_rounded": 0.9525,
+        "cum_iwmae": 1.0856831989404792,
+        "cum_iwmae_rounded": 1.0494613399169568,
+        "iwmae_rounded": 0.7401027077497666
+      },
+      {
+        "model": "tft_lite",
+        "cummae": 1.0718175886885728,
+        "cummae_rounded": 1.04875,
+        "cum_iwmae": 1.1710731853999603,
+        "cum_iwmae_rounded": 1.1616401077320166,
+        "iwmae_rounded": 0.7331932773109245
+      },
+      {
+        "model": "sba",
+        "cummae": 1.1129362364346163,
+        "cummae_rounded": 1.08625,
+        "cum_iwmae": 1.243520643942352,
+        "cum_iwmae_rounded": 1.227794299180788,
+        "iwmae_rounded": 0.8110644257703081
+      },
+      {
+        "model": "croston",
+        "cummae": 1.1417227044561877,
+        "cummae_rounded": 1.1175,
+        "cum_iwmae": 1.2641507066558344,
+        "cum_iwmae_rounded": 1.2522163618000226,
+        "iwmae_rounded": 0.8029411764705883
+      }
+    ],
+    "6": [
+      {
+        "model": "lightgbm",
+        "cummae": 1.6515959965237108,
+        "cummae_rounded": 1.615,
+        "cum_iwmae": 1.5667444896005398,
+        "cum_iwmae_rounded": 1.5317165718056587,
+        "iwmae_rounded": 0.8851013424585419
+      },
+      {
+        "model": "deepsequence",
+        "cummae": 2.139081744775176,
+        "cummae_rounded": 2.0675,
+        "cum_iwmae": 2.0646397199520186,
+        "cum_iwmae_rounded": 1.9792955539057988,
+        "iwmae_rounded": 0.7708870755461964
+      },
+      {
+        "model": "tsb",
+        "cummae": 2.440084962262772,
+        "cummae_rounded": 2.41625,
+        "cum_iwmae": 2.4298234990263894,
+        "cum_iwmae_rounded": 2.4068902721463967,
+        "iwmae_rounded": 0.786654382732298
+      },
+      {
+        "model": "temporal_transformer",
+        "cummae": 2.591944781173952,
+        "cummae_rounded": 2.595,
+        "cum_iwmae": 2.568292719451965,
+        "cum_iwmae_rounded": 2.569242190623037,
+        "iwmae_rounded": 0.8255593577257174
+      },
+      {
+        "model": "sba",
+        "cummae": 2.632422382887453,
+        "cummae_rounded": 2.645,
+        "cum_iwmae": 2.559393123956168,
+        "cum_iwmae_rounded": 2.570257425491278,
+        "iwmae_rounded": 0.9174256383258753
+      },
+      {
+        "model": "deepar_lite",
+        "cummae": 2.6866037805425003,
+        "cummae_rounded": 2.68875,
+        "cum_iwmae": 2.6678734436369633,
+        "cum_iwmae_rounded": 2.6689287368574672,
+        "iwmae_rounded": 0.8549618320610688
+      },
+      {
+        "model": "croston",
+        "cummae": 2.7209114583814515,
+        "cummae_rounded": 2.72125,
+        "cum_iwmae": 2.6503472002785657,
+        "cum_iwmae_rounded": 2.647513626355497,
+        "iwmae_rounded": 0.9242695446170045
+      },
+      {
+        "model": "tft_lite",
+        "cummae": 2.726702393712476,
+        "cummae_rounded": 2.735,
+        "cum_iwmae": 2.650714131304003,
+        "cum_iwmae_rounded": 2.659763069562624,
+        "iwmae_rounded": 0.8270334298499606
+      }
+    ]
+  },
+  "comparison_cum": [
+    {
+      "model": "lightgbm",
+      "h1_cummae": 0.41875,
+      "h2_cummae": 0.715,
+      "h6_cummae": 1.615,
+      "h1_cum_iwmae": 0.8668815805039634,
+      "h6_cum_iwmae": 1.5317165718056587
+    },
+    {
+      "model": "deepsequence",
+      "h1_cummae": 0.5725,
+      "h2_cummae": 0.86,
+      "h6_cummae": 2.0675,
+      "h1_cum_iwmae": 0.8410031941322609,
+      "h6_cum_iwmae": 1.9792955539057988
+    },
+    {
+      "model": "tsb",
+      "h1_cummae": 0.52375,
+      "h2_cummae": 0.90375,
+      "h6_cummae": 2.41625,
+      "h1_cum_iwmae": 0.8154008438818567,
+      "h6_cum_iwmae": 2.4068902721463967
+    },
+    {
+      "model": "temporal_transformer",
+      "h1_cummae": 0.5575,
+      "h2_cummae": 0.9525,
+      "h6_cummae": 2.595,
+      "h1_cum_iwmae": 0.8459718443156277,
+      "h6_cum_iwmae": 2.569242190623037
+    },
+    {
+      "model": "sba",
+      "h1_cummae": 0.67125,
+      "h2_cummae": 1.08625,
+      "h6_cummae": 2.645,
+      "h1_cum_iwmae": 1.0194309712528098,
+      "h6_cum_iwmae": 2.570257425491278
+    },
+    {
+      "model": "deepar_lite",
+      "h1_cummae": 0.54125,
+      "h2_cummae": 0.92625,
+      "h6_cummae": 2.68875,
+      "h1_cum_iwmae": 0.8477759375369691,
+      "h6_cum_iwmae": 2.6689287368574672
+    },
+    {
+      "model": "croston",
+      "h1_cummae": 0.69,
+      "h2_cummae": 1.1175,
+      "h6_cummae": 2.72125,
+      "h1_cum_iwmae": 1.026341732718167,
+      "h6_cum_iwmae": 2.647513626355497
+    },
+    {
+      "model": "tft_lite",
+      "h1_cummae": 0.61625,
+      "h2_cummae": 1.04875,
+      "h6_cummae": 2.735,
+      "h1_cum_iwmae": 0.8658760203478055,
+      "h6_cum_iwmae": 2.659763069562624
+    }
+  ]
+}

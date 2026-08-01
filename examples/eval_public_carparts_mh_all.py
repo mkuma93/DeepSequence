@@ -41,9 +41,12 @@ from eval_helpers import (
     build_tft,
     build_transformer,
     class_balance_pos_weight,
+    cummae_from_rollout,
     filter_aligned,
+    fit_bce_sample_weight_dict,
     kpi_block,
     resolve_eval_seeds,
+    resolve_sku_zero_rates,
     select_eval_skus,
     split_components,
     train_mase_scale,
@@ -145,6 +148,7 @@ def build_mh_xy(X, y, skus, horizon: int):
 
 
 def mh_metrics(y_true, yhat, p, report_horizons=None, mase_scale=None):
+    """Pointwise KPIs plus CumMAE / CumIWMAE under ``by_horizon_cum``."""
     y_true = np.asarray(y_true, np.float32)
     yhat = np.maximum(np.asarray(yhat, np.float32), 0.0)
     p = None if p is None else np.asarray(p, np.float32)
@@ -159,6 +163,7 @@ def mh_metrics(y_true, yhat, p, report_horizons=None, mase_scale=None):
             mase_scale=mase_scale,
         ),
         "by_horizon": {},
+        "by_horizon_cum": {},
     }
     for h in report_horizons:
         if 1 <= h <= H:
@@ -169,6 +174,10 @@ def mh_metrics(y_true, yhat, p, report_horizons=None, mase_scale=None):
                 None if p is None else p[:, col],
                 mase_scale=mase_scale,
             )
+    cum = cummae_from_rollout(
+        y_true, yhat, p, report_horizons=report_horizons, mase_scale=mase_scale
+    )
+    out["by_horizon_cum"] = cum["by_horizon"]
     return out
 
 
@@ -694,8 +703,11 @@ def main():
 
     # -------- Leaderboard --------
     comparison = []
+    comparison_cum = []
     for model, payload in results["models"].items():
         o = payload["mean_1_to_H"]
+        cum1 = payload.get("by_horizon_cum", {}).get("1", {})
+        cumH = payload.get("by_horizon_cum", {}).get(str(H), {})
         comparison.append(
             {
                 "model": model,
@@ -707,6 +719,20 @@ def main():
                 "bias": o.get("bias"),
                 "h1_iwmae": payload.get("by_horizon", {}).get("1", {}).get("iwmae_rounded"),
                 "h6_iwmae": payload.get("by_horizon", {}).get(str(H), {}).get("iwmae_rounded"),
+                "h1_cummae": cum1.get("cummae_rounded"),
+                "h6_cummae": cumH.get("cummae_rounded"),
+            }
+        )
+        comparison_cum.append(
+            {
+                "model": model,
+                "h1_cummae": cum1.get("cummae_rounded"),
+                "h2_cummae": payload.get("by_horizon_cum", {})
+                .get("2", {})
+                .get("cummae_rounded"),
+                "h6_cummae": cumH.get("cummae_rounded"),
+                "h1_cum_iwmae": cum1.get("cum_iwmae_rounded"),
+                "h6_cum_iwmae": cumH.get("cum_iwmae_rounded"),
             }
         )
     comparison = sorted(
@@ -716,7 +742,15 @@ def main():
             r["iwmae_rounded"] if r["iwmae_rounded"] is not None else 1e9,
         ),
     )
+    comparison_cum = sorted(
+        comparison_cum,
+        key=lambda r: (
+            r["h6_cummae"] is None,
+            r["h6_cummae"] if r["h6_cummae"] is not None else 1e9,
+        ),
+    )
     results["comparison"] = comparison
+    results["comparison_cum"] = comparison_cum
     results["mase_scale"] = mase_scale
 
     out = Path(args.out_json)

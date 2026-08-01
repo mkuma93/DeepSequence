@@ -24,7 +24,7 @@ from deepsequence_hierarchical_attention.intermittent_features import (
     SKUDemandState,
     empty_state,
 )
-from eval_helpers import kpi_block
+from eval_helpers import cummae_from_rollout, kpi_block
 
 
 PredictFn = Callable[[np.ndarray, np.ndarray], Tuple[np.ndarray, Optional[np.ndarray]]]
@@ -487,11 +487,16 @@ def horizon_metrics(
 ) -> dict:
     """Per-horizon KPIs + mean over 1..H. Horizons are 1-indexed.
 
+    Pointwise IWMAE uses column ``h-1`` only. Cumulative planning error
+    ``CumMAE(H) = mean |sum_{k=1..H} yhat - sum_{k=1..H} y|`` is reported
+    under ``by_horizon_cum`` (and nested ``cummae`` / ``cum_iwmae`` aliases)
+    without changing the primary pointwise ranking protocol.
+
     Callers typically pass horizons that fit within the rollout length H;
     entries with h > H are skipped.
     """
     H = y_true.shape[1]
-    out = {"by_horizon": {}, "mean_1_to_H": {}}
+    out = {"by_horizon": {}, "by_horizon_cum": {}, "mean_1_to_H": {}}
     yt = y_true.reshape(-1)
     yh = yhat.reshape(-1)
     pp = None if p is None else p.reshape(-1)
@@ -518,4 +523,30 @@ def horizon_metrics(
                 mase_scale=mase_scale,
             )
         out["by_horizon"][str(h)] = block
+
+    cum = cummae_from_rollout(
+        y_true, yhat, p, report_horizons=report_horizons, mase_scale=mase_scale
+    )
+    # Nest overall + volume bands for parity with by_horizon.
+    for h_key, flat in cum["by_horizon"].items():
+        col = int(h_key) - 1
+        yt_c = np.cumsum(y_true, axis=1)[:, col]
+        yh_c = np.cumsum(np.maximum(yhat, 0.0), axis=1)[:, col]
+        pp_h = None if p is None else p[:, col]
+        block = {"overall": flat}
+        bands = np.array([volume_map.get(s, "unk") for s in skus])
+        for band in ("low", "mid", "high"):
+            m = bands == band
+            b = kpi_block(
+                yt_c[m],
+                yh_c[m],
+                None if pp_h is None else pp_h[m],
+                mase_scale=mase_scale,
+            )
+            b["cummae"] = b["mae_all"]
+            b["cummae_rounded"] = b["mae_all_rounded"]
+            b["cum_iwmae"] = b["iwmae"]
+            b["cum_iwmae_rounded"] = b["iwmae_rounded"]
+            block[band] = b
+        out["by_horizon_cum"][h_key] = block
     return out

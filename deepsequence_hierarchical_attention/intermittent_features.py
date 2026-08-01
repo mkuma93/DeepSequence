@@ -34,6 +34,12 @@ INTERMITTENT_FEATURE_NAMES = (
     "lifetime_cumsum",
 )
 
+WEEKLY_INTERMITTENT_FEATURE_NAMES = (
+    "weeks_since_last_sale",
+    "last_sale_quantity",
+    "lifetime_cumsum",
+)
+
 MONTHLY_INTERMITTENT_FEATURE_NAMES = (
     "months_since_last_sale",
     "last_sale_quantity",
@@ -63,7 +69,12 @@ def _gap_since_sale(
         return float(_month_index(date) - _month_index(last))
     if gap_unit == "days":
         return float((date - last).days)
-    raise ValueError(f"gap_unit must be 'days' or 'months', got {gap_unit!r}")
+    if gap_unit == "weeks":
+        # Integer weeks between timestamps (ISO/Monday panels use week-start ds).
+        return float((date - last).days // 7)
+    raise ValueError(
+        f"gap_unit must be 'days', 'weeks', or 'months', got {gap_unit!r}"
+    )
 
 
 @dataclass
@@ -112,9 +123,12 @@ class SKUDemandState:
             sentinel=float(self.days_since_sentinel),
         )
         last_qty = 0.0 if self.last_sale_date is None else float(self.last_sale_quantity)
-        gap_name = (
-            "months_since_last_sale" if gap_unit == "months" else "days_since_last_sale"
-        )
+        if gap_unit == "months":
+            gap_name = "months_since_last_sale"
+        elif gap_unit == "weeks":
+            gap_name = "weeks_since_last_sale"
+        else:
+            gap_name = "days_since_last_sale"
         window = self.recent_demand[-int(self.rate_window) :] if self.recent_demand else []
         if window:
             arr = np.asarray(window, dtype=np.float64)
@@ -264,18 +278,20 @@ def transform_panel(
     Causally transform a demand panel into lag + intermittent regressor features.
 
     For each row at date t, features use only that SKU's history with ds < t.
-    ``gap_unit='months'`` measures time since last sale in months (monthly panels).
+    ``gap_unit='months'`` / ``'weeks'`` measure time since last sale in those
+    units (monthly / weekly panels); default ``'days'`` for daily panels.
     """
     lags = tuple(int(x) for x in lags)
     max_lag = max(lags) if lags else 7
     rate_window = int(rate_window)
     gap_unit = str(gap_unit)
     if intermittent_names is None:
-        intermittent_names = (
-            MONTHLY_INTERMITTENT_FEATURE_NAMES
-            if gap_unit == "months"
-            else INTERMITTENT_FEATURE_NAMES
-        )
+        if gap_unit == "months":
+            intermittent_names = MONTHLY_INTERMITTENT_FEATURE_NAMES
+        elif gap_unit == "weeks":
+            intermittent_names = WEEKLY_INTERMITTENT_FEATURE_NAMES
+        else:
+            intermittent_names = INTERMITTENT_FEATURE_NAMES
     intermittent_names = tuple(intermittent_names)
 
     work = df[[id_col, date_col, quantity_col]].copy()

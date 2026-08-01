@@ -1,0 +1,41 @@
+{
+  "week_rule": "ISO",
+  "week_start": "monday",
+  "period_alias": "W-SUN \u2192 start_time (Monday)",
+  "aggregation": "sum Quantity by (id_var, week Monday)",
+  "country_from": "id_var prefix via holiday_calendar.country_from_sku_id",
+  "holiday_calendar": "US",
+  "n_skus": 800,
+  "n_weeks_total": 147,
+  "country_counts": {
+    "DE": 49,
+    "EU": 31,
+    "FR": 59,
+    "IE": 73,
+    "NL": 25,
+    "UK": 563
+  },
+  "split_weeks": {
+    "train": {
+      "n_rows": 69459,
+      "n_skus": 792,
+      "ds_min": "2009-01-12",
+      "ds_max": "2011-06-13"
+    },
+    "val": {
+      "n_rows": 6340,
+      "n_skus": 793,
+      "ds_min": "2011-06-20",
+      "ds_max": "2011-08-08"
+    },
+    "test": {
+      "n_rows": 9540,
+      "n_skus": 800,
+      "ds_min": "2011-08-15",
+      "ds_max": "2011-10-31"
+    }
+  },
+  "source_daily_dir": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/jubilant/data",
+  "sku_list": "ab_runs/recompare/sku_list_daily_data42.json",
+  "feature_config": "feature_config_weekly.yaml"
+}

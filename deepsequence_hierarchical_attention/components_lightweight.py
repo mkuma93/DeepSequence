@@ -3620,6 +3620,85 @@ def build_hierarchical_model_lightweight(
     return model
 
 
+COMPONENT_EXPERT_NAMES = ("trend", "seasonal", "holiday", "regressor")
+
+
+def build_component_readout_model(model):
+    r"""Wrap a trained lightweight model to expose interpretable components.
+
+    Returns a Keras ``Model`` with the same inputs and a **dict** of tensors:
+
+    | Key | Meaning |
+    |-----|---------|
+    | ``trend``, ``seasonal``, ``holiday``, ``regressor`` | Expert scalars **after** Level-1 selection / softsign / SKU FiLM (and optional calendar FiLM on seasonal+holiday)—the values mixed by Level-2. |
+    | ``component_alpha`` | Level-2 softmax weights \(\alpha_k\) over the four experts. |
+    | ``base_forecast`` | Magnitude head \(b\) (softplus). |
+    | ``non_zero_probability`` | Occurrence gate \(p\). |
+    | ``final_forecast`` | \(\hat{y}=p\cdot b\). |
+
+    Call :func:`predict_with_components` to also get ``mixed_contribution_*``
+    (\(\alpha_k\cdot e_k\)) as NumPy arrays. Training API is unchanged: the
+    original ``model`` still outputs only gate heads.
+
+    **Multi-horizon note.** Recursive MH rollouts call the one-step model
+    repeatedly; probe at **each** step to record components. Direct MH heads
+    (``horizon>1``) expose ``p``/``b``/``yhat`` shaped ``[B, H]``, but expert
+    scalars remain one-step (shared base)—document that when dumping MH tables.
+    """
+    layer_names = {layer.name for layer in model.layers}
+    required = set(COMPONENT_EXPERT_NAMES) | {"component_attention_softmax"}
+    missing = sorted(required - layer_names)
+    if missing:
+        raise ValueError(
+            f"Model is missing component layers {missing}; "
+            "build_component_readout_model expects the lightweight hierarchy."
+        )
+
+    outs = {
+        name: model.get_layer(name).output for name in COMPONENT_EXPERT_NAMES
+    }
+    outs["component_alpha"] = model.get_layer("component_attention_softmax").output
+
+    if isinstance(model.output, dict):
+        outs["final_forecast"] = model.output["final_forecast"]
+        if "base_forecast" in model.output:
+            outs["base_forecast"] = model.output["base_forecast"]
+        elif "base_forecast" in layer_names:
+            outs["base_forecast"] = model.get_layer("base_forecast").output
+        else:
+            outs["base_forecast"] = model.output["final_forecast"]
+        if "non_zero_probability" in model.output:
+            outs["non_zero_probability"] = model.output["non_zero_probability"]
+    else:
+        outs["final_forecast"] = model.output
+        outs["base_forecast"] = model.output
+
+    return Model(model.inputs, outs, name="component_readout")
+
+
+def predict_with_components(model, x, *, batch_size=1024, verbose=0):
+    r"""Run component readout → numpy dict including ``mixed_contribution_*``.
+
+    Keys: expert scalars, ``component_alpha``, ``base_forecast`` (\(b\)),
+    ``non_zero_probability`` (\(p\)), ``final_forecast`` (\(\hat y=p\cdot b\)),
+    and ``mixed_contribution_{trend,seasonal,holiday,regressor}`` =
+    \(\alpha_k \cdot e_k\).
+    """
+    probe = build_component_readout_model(model)
+    raw = probe.predict(x, batch_size=batch_size, verbose=verbose)
+    if isinstance(raw, dict):
+        out = {k: np.asarray(v) for k, v in raw.items()}
+    else:
+        names = list(probe.output_names)
+        out = {n: np.asarray(v) for n, v in zip(names, raw)}
+    alpha = np.asarray(out["component_alpha"], dtype=np.float64)
+    for i, name in enumerate(COMPONENT_EXPERT_NAMES):
+        e = np.asarray(out[name], dtype=np.float64).reshape(-1, 1)
+        a = alpha[:, i : i + 1]
+        out[f"mixed_contribution_{name}"] = (a * e).astype(np.float32)
+    return out
+
+
 def create_model_from_features(
     X_train,
     sku_train,

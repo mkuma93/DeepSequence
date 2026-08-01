@@ -190,6 +190,8 @@ p_{i,t}=\sigma\bigl(g(x_{i,t}, e_i)\bigr),\quad
 
 Interpretation: \(p\) is the predicted probability that demand occurs; \(b\) is the predicted magnitude given structural drivers; the product is a soft Bernoulli–magnitude expectation. Optional per-SKU zero-rate priors can bias gate logits from historical zero rates (secondary). DCN-style cross-network layers default **OFF** (optional ablation path in Figure 5).
 
+**Interpretable component readouts.** The software exposes a probe API (`build_component_readout_model` / `predict_with_components`) that returns, per forward pass, the four expert scalars \(e_T,e_S,e_H,e_R\) **after** Level-1 selection / softsign / SKU FiLM (the values mixed by Level-2), the Level-2 weights \(\alpha_k\), mixed contributions \(\alpha_k e_k\), and the gate heads \(p\), \(b\), \(\hat{y}=p\cdot b\). Recursive multi-horizon evaluation can record these at **each** one-step rollout call; a direct multi-horizon head exposes \(p/b/\hat{y}\) shaped \([B,H]\) but keeps shared one-step expert scalars—callers should document that limitation. Sample dumps: `examples/dump_component_readout.py` → `ab_runs/reclaim/component_readout_sample.json`.
+
 ![Figure 5. End-to-end DeepSequence architecture.](paper_figures/fig_m5_architecture.png)
 
 [Open PNG](paper_figures/fig_m5_architecture.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_m5_architecture.png)
@@ -214,6 +216,14 @@ An opt-in **spike-aware** recipe (``loss_recipe='spike_aware'``; Section 5.8) re
 ### 3.10 Multi-horizon evaluation
 
 Primary tables use **one-step models with recursive rollout** to the horizons of interest (daily maximum horizon \(H=60\), report \(h\in\{1,7,14,28,60\}\); monthly \(h\in\{1,2,6\}\)). A direct multi-horizon head exists in the software for planning; it is **not** the primary claim of this preprint. Earlier drafts that emphasized direct multi-horizon wins at short horizons under a previous protocol are relegated to Appendix D and are not restated as primary evidence.
+
+**CumMAE (additive reporting).** Alongside pointwise IWMAE, multi-horizon eval reports lead-time **cumulative MAE**
+
+\[
+\mathrm{CumMAE}(H)=\mathrm{mean}\Bigl|\sum_{h=1}^{H}\hat{y}_{t+h}-\sum_{h=1}^{H}y_{t+h}\Bigr|,
+\]
+
+plus CumIWMAE on the same cumulative series (inverse-frequency weights by whether the \(H\)-step cumulative actual is nonzero). Primary model ranking remains pointwise `iwmae_rounded`; CumMAE is planning-sum error only. JSON keys: `by_horizon_cum` / `comparison_cum` in `examples/eval_multihorizon_compare.py` and `examples/eval_public_carparts_mh_all.py`.
 
 ---
 
@@ -320,6 +330,18 @@ Recursive rollout after origin \(t\); known-future calendar and holidays; demand
 
 *Figure 6. Daily recursive IWMAE (mean ± std over training seeds \(42\)–\(46\)) for DeepSequence, TST, and LightGBM at \(h\in\{1,7,14,28,60\}\). Short horizons favor TST; DeepSequence leads at \(h=28/60\).*
 
+**Table 1b.** Daily CumMAE, seed 42 (same locked MH origins as Table 1; additive reporting). Artifact: `ab_runs/reclaim/cummae_daily_s42.json` (full MH: `daily_mh_1_60_cummae_s42.json`).
+
+| Horizon | DeepSequence | TST | TFT | DeepAR | LightGBM | Best CumMAE |
+|--------:|-------------:|----:|----:|-------:|---------:|:------------|
+| \(h=1\) | 1.685 | **1.433** | 1.753 | 2.050 | 1.639 | TST |
+| \(h=7\) | 9.866 | **8.621** | 12.079 | 17.152 | 9.085 | TST |
+| \(h=14\) | 18.529 | **17.037** | 26.151 | 35.603 | 17.439 | TST |
+| \(h=28\) | 35.954 | 42.505 | 56.119 | 71.642 | **34.262** | LightGBM |
+| \(h=60\) | **70.627** | 111.863 | 119.387 | 149.586 | 70.791 | **DS** |
+
+Pointwise IWMAE (Table 1) and CumMAE agree that TST leads short horizons and DeepSequence leads at \(h=60\); at \(h=28\) LightGBM wins CumMAE while DeepSequence still wins IWMAE. Primary ranking remains IWMAE.
+
 ### 5.2 Decision economics with loyalty (daily)
 
 Without loyalty (\(C_{\mathrm{loyalty}}=0\)), **LightGBM** often wins **low-margin** \(\pi\): under-forecasting reduces holding \(H\) and looks cheap when lost sales are under-weighted. With the recommended scenario \(C_{\mathrm{loyalty}}=0.25\), that ranking flips.
@@ -381,6 +403,16 @@ TSB is seed-invariant (classical). DeepSequence’s long-horizon (\(h=6\)) IWMAE
 [Open PNG](paper_figures/fig2_carparts_iwmae_horizon.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig2_carparts_iwmae_horizon.png)
 
 *Figure 8. Left: Car Parts multi-seed IWMAE (mean ± std; DeepSequence / TSB / LightGBM). Right: seed-42 bake-off including per-series Prophet. Do not mix absolute levels across panels (Section 5.3 protocol note).*
+
+**Table 5b.** Car Parts CumMAE (seed 42; same MH origins as Table 5; additive reporting). \(\mathrm{CumMAE}(H)=\mathrm{mean}|\sum_{h=1}^{H}\hat y-\sum y|\). Artifact: `ab_runs/reclaim/cummae_carparts_s42.json`.
+
+| Horizon | LightGBM | DeepSequence | TSB | TST | Best CumMAE |
+|--------:|---------:|-------------:|----:|----:|:------------|
+| \(h=1\) | **0.419** | 0.573 | 0.524 | 0.558 | LightGBM |
+| \(h=2\) | **0.715** | 0.860 | 0.904 | 0.953 | LightGBM |
+| \(h=6\) | **1.615** | 2.068 | 2.416 | 2.595 | LightGBM |
+
+Pointwise IWMAE ranking (TSB short / DS competitive at \(h=6\)) and CumMAE ranking diverge: LightGBM’s under-forecasting can look strong on cumulative absolute error even when IWMAE does not prefer it. Primary claims remain pointwise IWMAE + loyalty \(\pi\); CumMAE is planning-sum diagnostics only.
 
 ### 5.4 Daily Prophet subset (protocol note)
 
@@ -541,13 +573,23 @@ We selected **8 locked SKUs** with visible lumps in the test window (nonzero day
 
 **Structural inductive bias.** The long-horizon pattern is consistent with the hypothesis that explicit trend / seasonality / holiday / regressor structure helps when recursive rollouts compound, whereas short-horizon intermittent accuracy often reduces to recent occurrence dynamics that classical methods and temporal transformers already capture well.
 
+### 6.1 Spikes, holidays, and what DeepSequence targets
+
+**Planning rates, not spikes.** DeepSequence’s gated product \(\hat{y}=p\cdot b\) is designed for intermittent **planning rates**—expected demand for inventory decisions—not for reproducing sparse high-amplitude **spikes** on these panels. Qualitative dumps (Section 5.6–5.8) show forecasts that track a near-constant or mildly weekly mean rate while sale spikes remain largely unmatched; spike-aware loss diagnostics improve \(p\) calibration in places but do not turn the model into a spike detector.
+
+**Holidays / calendar events show no material spike relation.** Year-scope US holiday retests on the locked 800 (`ab_runs/reclaim/year_scope_800/`) leave Table 1 IWMAE unchanged for DeepSequence / LightGBM (TST within train noise). Country+binary daily qualitative and monthly `month_has` / `months_from` country retests (Section 5.7; Figures 14–17, 22–23) likewise show **near-zero** correlation between \(\hat{y}\) and holiday flags and no visible holiday-driven bumps. Holidays are useful structural covariates for *level* in Prophet-style models, but on these intermittent retail/spare-parts panels they do not explain spike timing.
+
+**Spike timing needs other features.** Promotions, price, availability, traffic, and related demand shifters are **not** in the current panels. Without them, lag/gate dynamics dominate; attributing residual spike error to the architecture alone would overclaim.
+
+**Features ≠ annual signal.** Monthly Car Parts includes lag-12 and Fourier-12 (calendar-month / year harmonics), yet series often show **weak annual ACF**. Presence of year-ish features does not imply a recoverable annual cycle in the data—another reason calendar structure alone under-delivers for spike timing.
+
 ---
 
 ## 7. Limitations and future work
 
-**Limitations.** Enterprise results are panel-specific and cannot be released as raw data. Novelty ablations are single-seed. Daily Prophet is a 150-SKU subset, not the locked 800-SKU panel. Sequence baselines are lite adaptations sharing the gated head where applicable. Car Parts is short monthly history without a rich retail calendar. Decision economics use error proxies, not full inventory simulation. Hierarchical product-tree reconciliation is out of scope. Prophet versus DeepSequence also differs in protocol (local per-series fit versus global multi-series training). Seed-42 bake-off tables and multi-seed summary tables may use different IWMAE field conventions on Car Parts (Section 5.3); rankings should be read within table.
+**Limitations.** Enterprise results are panel-specific and cannot be released as raw data. Novelty ablations are single-seed. Daily Prophet is a 150-SKU subset, not the locked 800-SKU panel. Sequence baselines are lite adaptations sharing the gated head where applicable. Car Parts is short monthly history without a rich retail calendar. Decision economics use error proxies, not full inventory simulation. Hierarchical product-tree reconciliation is out of scope. Prophet versus DeepSequence also differs in protocol (local per-series fit versus global multi-series training). Seed-42 bake-off tables and multi-seed summary tables may use different IWMAE field conventions on Car Parts (Section 5.3); rankings should be read within table. DeepSequence targets intermittent planning rates (\(p\cdot b\)) and **does not capture spikes** well on these panels; holiday / calendar covariates show **no material relation** to spikes in year-scope and monthly retests (Section 6.1)—spike timing likely needs promotions, price, availability, traffic, etc., which are absent here. Weekly aggregation of the daily enterprise panel is supported as an alternate grain (`feature_config_weekly.yaml`, `examples/prepare_weekly_panel.py`) but is not the locked bake-off protocol.
 
-**Future work.** (i) Fuller daily Prophet on the locked 800-SKU panel under comparable origin density. (ii) Optional monthly evaluation at \(h=12\) where series length permits. (iii) Multi-seed novelty ablations. (iv) Stronger inventory simulation and empirically calibrated loyalty costs. (v) Hierarchical reconciliation across product trees.
+**Future work.** (i) Fuller daily Prophet on the locked 800-SKU panel under comparable origin density. (ii) Optional monthly evaluation at \(h=12\) where series length permits. (iii) Multi-seed novelty ablations. (iv) Stronger inventory simulation and empirically calibrated loyalty costs. (v) Hierarchical reconciliation across product trees. (vi) Multi-seed CumMAE summaries (seed-42 CumMAE tables are in Section 5.1 / 5.3). (vii) Full weekly-grain bake-off and promotion/price covariates for spike timing.
 
 ---
 
@@ -620,10 +662,14 @@ Implementation and locked evaluation artifacts accompany this preprint:
 | Artifact | Location |
 |----------|----------|
 | Package | `deepsequence_hierarchical_attention/` |
-| Feature configuration | `feature_config.yaml` |
+| Feature configuration (daily) | `feature_config.yaml` |
+| Feature configuration (weekly) | `feature_config_weekly.yaml` |
+| Weekly panel prepare | `examples/prepare_weekly_panel.py` → `ab_runs/weekly/` |
 | Synthetic demo | `examples/v16_deepsequence_example.ipynb` |
 | Training config sample | `examples/training_config.sample.json` |
 | Locked daily multi-horizon (all models) | `ab_runs/reclaim/daily_mh_1_60_level1_cross_off_all_models.json` |
+| CumMAE tables (seed 42) | `ab_runs/reclaim/cummae_daily_s42.json`, `ab_runs/reclaim/cummae_carparts_s42.json` |
+| Component readout sample | `ab_runs/reclaim/component_readout_sample.json` |
 | Prophet Car Parts (monthly) | `ab_runs/reclaim/prophet_carparts/carparts_mh_1_2_6.json` |
 | Prophet daily subset | `ab_runs/reclaim/prophet_daily/daily_subset150_h1_28_60.json` |
 | Novelty ablations | `ab_runs/reclaim/ablate_novelty/` |
@@ -632,6 +678,7 @@ Implementation and locked evaluation artifacts accompany this preprint:
 | Car Parts loyalty economics | `ab_runs/reclaim/carparts_decision_economics_level1_cross_off_loyalty.json` |
 | Daily multi-seed summary | `ab_runs/reclaim/multiseed/daily_multiseed_long_loyalty_summary.json` |
 | Car Parts multi-seed summary | `ab_runs/reclaim/multiseed/carparts_multiseed_long_loyalty_summary.json` |
+| Year-scope holiday retest | `ab_runs/reclaim/year_scope_800/` |
 | Figures | `paper_figures/` |
 
 Repository: [https://github.com/mkuma93/DeepSequence](https://github.com/mkuma93/DeepSequence)

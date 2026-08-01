@@ -1,0 +1,8 @@
+{
+  "n_skus": 40,
+  "epochs": 3,
+  "test_mae": 7.0557146072387695,
+  "n_test": 480,
+  "frequency": "weekly",
+  "note": "smoke only; not locked bake-off"
+}

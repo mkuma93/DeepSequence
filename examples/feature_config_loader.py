@@ -387,6 +387,10 @@ class FeatureConfig:
             elif transformation == "months_since_epoch":
                 ds = pd.to_datetime(df_sorted[source_col])
                 features[name] = (ds.dt.year * 12 + ds.dt.month).astype(float).to_numpy()
+            elif transformation == "weeks_since_epoch":
+                epoch = pd.Timestamp("1970-01-01")
+                days = (df_sorted[source_col] - epoch).dt.days.values.astype(float)
+                features[name] = days / 7.0
             else:
                 raise ValueError(f"Unknown transformation: {transformation}")
 
@@ -394,11 +398,13 @@ class FeatureConfig:
         day_of_week = ds.dt.dayofweek.values
         month = ds.dt.month.values
         day_of_year = ds.dt.dayofyear.values
+        # ISO week-of-year (1–53); used by weekly panels (Monday-start ds).
+        week_of_year = ds.dt.isocalendar().week.astype(float).to_numpy()
         month_index = (ds.dt.year * 12 + ds.dt.month).astype(float).to_numpy()
 
         for feat_config in self.config["cyclical_features"]:
             name = feat_config["name"]
-            # Explicit source/period (monthly profile) or legacy name heuristics (daily)
+            # Explicit source/period (monthly/weekly profile) or legacy name heuristics (daily)
             if "source" in feat_config and "period" in feat_config:
                 source = feat_config["source"]
                 period = float(feat_config["period"])
@@ -410,10 +416,14 @@ class FeatureConfig:
                     value = day_of_week.astype(float)
                 elif source == "day_of_year":
                     value = day_of_year.astype(float)
+                elif source in ("week_of_year", "iso_week"):
+                    value = week_of_year
                 else:
                     raise ValueError(f"Unknown cyclical source: {source}")
             elif "dow" in name:
                 period, value = 7.0, day_of_week.astype(float)
+            elif "woy" in name or "weekofyear" in name.replace("_", ""):
+                period, value = 365.25 / 7.0, week_of_year
             elif "month" in name:
                 period, value = 12.0, month.astype(float)
             elif "year" in name:

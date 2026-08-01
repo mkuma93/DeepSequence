@@ -25,6 +25,8 @@ from .losses import (
 
 from .components_lightweight import (
     build_hierarchical_model_lightweight,
+    build_component_readout_model,
+    predict_with_components,
     estimate_zero_rate_by_sku,
     pos_weight_from_zero_rate,
     bce_sample_weights_from_sku_zero_rates,
@@ -93,6 +95,8 @@ __all__ = [
     # Model
     "build_hierarchical_model_lightweight",
     "build_hierarchical_model_hybrid",
+    "build_component_readout_model",
+    "predict_with_components",
     "estimate_zero_rate_by_sku",
     "pos_weight_from_zero_rate",
     "bce_sample_weights_from_sku_zero_rates",
