@@ -631,3 +631,184 @@ def tweedie_loss_config(power: float = 1.5, bce_weight: float = 0.0, pos_weight:
         "weights": weights,
         "meta": {"power": float(power), "bce_weight": float(bce_weight)},
     }
+
+
+def resolve_positive_bce_weight(
+    zero_rate,
+    positive_bce_weight=None,
+    *,
+    boost=2.0,
+    cap=20.0,
+):
+    """Resolve spike-aware positive-class BCE weight.
+
+    Default bake-off ``three_term`` uses ``zr / (1-zr)`` (capped). Spike-aware
+    defaults to ``boost * zr / (1-zr)`` so sale days dominate the gate loss.
+    Pass ``positive_bce_weight`` to override explicitly.
+    """
+    if positive_bce_weight is not None:
+        w = float(positive_bce_weight)
+    else:
+        zr = float(zero_rate)
+        w = float(boost) * zr / max(1.0 - zr, 1e-6)
+    if cap is None:
+        return float(w)
+    return float(min(float(cap), w))
+
+
+def spike_aware_magnitude_loss(zero_mag_weight=0.05, use_mse=False):
+    """
+    Magnitude loss primarily on ``y > 0``, with optional light zero-day term.
+
+    On sale days the loss matches ``masked_mae_loss`` / MSE. On zero days a
+    small ``zero_mag_weight`` keeps the magnitude head ``b`` from drifting
+    unbounded when the gate carries quiet-day calibration.
+    """
+    z_w = tf.constant(float(zero_mag_weight), dtype=tf.float32)
+
+    def loss_fn(y_true, y_pred):
+        y_true = tf.reshape(tf.cast(y_true, tf.float32), [-1, 1])
+        y_pred = tf.reshape(tf.cast(y_pred, tf.float32), [-1, 1])
+        is_nz = tf.cast(y_true > 0, tf.float32)
+        err = (
+            tf.square(y_true - y_pred)
+            if use_mse
+            else tf.abs(y_true - y_pred)
+        )
+        n_nz = tf.reduce_sum(is_nz) + 1e-6
+        n_z = tf.reduce_sum(1.0 - is_nz) + 1e-6
+        mag_pos = tf.reduce_sum(is_nz * err) / n_nz
+        mag_zero = tf.reduce_sum((1.0 - is_nz) * err) / n_z
+        return mag_pos + z_w * mag_zero
+
+    return loss_fn
+
+
+def focal_weighted_bce_loss(pos_weight=9.0, gamma=0.0):
+    """
+    Weighted BCE with optional focal modulation on the occurrence head.
+
+    ``gamma=0`` recovers ``weighted_bce_loss``. ``gamma>0`` down-weights easy
+    examples: ``(1-p)^γ`` on positives, ``p^γ`` on zeros.
+    """
+    pos_w = tf.constant(float(pos_weight), dtype=tf.float32)
+    g = float(gamma)
+
+    def loss_fn(y_true, y_pred):
+        y_true = tf.reshape(tf.cast(y_true, tf.float32), [-1])
+        y_pred = tf.reshape(tf.cast(y_pred, tf.float32), [-1])
+        y_binary = tf.cast(y_true > 0, tf.float32)
+        eps = 1e-7
+        p = tf.clip_by_value(y_pred, eps, 1.0 - eps)
+        if g > 0.0:
+            focal_pos = tf.pow(1.0 - p, g)
+            focal_neg = tf.pow(p, g)
+        else:
+            focal_pos = 1.0
+            focal_neg = 1.0
+        bce = -(
+            y_binary * focal_pos * tf.math.log(p) * pos_w
+            + (1.0 - y_binary) * focal_neg * tf.math.log(1.0 - p)
+        )
+        return bce
+
+    return loss_fn
+
+
+def spike_aware_loss_config(
+    zero_rate,
+    *,
+    alpha_bce=1.0,
+    w_mag=1.0,
+    zero_mag_weight=0.05,
+    w_gated=0.0,
+    positive_bce_weight=None,
+    positive_bce_boost=2.0,
+    pos_weight_cap=20.0,
+    focal_gamma=0.0,
+    use_mse=False,
+):
+    """
+    Opt-in **spike-aware** intermittent recipe (default bake-off unchanged).
+
+    Emphasizes sale-day occurrence and positive-only magnitude while keeping
+    ``ŷ = p · b``:
+
+      L = α · BCE_{w+}(z, p)               # heavy positive weight / optional focal
+        + w_mag · Mag_{nz}(y, b)           # primary magnitude on y>0
+          + zero_mag_weight · Mag_z(y, b)  # optional quiet-day b calibration
+        + w_gated · MAE_inv(y, ŷ)          # optional timing (default 0)
+
+    Knobs
+    -----
+    alpha_bce:
+        Weight on the occurrence / gate BCE term (default 1.0; three_term uses 0.2).
+    positive_bce_weight:
+        Absolute positive-class BCE weight. ``None`` →
+        ``positive_bce_boost * zr/(1-zr)`` capped at ``pos_weight_cap``.
+    positive_bce_boost:
+        Multiplier on the standard imbalance weight when
+        ``positive_bce_weight`` is omitted (default 2.0).
+    focal_gamma:
+        Focal focusing parameter; ``0`` disables focal modulation.
+    w_mag:
+        Weight on the (mostly positive-only) magnitude term against ``b``.
+    zero_mag_weight:
+        Relative weight of zero-day magnitude vs sale-day magnitude inside
+        the mag head (default 0.05; ``0`` = positives only).
+    w_gated:
+        Optional inverse-class-weighted MAE on ``ŷ=p·b`` (default 0 / off).
+    use_mse:
+        Use squared error instead of MAE for the magnitude head.
+
+    Default locked bake-off remains ``three_term``; this recipe is opt-in via
+    ``loss_recipe='spike_aware'``.
+    """
+    pos_w = resolve_positive_bce_weight(
+        zero_rate,
+        positive_bce_weight,
+        boost=positive_bce_boost,
+        cap=pos_weight_cap,
+    )
+    losses = {
+        "non_zero_probability": focal_weighted_bce_loss(
+            pos_weight=pos_w, gamma=focal_gamma
+        ),
+        "base_forecast": spike_aware_magnitude_loss(
+            zero_mag_weight=zero_mag_weight, use_mse=use_mse
+        ),
+    }
+    weights = {
+        "non_zero_probability": float(alpha_bce),
+        "base_forecast": float(w_mag),
+    }
+    # Keep final_forecast tracked; weight 0 unless timing term requested.
+    if float(w_gated) > 0.0:
+        losses["final_forecast"] = inverse_weighted_mae_loss(zero_rate)
+        weights["final_forecast"] = float(w_gated)
+    else:
+        losses["final_forecast"] = all_days_mae_loss()
+        weights["final_forecast"] = 1e-4
+
+    return {
+        "recipe": "spike_aware",
+        "losses": losses,
+        "weights": weights,
+        "meta": {
+            "alpha_bce": float(alpha_bce),
+            "w_mag": float(w_mag),
+            "zero_mag_weight": float(zero_mag_weight),
+            "w_gated": float(w_gated),
+            "positive_bce_weight": float(pos_w),
+            "positive_bce_boost": float(positive_bce_boost),
+            "pos_weight_cap": float(pos_weight_cap) if pos_weight_cap is not None else None,
+            "focal_gamma": float(focal_gamma),
+            "use_mse": bool(use_mse),
+            "w_zero": inverse_class_weights(zero_rate)[0],
+            "w_nonzero": inverse_class_weights(zero_rate)[1],
+            "note": (
+                "spike-aware: heavy positive BCE + positive-only magnitude; "
+                "ŷ=p·b unchanged; bake-off default remains three_term"
+            ),
+        },
+    }

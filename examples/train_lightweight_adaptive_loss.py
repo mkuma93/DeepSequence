@@ -39,6 +39,8 @@ from deepsequence_hierarchical_attention.losses import (
     composite_loss,
     three_term_loss_config,
     bce_mae_loss_config,
+    spike_aware_loss_config,
+    resolve_positive_bce_weight,
 )
 from feature_config_loader import load_feature_config
 
@@ -138,13 +140,22 @@ class AdaptiveWeightedModel(keras.Model):
       - "legacy": BCE + MAE(final) on nonzero days only (old adaptive path)
       - "bce_mae": BCE + MAE(final) on all days (shape-safe)
       - "three_term": inverse-weighted gated MAE + nonzero mag MAE + light BCE
-        (recommended)
+        (recommended default bake-off)
+      - "spike_aware": heavy positive BCE (+ optional focal) + positive-only
+        magnitude on ``b`` with optional small zero-day mag weight (opt-in)
+
+    Spike-aware knobs (only used when ``loss_recipe='spike_aware'``):
+      - ``positive_bce_weight`` / ``positive_bce_boost``: heavier y>0 BCE
+      - ``focal_gamma``: focal focusing (0 = off)
+      - ``zero_mag_weight``: quiet-day magnitude calibration on ``b``
+      - ``use_mse_mag``: MSE instead of MAE for magnitude
 
     When ``sku_zero_rates`` is provided (length ``n_skus``), the BCE / occurrence
     term uses per-SKU ``pos_weight`` looked up from the last model input (SKU
     ids). Multi-horizon targets broadcast the same SKU weight across the
     horizon after flatten. Panel ``pos_weight`` remains the fallback when rates
-    are omitted.
+    are omitted. For spike-aware, SKU weights are scaled so the panel mean
+    matches ``positive_bce_weight`` (or boosted default).
     """
     
     def __init__(self, base_model, bce_loss_fn, mae_loss_fn, 
@@ -155,6 +166,11 @@ class AdaptiveWeightedModel(keras.Model):
                  horizon_decay=1.0,
                  sku_zero_rates=None,
                  pos_weight_cap=20.0,
+                 positive_bce_weight=None,
+                 positive_bce_boost=2.0,
+                 focal_gamma=0.0,
+                 zero_mag_weight=0.05,
+                 use_mse_mag=False,
                  **kwargs):
         super().__init__(**kwargs)
         self.base_model = base_model
@@ -171,8 +187,21 @@ class AdaptiveWeightedModel(keras.Model):
         self.adaptive_weighting = AdaptiveLossWeighting(num_tasks=2)
         self.zero_rate = zero_rate
         self.avg_nonzero_demand = avg_nonzero_demand
-        self.pos_weight = float(pos_weight)
         self.pos_weight_cap = float(pos_weight_cap)
+        self.positive_bce_boost = float(positive_bce_boost)
+        self.focal_gamma = float(focal_gamma)
+        self.zero_mag_weight = float(zero_mag_weight)
+        self.use_mse_mag = bool(use_mse_mag)
+        if self.loss_recipe == "spike_aware":
+            self.pos_weight = resolve_positive_bce_weight(
+                zero_rate,
+                positive_bce_weight,
+                boost=self.positive_bce_boost,
+                cap=self.pos_weight_cap,
+            )
+        else:
+            self.pos_weight = float(pos_weight)
+        self.positive_bce_weight = float(self.pos_weight)
         zr = float(zero_rate)
         nz = max(1.0 - zr, 1e-6)
         self.w_zero = 1.0 / (2.0 * max(zr, 1e-6))
@@ -194,6 +223,17 @@ class AdaptiveWeightedModel(keras.Model):
                 ],
                 dtype=np.float32,
             )
+            if self.loss_recipe == "spike_aware":
+                # Scale SKU imbalance weights so the panel reference matches
+                # the (boosted) spike-aware positive_bce_weight.
+                panel_ref = min(
+                    self.pos_weight_cap,
+                    zr / max(1.0 - zr, 1e-6),
+                )
+                scale = self.pos_weight / max(float(panel_ref), 1e-6)
+                pos_ws = np.minimum(
+                    self.pos_weight_cap, pos_ws * scale
+                ).astype(np.float32)
             self._sku_pos_weight_table = tf.constant(pos_ws, dtype=tf.float32)
         
         # Calculate optimal threshold for highly imbalanced data
@@ -304,6 +344,44 @@ class AdaptiveWeightedModel(keras.Model):
         # If horizon weights were applied pre-align we'd need different path.
         # Equal-weight flatten is default; horizon_decay handled below when shapes match.
         y_nonzero = tf.cast(y_true > 0, tf.float32)
+
+        if self.loss_recipe == "spike_aware":
+            p_clip = tf.clip_by_value(non_zero_probability, 1e-7, 1.0 - 1e-7)
+            if self.focal_gamma > 0.0:
+                g = tf.constant(self.focal_gamma, dtype=tf.float32)
+                focal_pos = tf.pow(1.0 - p_clip, g)
+                focal_neg = tf.pow(p_clip, g)
+            else:
+                focal_pos = 1.0
+                focal_neg = 1.0
+            bce_loss = tf.reduce_mean(
+                -bce_pos_w * y_nonzero * focal_pos * tf.math.log(p_clip)
+                - (1.0 - y_nonzero) * focal_neg * tf.math.log(1.0 - p_clip)
+            )
+            err = (
+                tf.square(y_true - base_forecast)
+                if self.use_mse_mag
+                else tf.abs(y_true - base_forecast)
+            )
+            mag_pos = tf.reduce_sum(y_nonzero * err) / (tf.reduce_sum(y_nonzero) + 1e-6)
+            mag_zero = tf.reduce_sum((1.0 - y_nonzero) * err) / (
+                tf.reduce_sum(1.0 - y_nonzero) + 1e-6
+            )
+            mag_mae = mag_pos + self.zero_mag_weight * mag_zero
+            if self.w_gated > 0.0:
+                w = self.w_zero * (1.0 - y_nonzero) + self.w_nonzero * y_nonzero
+                gated_mae = tf.reduce_sum(w * tf.abs(y_true - final_forecast)) / (
+                    tf.reduce_sum(w) + 1e-6
+                )
+            else:
+                gated_mae = tf.constant(0.0, dtype=tf.float32)
+            total = (
+                self.alpha_bce * bce_loss
+                + self.w_mag * mag_mae
+                + self.w_gated * gated_mae
+            )
+            # Report gated term as "mae" tracker when present; else mag.
+            return total, bce_loss, gated_mae if self.w_gated > 0.0 else mag_mae, mag_mae, y_nonzero
 
         if self.loss_recipe == "three_term":
             w = self.w_zero * (1.0 - y_nonzero) + self.w_nonzero * y_nonzero
@@ -693,7 +771,7 @@ class AdaptiveWeightLogger(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         if (epoch + 1) % self.log_freq == 0:
             recipe = getattr(self.model, 'loss_recipe', 'legacy')
-            if recipe in ('three_term', 'bce_mae') or getattr(self.model, 'use_fixed_weights', False):
+            if recipe in ('three_term', 'bce_mae', 'spike_aware') or getattr(self.model, 'use_fixed_weights', False):
                 print(f"\n[Loss recipe={recipe} - Epoch {epoch+1}] fixed/composite weights (no adaptive log-vars)")
                 return
             summary = self.model.adaptive_weighting.get_weights_summary()
@@ -736,14 +814,42 @@ def main():
         "--loss_recipe",
         type=str,
         default=None,
-        choices=["legacy", "bce_mae", "three_term"],
-        help="Loss recipe: legacy (nonzero MAE), bce_mae (all-day MAE), three_term (recommended)",
+        choices=["legacy", "bce_mae", "three_term", "spike_aware"],
+        help=(
+            "Loss recipe: legacy (nonzero MAE), bce_mae (all-day MAE), "
+            "three_term (recommended bake-off), spike_aware (opt-in heavy "
+            "positive BCE + positive-only magnitude)"
+        ),
     )
-    parser.add_argument("--alpha_bce", type=float, default=None, help="BCE weight for three_term recipe (default 0.2)")
-    parser.add_argument("--w_gated", type=float, default=None, help="Gated MAE weight for three_term (default 1.0)")
-    parser.add_argument("--w_mag", type=float, default=None, help="Nonzero magnitude MAE weight for three_term (default 1.0)")
+    parser.add_argument("--alpha_bce", type=float, default=None, help="BCE weight for three_term/spike_aware (default 0.2 / 1.0)")
+    parser.add_argument("--w_gated", type=float, default=None, help="Gated MAE weight for three_term/spike_aware (spike default 0)")
+    parser.add_argument("--w_mag", type=float, default=None, help="Nonzero magnitude MAE weight (default 1.0)")
     parser.add_argument("--bce_weight", type=float, default=None, help="BCE weight for bce_mae/legacy fixed mix")
     parser.add_argument("--mae_weight", type=float, default=None, help="MAE weight for bce_mae/legacy fixed mix")
+    parser.add_argument(
+        "--positive_bce_weight",
+        type=float,
+        default=None,
+        help="Spike-aware: absolute positive-class BCE weight (default boost*zr/(1-zr))",
+    )
+    parser.add_argument(
+        "--positive_bce_boost",
+        type=float,
+        default=None,
+        help="Spike-aware: multiplier on zr/(1-zr) when positive_bce_weight omitted (default 2)",
+    )
+    parser.add_argument(
+        "--focal_gamma",
+        type=float,
+        default=None,
+        help="Spike-aware: focal BCE gamma (0=off)",
+    )
+    parser.add_argument(
+        "--zero_mag_weight",
+        type=float,
+        default=None,
+        help="Spike-aware: relative zero-day magnitude weight on b (default 0.05)",
+    )
     args = parser.parse_args([] if hasattr(sys, 'ps1') else None)
 
     cfg = {}
@@ -962,13 +1068,40 @@ def main():
     weight_nonzero = float(cfg_val('weight_nonzero', 9.0))
     use_mse = bool(cfg_val('use_mse', False))  # True for MSE, False for MAE
     loss_recipe = str(cfg_val('loss_recipe', 'legacy'))
-    alpha_bce = float(cfg_val('alpha_bce', 0.2))
-    w_gated = float(cfg_val('w_gated', 1.0))
+    # Spike-aware defaults differ from three_term when knobs omitted.
+    _default_alpha = 1.0 if loss_recipe == 'spike_aware' else 0.2
+    _default_gated = 0.0 if loss_recipe == 'spike_aware' else 1.0
+    alpha_bce = float(cfg_val('alpha_bce', _default_alpha))
+    w_gated = float(cfg_val('w_gated', _default_gated))
     w_mag = float(cfg_val('w_mag', 1.0))
     fixed_bce_weight = cfg_val('bce_weight', None)
     fixed_mae_weight = cfg_val('mae_weight', None)
+    positive_bce_weight = cfg_val('positive_bce_weight', None)
+    positive_bce_boost = float(cfg_val('positive_bce_boost', 2.0))
+    focal_gamma = float(cfg_val('focal_gamma', 0.0))
+    zero_mag_weight = float(cfg_val('zero_mag_weight', 0.05))
 
-    if loss_recipe == 'three_term':
+    if loss_recipe == 'spike_aware':
+        loss_config = spike_aware_loss_config(
+            zero_rate=zero_rate,
+            alpha_bce=alpha_bce,
+            w_mag=w_mag,
+            zero_mag_weight=zero_mag_weight,
+            w_gated=w_gated,
+            positive_bce_weight=positive_bce_weight,
+            positive_bce_boost=positive_bce_boost,
+            focal_gamma=focal_gamma,
+            use_mse=use_mse,
+        )
+        print(f"\n✓ Using SPIKE-AWARE intermittent recipe (opt-in):")
+        print(f"  - heavy positive BCE (pos_weight={loss_config['meta']['positive_bce_weight']:.2f}, "
+              f"focal_gamma={focal_gamma})")
+        print(f"  - positive-only magnitude on base_forecast "
+              f"(zero_mag_weight={zero_mag_weight})")
+        print(f"  - optional gated timing w_gated={w_gated}")
+        print(f"  - weights: mag={w_mag}, bce={alpha_bce}")
+        print(f"  - ŷ=p·b unchanged; bake-off default remains three_term")
+    elif loss_recipe == 'three_term':
         loss_config = three_term_loss_config(
             zero_rate=zero_rate,
             alpha_bce=alpha_bce,
@@ -1215,11 +1348,11 @@ def main():
     batch_size = int(cfg_val('batch_size', best_params['batch_size']))
     epochs = int(cfg_val('epochs', 100))
 
-    # three_term / bce_mae: per-SKU BCE imbalance via relative sample weights.
+    # three_term / bce_mae / spike_aware: per-SKU BCE imbalance via relative sample weights.
     # legacy keeps per-SKU forecast magnitude weights (log1p mean demand).
     n_skus_fit = int(max(int(sku_train.max()), int(sku_val.max())) + 1)
     sku_zr_info = estimate_zero_rate_by_sku(y_train, sku_train, n_skus=n_skus_fit)
-    if loss_recipe in ("three_term", "bce_mae"):
+    if loss_recipe in ("three_term", "bce_mae", "spike_aware"):
         fit_sample_weight = multioutput_bce_sample_weight_dict(
             y_train,
             sku_train,

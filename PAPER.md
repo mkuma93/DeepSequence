@@ -209,6 +209,8 @@ With empirical zero rate \(\pi_0\approx P(y=0)\), the default three-term loss is
 
 where \(\mathrm{MAE}_{\mathrm{inv}}\) is inverse-class-weighted all-day MAE (timing) and \(\mathrm{MAE}_{\mathrm{nz}}\) is sale-day magnitude MAE against the magnitude head. Typical weights: \(\alpha=0.2\), \(w_g=w_m=1\).
 
+An opt-in **spike-aware** recipe (``loss_recipe='spike_aware'``; Section 5.8) replaces the light BCE with a heavier positive-class weight (default \(2\,\pi_0/(1-\pi_0)\), optional focal \(\gamma\)) and trains magnitude primarily on \(y>0\) against \(b\), with a small optional zero-day magnitude weight to keep \(b\) calibrated. The gated product \(\hat{y}=p\cdot b\) is unchanged; the locked bake-off remains ``three_term``.
+
 ### 3.10 Multi-horizon evaluation
 
 Primary tables use **one-step models with recursive rollout** to the horizons of interest (daily maximum horizon \(H=60\), report \(h\in\{1,7,14,28,60\}\); monthly \(h\in\{1,2,6\}\)). A direct multi-horizon head exists in the software for planning; it is **not** the primary claim of this preprint. Earlier drafts that emphasized direct multi-horizon wins at short horizons under a previous protocol are relegated to Appendix D and are not restated as primary evidence.
@@ -486,6 +488,20 @@ Locked bake-off features remain **distance-only** (`days_from_*`; v1.6). Separat
 *Figure 17. Recursive rollouts under country calendars; qualitative conclusion unchanged vs Figure 15.*
 
 **Takeaway.** Enabling binary holiday indicators—even with **country-correct** calendars—does **not**, on this qualitative panel, produce visible holiday-driven forecast spikes. Remaining limits: (i) intermittency dominated by lag/gate rather than calendar; (ii) HolidayComponent still maps channels through absolute-distance-style monotone hinges, so \(0/1\) binaries are a weak inductive fit; (iii) small qualitative SKU pool. Locked IWMAE tables are unchanged. A gated monthly `month_has` forecast config exists (`feature_config_monthly_month_has.yaml`) but was not used to regenerate Car Parts plots (locked monthly assemble path has no holiday block).
+
+### 5.8 Spike-aware loss diagnostics (daily, qualitative)
+
+Locked bake-off training remains ``three_term``. Separately, we ran an opt-in **spike-aware** recipe on a small daily panel (seed 42; additive Level-2 combine; country-holiday features): heavier positive-class BCE on the occurrence head \(p\) (default boost \(2\times \pi_0/(1-\pi_0)\), optional focal \(\gamma\)), magnitude loss primarily on sale days against \(b\), and a small zero-day magnitude weight (\(0.05\)) so \(b\) does not drift. The product \(\hat{y}=p\cdot b\) is unchanged.
+
+We selected **8 locked SKUs** with visible lumps in the test window (nonzero days × spike height—not max-sparsity only), trained \(\approx 30\) epochs, and plotted \(y\), \(\hat{y}\), \(p\), and \(b\) with country-holiday markers (Figures 20–21).
+
+![Figure 20. Spike-aware diagnostics panel (\(y\), \(\hat{y}\), \(p\)).](paper_figures/fig_spike_diag_panel.png)
+
+[Open PNG](paper_figures/fig_spike_diag_panel.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_spike_diag_panel.png)
+
+*Figure 20. Daily test-window traces under spike-aware loss for lumpy locked SKUs. Secondary axis shows occurrence probability \(p\); red markers are country-calendar holiday days.*
+
+**What \(p\) vs \(b\) shows.** On this run, mean \(p\) on sale days is essentially flat vs quiet days (\(\bar p_{\mathrm{spike}}\approx 0.87\approx\bar p_{\mathrm{quiet}}\); \(\Delta p\approx 0\); \(\mathrm{corr}(p,z)\approx 0\)). The gate stays hot and does **not** peak on lump days; residual under-forecast of spikes lives in \(b\) / the product \(\hat{y}\). Spike-aware loss is therefore a useful **diagnostic / training-pressure** tool—not a claimed bake-off IWMAE win. Locked tables are unchanged.
 
 ---
 

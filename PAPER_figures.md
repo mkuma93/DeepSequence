@@ -126,3 +126,11 @@ Qualitative only (same SKUs/seed; country-holiday feature config). Default bake-
 
 [Open PNG](paper_figures/fig_forecast_daily_mult_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_mult_recursive.png)
 
+## Figure 20. Spike-aware loss diagnostics (panel)
+
+Qualitative only (seed 42; additive stack; country holidays; ~30 epochs). Opt-in `spike_aware` loss: heavy positive BCE + positive-only magnitude. **Not** a claimed bake-off win.
+
+![Spike-aware diagnostics panel](paper_figures/fig_spike_diag_panel.png)
+
+[Open PNG](paper_figures/fig_spike_diag_panel.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_spike_diag_panel.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_spike_diag_panel.png)
+

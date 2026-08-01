@@ -19,6 +19,8 @@ from .losses import (
     inverse_weighted_mae_loss,
     hurdle_poisson_loss_config,
     tweedie_loss_config,
+    spike_aware_loss_config,
+    resolve_positive_bce_weight,
 )
 
 from .components_lightweight import (
@@ -86,6 +88,8 @@ __all__ = [
     "inverse_weighted_mae_loss",
     "hurdle_poisson_loss_config",
     "tweedie_loss_config",
+    "spike_aware_loss_config",
+    "resolve_positive_bce_weight",
     # Model
     "build_hierarchical_model_lightweight",
     "build_hierarchical_model_hybrid",
