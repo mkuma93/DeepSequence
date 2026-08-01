@@ -1,6 +1,6 @@
 # DeepSequence Hierarchical Attention
 
-Intermittent demand forecasting with a **lightweight hierarchical DeepSequence** backbone, **causal intermittent features**, and a **gated** occurrence × magnitude head.
+Prophet-inspired **multi-series intermittent demand** forecasting: hierarchical attention over trend / seasonal / holiday / regressor experts, a **context-aware** Level-2 mixer, and an occurrence × magnitude gate \(\hat{y}=p\cdot b\).
 
 **Package version:** 1.6.0 · **Feature contract:** v1.6 (28 columns)  
 **Paper:** [PAPER.md](PAPER.md) · **Report:** [REPORT_v1.6.md](REPORT_v1.6.md) · **Example notebook:** [examples/v16_deepsequence_example.ipynb](examples/v16_deepsequence_example.ipynb)
@@ -13,7 +13,7 @@ Intermittent demand forecasting with a **lightweight hierarchical DeepSequence**
 
 ## Architecture
 
-Hierarchical attention here means **feature / component reweighting**, not temporal self-attention over days.
+Hierarchical attention means **feature / component reweighting** (Level-1 inside experts, Level-2 across experts)—not temporal self-attention over days. Experts use **softsign** outputs by default; DCN **cross layers are off** by default.
 
 ```
 Panel (id_var, ds, Quantity) + holiday distances
@@ -29,35 +29,37 @@ Panel (id_var, ds, Quantity) + holiday distances
      • holiday: days_from_* only           (no binary is_*)
               │
               ▼
-   Lightweight hierarchical DeepSequence
-     ┌─────────┬───────────┬──────────┬────────────┐
-     │  Trend  │ Seasonal  │ Holiday  │ Regressor  │
-     │ (PWL /  │ (Fourier  │ (distance│ (lags +    │
-     │ change- │  + attn)  │  + attn) │ intermittent)│
-     └────┬────┴─────┬─────┴────┬─────┴──────┬─────┘
-          │          │          │            │
-          └──────────┴────┬─────┴────────────┘
-                          │
-              SKU embedding → soft component weights
-              (static per SKU; cross layers optional)
-                          │
-                          ▼
-                   base_forecast (softplus)
-                          │
-              Intermittent gate p ∈ (0,1)
-                          │
-                          ▼
-              ŷ = p · base_forecast
+   Prophet-like hierarchical experts (softsign)
+     ┌──────────────┬────────────────┬─────────────────┬──────────────────┐
+     │ Trend        │ Seasonal       │ Holiday         │ Regressor        │
+     │ softplus-mono│ Fourier +      │ mono distances  │ mono lags/state  │
+     │ changepoint  │ masked-entropy │ + selection attn│ + selection attn │
+     │ (no L1 attn) │ attn           │                 │                  │
+     └──────┬───────┴───────┬────────┴────────┬────────┴────────┬─────────┘
+            │               │                 │                 │
+            └───────────────┴────────┬────────┴─────────────────┘
+                                     │
+              Level-2 context-aware mixer
+              (SKU emb + lag/intermittent regime; not SKU-only)
+                                     │
+                                     ▼
+                          b = softplus(mix)     magnitude
+                          p ∈ (0,1)             occurrence gate
+                                     │
+                                     ▼
+                              ŷ = p · b
 ```
 
 ### Design notes
 
 | Piece | Role |
 |-------|------|
-| Hierarchical components | Separate trend / seasonal / holiday / regressor experts |
-| Component attention | Masked entropy attention + SKU shift/scale |
-| SKU weights | Soft mixture over components (not day-level self-attention) |
-| Gate `p` | Occurrence probability; final demand is gated magnitude |
+| Prophet-like experts | Separate trend / seasonal / holiday / regressor trunks |
+| Level-1 attention | Seasonal masked-entropy; holiday/regressor selection attn over monotone maps; trend has **no** L1 attn |
+| Softsign experts | Bounded signed expert scalars (default) |
+| Level-2 mixer | Context-aware component weights from SKU + demand-regime features |
+| Gate \(p\cdot b\) | Occurrence probability × softplus magnitude |
+| Cross layers | DCN cross **off** by default (`use_cross_layers=False`) |
 | Causal regressors | Lags + intermittent state use **strictly past** Quantity |
 | Holiday features (v1.6) | Distance only — `is_*` binaries removed as redundant |
 | Training loss | BCE on `p` + gated MAE + nonzero magnitude MAE |
@@ -341,4 +343,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Archive
 
-Older PWL/TabNet code and legacy packaging live under [`archive/`](archive/).
+Legacy packaging and superseded experiment code live under [`archive/`](archive/) (not part of the current model path).
