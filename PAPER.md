@@ -272,7 +272,11 @@ Recursive rollout after origin \(t\); known-future calendar and holidays; demand
 | \(h=28\) | \(\mathbf{4.823\pm0.970}\) | \(5.290\pm0.991\) | \(5.194\pm1.031\) |
 | \(h=60\) | \(\mathbf{4.345\pm0.619}\) | \(5.055\pm0.417\) | \(4.710\pm0.550\) |
 
-**Reading.** Short horizons favor the **temporal transformer**; DeepSequence leads at **long horizons** (\(h=28/60\)) on both the seed-42 full bake-off and the five-seed mean. DeepSequence beats TST IWMAE at \(h=28\) and \(h=60\) in **\(5/5\)** seeds. This is the opposite of a claim that DeepSequence wins one-step IWMAE everywhere.
+**Reading.** Short horizons favor the **temporal transformer**; DeepSequence leads at **long horizons** (\(h=28/60\)) on both the seed-42 full bake-off and the five-seed mean. DeepSequence beats TST IWMAE at \(h=28\) and \(h=60\) in **\(5/5\)** seeds. This is the opposite of a claim that DeepSequence wins one-step IWMAE everywhere. Figure 4 plots the multi-seed IWMAE curves from Table 2.
+
+![Figure 4. Daily multi-seed IWMAE vs horizon.](paper_figures/fig1_daily_iwmae_horizon.png)
+
+*Figure 4. Daily recursive IWMAE (mean ± std over training seeds \(42\)–\(46\)) for DeepSequence, TST, and LightGBM at \(h\in\{1,7,14,28,60\}\). Short horizons favor TST; DeepSequence leads at \(h=28/60\).*
 
 ### 5.2 Decision economics with loyalty (daily)
 
@@ -296,15 +300,11 @@ Without loyalty (\(C_{\mathrm{loyalty}}=0\)), **LightGBM** often wins **low-marg
 | \(h=28\) | \(\mathbf{-0.273\pm0.045}\) | \(-0.353\pm0.068\) | \(-0.308\pm0.051\) | **DS \(5/5\)** |
 | \(h=60\) | \(\mathbf{-0.255\pm0.042}\) | \(-0.373\pm0.046\) | \(-0.301\pm0.031\) | **DS \(5/5\)** |
 
-Loyalty collapses LightGBM’s low-margin win rate (\(h=7/14\): \(5/5\to0/5\); \(h=28\): \(5/5\to2/5\); \(h=60\): \(5/5\to1/5\)).
+Loyalty collapses LightGBM’s low-margin win rate (\(h=7/14\): \(5/5\to0/5\); \(h=28\): \(5/5\to2/5\); \(h=60\): \(5/5\to1/5\)). Figure 5 shows the multi-seed mid-margin \(\pi\) curves from Table 4.
 
-![Figure 4. Decision economics by lead time.](paper_figures/fig_decision_economics_by_lead_time.png)
+![Figure 5. Daily multi-seed mid-margin \(\pi\) vs horizon.](paper_figures/fig3_daily_decision_pi_horizon.png)
 
-*Figure 4. Illustrative lead-time decision economics. Locked loyalty tables above are authoritative; older economics figures without loyalty should be read as prior / partial protocol.*
-
-![Figure 5. Cost vs critical ratio.](paper_figures/fig_decision_economics_cost_vs_r.png)
-
-*Figure 5. Inventory-proxy cost versus effective critical ratio (scenario curves). Interpret with the loyalty caveats in Section 4.5.*
+*Figure 5. Daily multi-seed mid-margin decision \(\pi\) at \(C_{\mathrm{loyalty}}=0.25\) (higher is better; mean ± std over seeds \(42\)–\(46\)). TST leads at short lead times; DeepSequence dominates \(h=28/60\).*
 
 **Portfolio takeaway.** Short replenishment → temporal transformer; long replenishment → DeepSequence—once a modest loyalty / switching cost prevents “always under-forecast” from winning on paper. The multi-seed mid-\(\pi\) pattern matches the seed-42 matrix.
 
@@ -330,11 +330,11 @@ Prophet is competitive at \(h=6\) but loses short horizons to TSB and DeepSequen
 
 **Protocol note.** Table 5 (seed-42 bake-off; DeepSequence/TSB \(h=6\) ≈ 0.834) and Table 6 (multi-seed; DeepSequence \(0.769\pm0.004\) vs TSB 0.787) use **different reporting conventions** (raw IWMAE versus primary rounded IWMAE in the multi-seed orchestrator). Rankings within each table are self-consistent; do not mix absolute levels across tables.
 
-TSB is seed-invariant (classical). DeepSequence’s long-horizon (\(h=6\)) IWMAE edge over TSB is stable across seeds on the multi-seed (rounded) table, but mid-margin \(\pi\) with \(C_{\mathrm{loyalty}}=0.25\) still favors **TSB** on all horizons (\(0/5\) DeepSequence mid-\(\pi\) wins at \(h=6\))—reinforcing domain mismatch versus covariate-rich daily retail. Prefer TSB (then SBA/Croston) as the short-horizon monthly default; treat DeepSequence as a structural long-horizon IWMAE competitor when a neural panel model is required. Prophet confirms that a structural baseline is present but does not overturn TSB on this panel.
+TSB is seed-invariant (classical). DeepSequence’s long-horizon (\(h=6\)) IWMAE edge over TSB is stable across seeds on the multi-seed (rounded) table, but mid-margin \(\pi\) with \(C_{\mathrm{loyalty}}=0.25\) still favors **TSB** on all horizons (\(0/5\) DeepSequence mid-\(\pi\) wins at \(h=6\))—reinforcing domain mismatch versus covariate-rich daily retail. Prefer TSB (then SBA/Croston) as the short-horizon monthly default; treat DeepSequence as a structural long-horizon IWMAE competitor when a neural panel model is required. Prophet confirms that a structural baseline is present but does not overturn TSB on this panel. Figure 6 summarizes Tables 5–6.
 
-![Figure 6. Public Car Parts IWMAE (prior one-step figure).](paper_figures/fig7_public_carparts_iwmae.png)
+![Figure 6. Car Parts IWMAE vs horizon.](paper_figures/fig2_carparts_iwmae_horizon.png)
 
-*Figure 6. Earlier one-step Car Parts bake-off figure (prior protocol). Prefer the locked \(h=1/2/6\) tables above for current claims.*
+*Figure 6. Left: Car Parts multi-seed IWMAE (mean ± std; DeepSequence / TSB / LightGBM). Right: seed-42 bake-off including per-series Prophet. Do not mix absolute levels across panels (Section 5.3 protocol note).*
 
 ### 5.4 Daily Prophet subset (protocol note)
 
@@ -373,7 +373,11 @@ On a **150-SKU** evenly spaced subset of the locked daily list (at most four ori
 | Occurrence gate | One-step \(\Delta\) ≈ +0.42 IWMAE when removed |
 | Cross-network layers | Enabling them hurts long \(h\); keep off |
 
-Ablations are single-seed; they motivate the locked stack but do not replace multi-seed Tables 2 and 4.
+Ablations are single-seed; they motivate the locked stack but do not replace multi-seed Tables 2 and 4. Figure 7 visualizes Tables 7–8 (gate at one step; long-horizon Full vs structural ablations).
+
+![Figure 7. Novelty ablation IWMAE.](paper_figures/fig4_novelty_ablation.png)
+
+*Figure 7. Left: one-step DeepSequence novelty ablation (seed 42); −gate dominates the IWMAE gap. Right: recursive \(h=28/60\) ablations (gate omitted; MH arms without gate). Full wins both long horizons.*
 
 ---
 
@@ -531,11 +535,16 @@ Exact locked-stack settings (softsign outputs, monotone maps, context mixer, cro
 
 | File | Role in this preprint |
 |------|------------------------|
-| `paper_figures/fig_architecture_ds.png` | Primary architecture |
-| `paper_figures/fig_hierarchical_attention_internals.png` | Hierarchical attention |
-| `paper_figures/fig_changepoint_monotone.png` | Monotone trend |
-| `paper_figures/fig_decision_economics_by_lead_time.png` | Economics by lead time (pair with Section 5.2) |
-| `paper_figures/fig_decision_economics_cost_vs_r.png` | Economics vs critical ratio (pair with Section 5.2) |
+| `paper_figures/fig_architecture_ds.png` | Figure 1 — primary architecture |
+| `paper_figures/fig_hierarchical_attention_internals.png` | Figure 2 — hierarchical attention |
+| `paper_figures/fig_changepoint_monotone.png` | Figure 3 — monotone trend |
+| `paper_figures/fig1_daily_iwmae_horizon.png` | Figure 4 — daily multi-seed IWMAE vs horizon |
+| `paper_figures/fig3_daily_decision_pi_horizon.png` | Figure 5 — daily multi-seed mid-\(\pi\) vs horizon |
+| `paper_figures/fig2_carparts_iwmae_horizon.png` | Figure 6 — Car Parts IWMAE (+ Prophet bake-off panel) |
+| `paper_figures/fig4_novelty_ablation.png` | Figure 7 — novelty ablations |
+| `paper_figures/make_results_figures.py` | Regenerates Figures 4–7 from locked JSON |
+| `paper_figures/fig_decision_economics_by_lead_time.png` | Prior / partial economics (no loyalty lock) |
+| `paper_figures/fig_decision_economics_cost_vs_r.png` | Prior economics vs critical ratio |
 | `paper_figures/fig7_public_carparts_iwmae.png` | Prior one-step Car Parts figure |
 | `paper_figures/fig0_architecture.png` … `fig6_*.png` | Prior-protocol figures (Appendix D) |
 
