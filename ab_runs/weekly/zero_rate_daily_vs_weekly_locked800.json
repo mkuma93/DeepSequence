@@ -1,0 +1,156 @@
+{
+  "sku_list": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/recompare/sku_list_daily_data42.json",
+  "n_skus_locked": 800,
+  "daily": {
+    "label": "daily",
+    "n_rows": 594556,
+    "n_skus": 800,
+    "zero_rate": 0.8957911449888657,
+    "mean_demand": 1.0432305706537413,
+    "mean_nonzero": 10.010958958739884,
+    "by_split": {
+      "test": {
+        "n_rows": 89607,
+        "zero_rate": 0.8847299876125749,
+        "mean_demand": 1.0585068260534463,
+        "mean_nonzero": 9.182846467438392
+      },
+      "train": {
+        "n_rows": 415754,
+        "zero_rate": 0.8990316389018506,
+        "mean_demand": 1.0412172398504116,
+        "mean_nonzero": 10.312311980960693
+      },
+      "val": {
+        "n_rows": 89195,
+        "zero_rate": 0.891798867649532,
+        "mean_demand": 1.0372682512098959,
+        "mean_nonzero": 9.58648240251442
+      }
+    },
+    "by_country": {
+      "DE": {
+        "n_skus": 49,
+        "n_rows": 31278,
+        "zero_rate": 0.9688918728818978,
+        "mean_demand": 0.4241053349532153,
+        "mean_nonzero": 13.633264816718054
+      },
+      "EU": {
+        "n_skus": 31,
+        "n_rows": 18555,
+        "zero_rate": 0.9810832659660469,
+        "mean_demand": 0.24873080032336298,
+        "mean_nonzero": 13.148717948717948
+      },
+      "FR": {
+        "n_skus": 59,
+        "n_rows": 37901,
+        "zero_rate": 0.9703174058731959,
+        "mean_demand": 0.4084544822915842,
+        "mean_nonzero": 13.760740740740742
+      },
+      "IE": {
+        "n_skus": 73,
+        "n_rows": 46504,
+        "zero_rate": 0.9740237398933425,
+        "mean_demand": 0.49081799415104077,
+        "mean_nonzero": 18.894867549668874
+      },
+      "NL": {
+        "n_skus": 25,
+        "n_rows": 16659,
+        "zero_rate": 0.9808511915481122,
+        "mean_demand": 1.7373791944294374,
+        "mean_nonzero": 90.73040752351098
+      },
+      "UK": {
+        "n_skus": 563,
+        "n_rows": 443659,
+        "zero_rate": 0.8693095372797577,
+        "mean_demand": 1.2061736495047,
+        "mean_nonzero": 9.229240025621845
+      }
+    },
+    "sku_zero_rate_mean": 0.8939225307668665,
+    "sku_zero_rate_median": 0.9440661478599222,
+    "sku_zero_rate_p90": 0.9849717748286181
+  },
+  "weekly": {
+    "label": "weekly",
+    "n_rows": 85339,
+    "n_skus": 800,
+    "zero_rate": 0.650206822203213,
+    "mean_demand": 7.26817744718834,
+    "mean_nonzero": 20.778499720800166,
+    "by_split": {
+      "test": {
+        "n_rows": 9540,
+        "zero_rate": 0.6229559748427673,
+        "mean_demand": 8.275938667959108,
+        "mean_nonzero": 21.94952874404501
+      },
+      "train": {
+        "n_rows": 69459,
+        "zero_rate": 0.6544004376682647,
+        "mean_demand": 7.187361421708456,
+        "mean_nonzero": 20.796789710079054
+      },
+      "val": {
+        "n_rows": 6340,
+        "zero_rate": 0.6452681388012619,
+        "mean_demand": 6.637161401077015,
+        "mean_nonzero": 18.710361619754686
+      }
+    },
+    "by_country": {
+      "DE": {
+        "n_skus": 49,
+        "n_rows": 4495,
+        "zero_rate": 0.8117908787541713,
+        "mean_demand": 2.9510938079347424,
+        "mean_nonzero": 15.679866036249017
+      },
+      "EU": {
+        "n_skus": 31,
+        "n_rows": 2668,
+        "zero_rate": 0.8759370314842578,
+        "mean_demand": 1.7298350824587705,
+        "mean_nonzero": 13.943202416918428
+      },
+      "FR": {
+        "n_skus": 59,
+        "n_rows": 5446,
+        "zero_rate": 0.8161953727506427,
+        "mean_demand": 2.8426061941486105,
+        "mean_nonzero": 15.465367965367966
+      },
+      "IE": {
+        "n_skus": 73,
+        "n_rows": 6675,
+        "zero_rate": 0.8422471910112359,
+        "mean_demand": 3.4194756554307117,
+        "mean_nonzero": 21.67616334283001
+      },
+      "NL": {
+        "n_skus": 25,
+        "n_rows": 2396,
+        "zero_rate": 0.8727045075125208,
+        "mean_demand": 12.079716193656093,
+        "mean_nonzero": 94.89508196721312
+      },
+      "UK": {
+        "n_skus": 563,
+        "n_rows": 63659,
+        "zero_rate": 0.5866256146028056,
+        "mean_demand": 8.40619229277252,
+        "mean_nonzero": 20.335542282561498
+      }
+    },
+    "sku_zero_rate_mean": 0.6493153086068161,
+    "sku_zero_rate_median": 0.7161172161172161,
+    "sku_zero_rate_p90": 0.9032258064516129
+  },
+  "delta_zero_rate": -0.24558432278565268,
+  "zero_rate_ratio_weekly_over_daily": 0.7258464496334074
+}

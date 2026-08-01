@@ -414,6 +414,29 @@ TSB is seed-invariant (classical). DeepSequence’s long-horizon (\(h=6\)) IWMAE
 
 Pointwise IWMAE ranking (TSB short / DS competitive at \(h=6\)) and CumMAE ranking diverge: LightGBM’s under-forecasting can look strong on cumulative absolute error even when IWMAE does not prefer it. Primary claims remain pointwise IWMAE + loyalty \(\pi\); CumMAE is planning-sum diagnostics only.
 
+### 5.3b Weekly aggregation (same locked 800 SKUs)
+
+**Motivation.** Daily intermittency on this panel is extreme (\(\approx 90\%\) zeros). Aggregating to ISO Monday-start weeks (sum `Quantity` by SKU-week) tests whether milder zero rates change the “flat mean-rate” narrative for DeepSequence. Panel builder: `examples/prepare_weekly_panel.py`; features: `feature_config_weekly.yaml` (lags \(\{1,2,4\}\), `gap_unit: weeks`). Does **not** replace the locked daily bake-off.
+
+**Table Z.** Zero rate and mean demand, locked 800 SKUs (all splits pooled). Artifact: `ab_runs/weekly/zero_rate_daily_vs_weekly_locked800.json`.
+
+| Grain | \(n\) rows | Zero rate | Mean demand | Mean \(\mid y>0\) | SKU mean zero rate |
+|-------|----------:|----------:|------------:|------------------:|-------------------:|
+| Daily | 594{,}556 | 0.896 | 1.04 | 10.01 | 0.894 |
+| Weekly | 85{,}339 | **0.650** | 7.27 | 20.78 | 0.649 |
+
+Aggregation cuts zero rate by \(\approx 25\) percentage points overall; UK (563 SKUs) drops \(0.869\to 0.587\). Country detail is in the JSON artifact.
+
+**Table W.** Weekly direct multi-horizon bake-off, seed 42, locked 800 (793 origins with \(\ge 8\) test weeks). Models: DeepSequence (direct MH, SKU on), TSB (recursive classical), LightGBM (multi-output). Horizons \(h\in\{1,4,8\}\) weeks (\(\approx\) week / month / 2-month). Runner: `examples/eval_weekly_mh.py`. Artifact: `ab_runs/weekly/weekly_mh8_locked800_s42.json`.
+
+| Horizon | DeepSequence IWMAE | TSB | LightGBM | Best IWMAE | DS CumMAE | TSB CumMAE | LGBM CumMAE |
+|--------:|-------------------:|----:|---------:|:-----------|----------:|-----------:|------------:|
+| \(h=1\) | **9.95** | 10.21 | 10.78 | DeepSequence | **6.41** | 7.41 | 8.50 |
+| \(h=4\) | **8.83** | 10.01 | 10.02 | DeepSequence | **18.93** | 20.75 | 21.77 |
+| \(h=8\) | **7.78** | 10.37 | 13.47 | DeepSequence | **42.78** | 43.28 | 49.84 |
+
+**Reading.** On weekly grain, DeepSequence leads pointwise IWMAE and CumMAE at all three horizons (seed 42). Flatness diagnostics at \(h=1\): DeepSequence \(\mathrm{corr}(y,\hat y)\approx 0.48\), \(\mathrm{CV}(\hat y)\approx 2.55\), only \(\approx 2\%\) of forecasts within 10% of mean \(\hat y\), and 41 distinct rounded levels—**not** a constant mean-rate. DeepSequence still under-forecasts on average (bias \(\approx -4.5\) pooled), so the planning-rate framing remains, but cross-SKU / week variation is material once zeros are milder. Absolute IWMAE levels are not comparable to daily Table 1 (different grain and demand scale).
+
 ### 5.4 Daily Prophet subset (protocol note)
 
 On a **150-SKU** evenly spaced subset of the locked daily list (at most four origins per SKU), per-series Prophet reports IWMAE \(h=1/28/60\) = **2.68 / 4.90 / 3.34**. These are **not** comparable to the 800-SKU global DeepSequence table (different panel slice and origin density). The run documents that a tractable daily Prophet protocol is available; a full 800-SKU daily Prophet bake-off remains future work.
@@ -587,9 +610,9 @@ We selected **8 locked SKUs** with visible lumps in the test window (nonzero day
 
 ## 7. Limitations and future work
 
-**Limitations.** Enterprise results are panel-specific and cannot be released as raw data. Novelty ablations are single-seed. Daily Prophet is a 150-SKU subset, not the locked 800-SKU panel. Sequence baselines are lite adaptations sharing the gated head where applicable. Car Parts is short monthly history without a rich retail calendar. Decision economics use error proxies, not full inventory simulation. Hierarchical product-tree reconciliation is out of scope. Prophet versus DeepSequence also differs in protocol (local per-series fit versus global multi-series training). Seed-42 bake-off tables and multi-seed summary tables may use different IWMAE field conventions on Car Parts (Section 5.3); rankings should be read within table. DeepSequence targets intermittent planning rates (\(p\cdot b\)) and **does not capture spikes** well on these panels; holiday / calendar covariates show **no material relation** to spikes in year-scope and monthly retests (Section 6.1)—spike timing likely needs promotions, price, availability, traffic, etc., which are absent here. Weekly aggregation of the daily enterprise panel is supported as an alternate grain (`feature_config_weekly.yaml`, `examples/prepare_weekly_panel.py`) but is not the locked bake-off protocol.
+**Limitations.** Enterprise results are panel-specific and cannot be released as raw data. Novelty ablations are single-seed. Daily Prophet is a 150-SKU subset, not the locked 800-SKU panel. Sequence baselines are lite adaptations sharing the gated head where applicable. Car Parts is short monthly history without a rich retail calendar. Decision economics use error proxies, not full inventory simulation. Hierarchical product-tree reconciliation is out of scope. Prophet versus DeepSequence also differs in protocol (local per-series fit versus global multi-series training). Seed-42 bake-off tables and multi-seed summary tables may use different IWMAE field conventions on Car Parts (Section 5.3); rankings should be read within table. DeepSequence targets intermittent planning rates (\(p\cdot b\)) and **does not capture spikes** well on these panels; holiday / calendar covariates show **no material relation** to spikes in year-scope and monthly retests (Section 6.1)—spike timing likely needs promotions, price, availability, traffic, etc., which are absent here. Weekly aggregation (Section 5.3b) is a single-seed direct-MH probe on the same locked SKUs, not a multi-seed replacement for the daily protocol; absolute weekly IWMAE is not comparable to daily Table 1.
 
-**Future work.** (i) Fuller daily Prophet on the locked 800-SKU panel under comparable origin density. (ii) Optional monthly evaluation at \(h=12\) where series length permits. (iii) Multi-seed novelty ablations. (iv) Stronger inventory simulation and empirically calibrated loyalty costs. (v) Hierarchical reconciliation across product trees. (vi) Multi-seed CumMAE summaries (seed-42 CumMAE tables are in Section 5.1 / 5.3). (vii) Full weekly-grain bake-off and promotion/price covariates for spike timing.
+**Future work.** (i) Fuller daily Prophet on the locked 800-SKU panel under comparable origin density. (ii) Optional monthly evaluation at \(h=12\) where series length permits. (iii) Multi-seed novelty ablations. (iv) Stronger inventory simulation and empirically calibrated loyalty costs. (v) Hierarchical reconciliation across product trees. (vi) Multi-seed CumMAE summaries (seed-42 CumMAE tables are in Section 5.1 / 5.3). (vii) Multi-seed weekly-grain bake-off (incl. TST-weekly analogue) and promotion/price covariates for spike timing.
 
 ---
 
@@ -664,7 +687,9 @@ Implementation and locked evaluation artifacts accompany this preprint:
 | Package | `deepsequence_hierarchical_attention/` |
 | Feature configuration (daily) | `feature_config.yaml` |
 | Feature configuration (weekly) | `feature_config_weekly.yaml` |
-| Weekly panel prepare | `examples/prepare_weekly_panel.py` → `ab_runs/weekly/` |
+| Weekly panel prepare | `examples/prepare_weekly_panel.py` → `ab_runs/weekly/panel_locked800/` |
+| Weekly zero-rate audit | `ab_runs/weekly/zero_rate_daily_vs_weekly_locked800.json` |
+| Weekly MH bake-off (seed 42) | `examples/eval_weekly_mh.py` → `ab_runs/weekly/weekly_mh8_locked800_s42.json` |
 | Synthetic demo | `examples/v16_deepsequence_example.ipynb` |
 | Training config sample | `examples/training_config.sample.json` |
 | Locked daily multi-horizon (all models) | `ab_runs/reclaim/daily_mh_1_60_level1_cross_off_all_models.json` |
