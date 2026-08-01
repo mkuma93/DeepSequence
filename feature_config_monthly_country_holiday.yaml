@@ -1,10 +1,11 @@
-# Feature Configuration — Monthly forecast-only (country month_has holidays)
-# Version: 1.7-monthly-country-hol-forecast
+# Feature Configuration — Monthly forecast-only (country months_from + month_has)
+# Version: 1.8-monthly-country-hol-forecast
 # Date: 2026-08-01
 #
 # NOT the locked Car Parts bake-off contract (feature_config_monthly.yaml
-# keeps holiday_encoding: none). Enables month_has_* rebuilt from
-# per-country calendars (same shared keys / country rules as daily).
+# keeps holiday_encoding: none). Enables year-scoped months_from_* plus
+# month_has_* rebuilt from per-country calendars (same shared keys /
+# country rules as daily).
 #
 # Car Parts Monash ids are bare T#### with no country prefix → default US
 # calendar (metadata.holiday_country_default). Daily Online Retail panels
@@ -61,36 +62,66 @@ intermittent_features:
     index: 10
 
 holiday_features:
-  - name: month_has_NewYear
+  - name: months_from_NewYear
     index: 11
-  - name: month_has_MLK
+  - name: months_from_MLK
     index: 12
-  - name: month_has_Presidents
+  - name: months_from_Presidents
     index: 13
-  - name: month_has_Valentine
+  - name: months_from_Valentine
     index: 14
-  - name: month_has_Easter
+  - name: months_from_Easter
     index: 15
-  - name: month_has_Mothers
+  - name: months_from_Mothers
     index: 16
-  - name: month_has_Memorial
+  - name: months_from_Memorial
     index: 17
-  - name: month_has_Fathers
+  - name: months_from_Fathers
     index: 18
-  - name: month_has_July4
+  - name: months_from_July4
     index: 19
-  - name: month_has_Labor
+  - name: months_from_Labor
     index: 20
-  - name: month_has_Halloween
+  - name: months_from_Halloween
     index: 21
-  - name: month_has_Thanksgiving
+  - name: months_from_Thanksgiving
     index: 22
-  - name: month_has_BlackFriday
+  - name: months_from_BlackFriday
     index: 23
-  - name: month_has_Christmas
+  - name: months_from_Christmas
     index: 24
-  - name: month_has_NewYearEve
+  - name: months_from_NewYearEve
     index: 25
+  - name: month_has_NewYear
+    index: 26
+  - name: month_has_MLK
+    index: 27
+  - name: month_has_Presidents
+    index: 28
+  - name: month_has_Valentine
+    index: 29
+  - name: month_has_Easter
+    index: 30
+  - name: month_has_Mothers
+    index: 31
+  - name: month_has_Memorial
+    index: 32
+  - name: month_has_Fathers
+    index: 33
+  - name: month_has_July4
+    index: 34
+  - name: month_has_Labor
+    index: 35
+  - name: month_has_Halloween
+    index: 36
+  - name: month_has_Thanksgiving
+    index: 37
+  - name: month_has_BlackFriday
+    index: 38
+  - name: month_has_Christmas
+    index: 39
+  - name: month_has_NewYearEve
+    index: 40
 
 binary_holiday_features: []
 
@@ -106,6 +137,21 @@ feature_order:
   - months_since_last_sale
   - last_sale_quantity
   - lifetime_cumsum
+  - months_from_NewYear
+  - months_from_MLK
+  - months_from_Presidents
+  - months_from_Valentine
+  - months_from_Easter
+  - months_from_Mothers
+  - months_from_Memorial
+  - months_from_Fathers
+  - months_from_July4
+  - months_from_Labor
+  - months_from_Halloween
+  - months_from_Thanksgiving
+  - months_from_BlackFriday
+  - months_from_Christmas
+  - months_from_NewYearEve
   - month_has_NewYear
   - month_has_MLK
   - month_has_Presidents
@@ -138,23 +184,28 @@ model_architecture:
     feature_names:
       [lag_1, lag_2, lag_12, months_since_last_sale, last_sale_quantity, lifetime_cumsum]
   holiday_component:
-    description: "month_has_* from country-local calendars (forecast-only)"
-    feature_indices: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+    description: "Year-scoped months_from_* + month_has_* from country calendars (forecast-only)"
+    feature_indices: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+                      26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
     feature_names:
-      [month_has_NewYear, month_has_MLK, month_has_Presidents, month_has_Valentine,
+      [months_from_NewYear, months_from_MLK, months_from_Presidents, months_from_Valentine,
+       months_from_Easter, months_from_Mothers, months_from_Memorial, months_from_Fathers,
+       months_from_July4, months_from_Labor, months_from_Halloween, months_from_Thanksgiving,
+       months_from_BlackFriday, months_from_Christmas, months_from_NewYearEve,
+       month_has_NewYear, month_has_MLK, month_has_Presidents, month_has_Valentine,
        month_has_Easter, month_has_Mothers, month_has_Memorial, month_has_Fathers,
        month_has_July4, month_has_Labor, month_has_Halloween, month_has_Thanksgiving,
        month_has_BlackFriday, month_has_Christmas, month_has_NewYearEve]
 
 metadata:
-  version: "1.7-monthly-country-hol-forecast"
-  total_features: 26
+  version: "1.8-monthly-country-hol-forecast"
+  total_features: 41
   created_date: "2026-08-01"
   frequency: monthly
   description: >
-    Forecast-only monthly with country-aware month_has holidays; locked
-    carparts YAML stays holiday_encoding: none
-  holiday_encoding: month_has
+    Forecast-only monthly with country-aware year-scoped months_from + month_has;
+    locked carparts YAML stays holiday_encoding: none
+  holiday_encoding: months_from_month_has
   holiday_calendar: country
   holiday_distance_scope: year
   holiday_country_default: US

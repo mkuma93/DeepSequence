@@ -580,16 +580,19 @@ def build_country_month_holiday_features(
     """
     Build aligned monthly holiday frame for a panel.
 
-    ``encoding`` is ``month_has`` or ``months_from``. Country is taken from
-    ``country_col`` if present, else parsed from ``{Country}_{code}`` in
-    ``sku_col`` (falls back to ``default_country`` when the prefix is not a
-    known calendar — e.g. Monash Car Parts ``T####`` ids).
+    ``encoding`` is ``month_has``, ``months_from``, or ``months_from_month_has``
+    (concatenates both column sets). Country is taken from ``country_col`` if
+    present, else parsed from ``{Country}_{code}`` in ``sku_col`` (falls back
+    to ``default_country`` when the prefix is not a known calendar — e.g.
+    Monash Car Parts ``T####`` ids).
 
     ``distance_scope`` applies only to ``months_from`` (``month_has`` is
     already same-year membership). Default ``year``; use ``nearest`` to match
     legacy cross-year month distances.
     """
-    enc = str(encoding).lower()
+    enc = str(encoding).lower().replace("+", "_").replace("-", "_")
+    if enc in ("months_from_and_month_has", "month_has_and_months_from"):
+        enc = "months_from_month_has"
     if country_col is not None and country_col in df.columns:
         countries = df[country_col].tolist()
     else:
@@ -609,6 +612,21 @@ def build_country_month_holiday_features(
             holiday_keys=holiday_keys,
             default_country=default_country,
         )
+    if enc == "months_from_month_has":
+        mf = months_from_holiday_features_by_country(
+            df[date_col],
+            countries,
+            holiday_keys=holiday_keys,
+            default_country=default_country,
+            distance_scope=distance_scope,
+        )
+        mh = month_has_holiday_features_by_country(
+            df[date_col],
+            countries,
+            holiday_keys=holiday_keys,
+            default_country=default_country,
+        )
+        return pd.concat([mf.reset_index(drop=True), mh.reset_index(drop=True)], axis=1)
     raise ValueError(f"Unsupported monthly holiday encoding: {encoding}")
 
 

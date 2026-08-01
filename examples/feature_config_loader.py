@@ -472,7 +472,15 @@ class FeatureConfig:
             meta.get("holiday_distance_scope", meta.get("distance_scope", "year"))
         ).lower()
         if expected_holidays:
-            if holiday_encoding in ("month_has", "months_from"):
+            enc_norm = (
+                holiday_encoding.lower().replace("+", "_").replace("-", "_")
+            )
+            if enc_norm in (
+                "months_from_and_month_has",
+                "month_has_and_months_from",
+            ):
+                enc_norm = "months_from_month_has"
+            if enc_norm in ("month_has", "months_from", "months_from_month_has"):
                 try:
                     from holiday_calendar import (
                         month_has_holiday_features,
@@ -483,14 +491,35 @@ class FeatureConfig:
                         month_has_holiday_features,
                         months_from_holiday_features,
                     )
-                prefix = "months_from_" if holiday_encoding == "months_from" else "month_has_"
-                keys = []
+                mf_keys: List[str] = []
+                mh_keys: List[str] = []
                 for name in expected_holidays:
-                    if not name.startswith(prefix):
+                    if name.startswith("months_from_"):
+                        mf_keys.append(name.replace("months_from_", "", 1))
+                    elif name.startswith("month_has_"):
+                        mh_keys.append(name.replace("month_has_", "", 1))
+                    else:
                         raise ValueError(
-                            f"{holiday_encoding} encoding expects names {prefix}*, got {name}"
+                            f"{holiday_encoding} encoding expects months_from_* "
+                            f"and/or month_has_* names, got {name}"
                         )
-                    keys.append(name.replace(prefix, "", 1))
+                if enc_norm == "months_from" and mh_keys:
+                    raise ValueError(
+                        "holiday_encoding=months_from but found month_has_* names"
+                    )
+                if enc_norm == "month_has" and mf_keys:
+                    raise ValueError(
+                        "holiday_encoding=month_has but found months_from_* names"
+                    )
+                if enc_norm == "months_from_month_has" and not (mf_keys and mh_keys):
+                    raise ValueError(
+                        "holiday_encoding=months_from_month_has expects both "
+                        "months_from_* and month_has_* feature names"
+                    )
+                # Prefer months_from key order when both present; month_has keys
+                # may repeat the same holiday labels.
+                keys = list(dict.fromkeys(mf_keys + mh_keys))
+                build_enc = enc_norm
                 if holiday_calendar_mode in ("country", "per_country", "country_aware"):
                     try:
                         from holiday_calendar import (
@@ -504,7 +533,7 @@ class FeatureConfig:
                     built = build_country_month_holiday_features(
                         df_sorted,
                         holiday_keys=keys,
-                        encoding=holiday_encoding,
+                        encoding=build_enc,
                         sku_col="id_var",
                         date_col="ds",
                         country_col=country_col if country_col in df_sorted.columns else None,
@@ -518,18 +547,30 @@ class FeatureConfig:
                     )
                 else:
                     country = str(meta.get("holiday_country", "US"))
-                    if holiday_encoding == "months_from":
-                        built = months_from_holiday_features(
-                            df_sorted["ds"],
-                            holiday_keys=keys,
-                            country=country,
-                            distance_scope=holiday_distance_scope,
+                    parts = []
+                    if mf_keys or build_enc in ("months_from", "months_from_month_has"):
+                        use_keys = mf_keys or keys
+                        parts.append(
+                            months_from_holiday_features(
+                                df_sorted["ds"],
+                                holiday_keys=use_keys,
+                                country=country,
+                                distance_scope=holiday_distance_scope,
+                            )
                         )
-                    else:
-                        built = month_has_holiday_features(
-                            df_sorted["ds"], holiday_keys=keys, country=country
+                    if mh_keys or build_enc in ("month_has", "months_from_month_has"):
+                        use_keys = mh_keys or keys
+                        parts.append(
+                            month_has_holiday_features(
+                                df_sorted["ds"], holiday_keys=use_keys, country=country
+                            )
                         )
-                holiday_subset = built[[f"{prefix}{k}" for k in keys]].reset_index(drop=True)
+                    built = (
+                        pd.concat([p.reset_index(drop=True) for p in parts], axis=1)
+                        if len(parts) > 1
+                        else parts[0]
+                    )
+                holiday_subset = built[expected_holidays].reset_index(drop=True)
                 features_df = pd.concat([features_df, holiday_subset], axis=1)
             else:
                 # days_from_*: either use precomputed frame, or rebuild from

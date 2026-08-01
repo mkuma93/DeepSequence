@@ -1,0 +1,15 @@
+{
+  "n_skus": 150,
+  "epochs": 12,
+  "seed": 42,
+  "sku_list": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/recompare/sku_list_daily_data42.json",
+  "holiday_rebuild": "US calendar days_from_* with distance_scope=year",
+  "year_scope_data_dir": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/paper_figures/year_scope_retest/daily_holiday_year_scope_us",
+  "iwmae_rounded_nearest_subset": 4.0736088527975305,
+  "iwmae_rounded_year_subset": 4.0736088527975305,
+  "delta_year_minus_nearest": 0.0,
+  "prior_artifact_800_ds_iwmae_rounded": 4.181472104237072,
+  "note": "Paired subset probe only; not a full multi-seed locked bake-off. Rebuilt US year-scope days_from_* CSVs are bitwise-equal to the locked jubilant holiday_features_*.csv (max abs diff 0), so DS IWMAE on the 150-SKU locked-list subset is unchanged. Explicit distance_scope='nearest' would differ (e.g. 2011-01-07 Christmas: year=-352 vs nearest=+13), but locked artifacts already match year. Country-calendar qualitative retests are the meaningful year-scope change (on-the-fly rebuild).",
+  "locked_csv_vs_year_rebuild_max_abs_diff": 0.0,
+  "locked_csv_already_year_scoped": true
+}

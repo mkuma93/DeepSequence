@@ -23,7 +23,7 @@ Additive vs multiplicative Level-2 combine (same SKUs/seed; no TST):
     --epochs 20 --feature_config_daily feature_config_daily_country_holiday.yaml \\
     --fig_prefix_daily fig_forecast_daily_mult --holiday_markers 1
 
-Monthly Car Parts country month_has (forecast-only; locked YAML stays none):
+Monthly Car Parts country months_from + month_has (year-scoped; locked YAML stays none):
   python paper_figures/make_forecast_line_plots.py --only carparts --epochs 20 \\
     --feature_config_monthly feature_config_monthly_country_holiday.yaml \\
     --fig_prefix_carparts fig_forecast_carparts_country_hol --holiday_markers 1
@@ -496,7 +496,14 @@ def run_daily(args):
     use_country = _country_calendar_enabled(cfg)
 
     if use_country:
-        print("rebuilding holiday distances from per-country calendars (sku_id prefix)")
+        scope = cfg.config.get("metadata", {}).get(
+            "holiday_distance_scope",
+            cfg.config.get("metadata", {}).get("distance_scope", "year"),
+        )
+        print(
+            f"rebuilding holiday distances from per-country calendars "
+            f"(sku_id prefix; distance_scope={scope})"
+        )
         h_tr = _rebuild_holidays_for_split(train_df, cfg)
         h_va = _rebuild_holidays_for_split(val_df, cfg)
         h_te = _rebuild_holidays_for_split(test_df, cfg)
@@ -606,6 +613,10 @@ def run_daily(args):
         "feature_config": str(cfg_path or "default"),
         "binary_holiday_features": cfg.binary_holiday_names,
         "holiday_calendar": cfg.config.get("metadata", {}).get("holiday_calendar", "static"),
+        "holiday_distance_scope": cfg.config.get("metadata", {}).get(
+            "holiday_distance_scope",
+            cfg.config.get("metadata", {}).get("distance_scope", "year"),
+        ),
         "skus": {},
         "corr_yhat_vs_holiday_flag": {},
     }
@@ -782,7 +793,14 @@ def run_daily_combine_compare(args):
     use_country = _country_calendar_enabled(cfg)
 
     if use_country:
-        print("rebuilding holiday distances from per-country calendars (sku_id prefix)")
+        scope = cfg.config.get("metadata", {}).get(
+            "holiday_distance_scope",
+            cfg.config.get("metadata", {}).get("distance_scope", "year"),
+        )
+        print(
+            f"rebuilding holiday distances from per-country calendars "
+            f"(sku_id prefix; distance_scope={scope})"
+        )
         h_tr = _rebuild_holidays_for_split(train_df, cfg)
         h_va = _rebuild_holidays_for_split(val_df, cfg)
         h_te = _rebuild_holidays_for_split(test_df, cfg)
@@ -1002,34 +1020,62 @@ def run_daily_combine_compare(args):
     print("daily combine-compare done")
 
 
+def _normalize_monthly_encoding(encoding: str) -> str:
+    enc = str(encoding).lower().replace("+", "_").replace("-", "_")
+    if enc in ("months_from_and_month_has", "month_has_and_months_from"):
+        return "months_from_month_has"
+    return enc
+
+
 def _monthly_holiday_vector_for_date(date, cfg, sku_id):
     """Return ordered holiday feature vector for one month, or None if disabled."""
     if not cfg.holiday_names:
         return None
     meta = cfg.config.get("metadata", {}) or {}
-    encoding = str(meta.get("holiday_encoding", "none")).lower()
-    if encoding not in ("month_has", "months_from"):
+    encoding = _normalize_monthly_encoding(meta.get("holiday_encoding", "none"))
+    if encoding not in ("month_has", "months_from", "months_from_month_has"):
         return None
-    prefix = "months_from_" if encoding == "months_from" else "month_has_"
-    keys = [n.replace(prefix, "", 1) for n in cfg.holiday_names]
+    mf_keys = [
+        n.replace("months_from_", "", 1)
+        for n in cfg.holiday_names
+        if n.startswith("months_from_")
+    ]
+    mh_keys = [
+        n.replace("month_has_", "", 1)
+        for n in cfg.holiday_names
+        if n.startswith("month_has_")
+    ]
+    keys = list(dict.fromkeys(mf_keys + mh_keys))
     default_country = str(
         meta.get("holiday_country_default", meta.get("holiday_country", "US"))
     )
     country = country_from_sku_id(sku_id, default=default_country)
     dates = pd.Series([pd.Timestamp(date)])
-    if encoding == "months_from":
-        distance_scope = str(
-            meta.get("holiday_distance_scope", meta.get("distance_scope", "year"))
+    distance_scope = str(
+        meta.get("holiday_distance_scope", meta.get("distance_scope", "year"))
+    )
+    parts = []
+    if encoding in ("months_from", "months_from_month_has"):
+        parts.append(
+            months_from_holiday_features(
+                dates,
+                holiday_keys=mf_keys or keys,
+                country=country,
+                distance_scope=distance_scope,
+            )
         )
-        built = months_from_holiday_features(
-            dates,
-            holiday_keys=keys,
-            country=country,
-            distance_scope=distance_scope,
+    if encoding in ("month_has", "months_from_month_has"):
+        parts.append(
+            month_has_holiday_features(
+                dates, holiday_keys=mh_keys or keys, country=country
+            )
         )
-    else:
-        built = month_has_holiday_features(dates, holiday_keys=keys, country=country)
-    return built[[f"{prefix}{k}" for k in keys]].to_numpy(np.float32).reshape(-1)
+    built = (
+        pd.concat([p.reset_index(drop=True) for p in parts], axis=1)
+        if len(parts) > 1
+        else parts[0]
+    )
+    return built[cfg.holiday_names].to_numpy(np.float32).reshape(-1)
 
 
 def _month_has_mark_dates(dates, sku_id, cfg):
@@ -1037,10 +1083,16 @@ def _month_has_mark_dates(dates, sku_id, cfg):
     if not cfg.holiday_names:
         return []
     meta = cfg.config.get("metadata", {}) or {}
-    encoding = str(meta.get("holiday_encoding", "none")).lower()
-    if encoding != "month_has":
+    encoding = _normalize_monthly_encoding(meta.get("holiday_encoding", "none"))
+    if encoding not in ("month_has", "months_from_month_has"):
         return []
-    keys = [n.replace("month_has_", "", 1) for n in cfg.holiday_names]
+    keys = [
+        n.replace("month_has_", "", 1)
+        for n in cfg.holiday_names
+        if n.startswith("month_has_")
+    ]
+    if not keys:
+        return []
     default_country = str(
         meta.get("holiday_country_default", meta.get("holiday_country", "US"))
     )
@@ -1100,42 +1152,50 @@ def run_carparts(args):
         f"default_country={default_country}"
     )
     if use_country and cfg.holiday_names:
-        enc_name = str(meta.get("holiday_encoding", "month_has"))
-        print(
-            f"rebuilding monthly holidays ({enc_name}) from country calendars "
-            f"(sku prefix / default={default_country})"
+        enc_name = _normalize_monthly_encoding(
+            meta.get("holiday_encoding", "month_has")
         )
-        keys = [
-            n.replace("month_has_", "", 1).replace("months_from_", "", 1)
+        distance_scope = str(
+            meta.get("holiday_distance_scope", meta.get("distance_scope", "year"))
+        )
+        print(
+            f"rebuilding monthly holidays ({enc_name}, distance_scope={distance_scope}) "
+            f"from country calendars (sku prefix / default={default_country})"
+        )
+        mf_keys = [
+            n.replace("months_from_", "", 1)
             for n in cfg.holiday_names
+            if n.startswith("months_from_")
         ]
+        mh_keys = [
+            n.replace("month_has_", "", 1)
+            for n in cfg.holiday_names
+            if n.startswith("month_has_")
+        ]
+        keys = list(dict.fromkeys(mf_keys + mh_keys))
         country_col = meta.get("holiday_country_column")
-        h_tr = build_country_month_holiday_features(
-            train_df,
+        rebuild_kw = dict(
             holiday_keys=keys,
             encoding=enc_name,
             sku_col="id_var",
             date_col="ds",
-            country_col=country_col if country_col in train_df.columns else None,
             default_country=default_country,
+            distance_scope=distance_scope,
+        )
+        h_tr = build_country_month_holiday_features(
+            train_df,
+            country_col=country_col if country_col in train_df.columns else None,
+            **rebuild_kw,
         )
         h_va = build_country_month_holiday_features(
             val_df,
-            holiday_keys=keys,
-            encoding=enc_name,
-            sku_col="id_var",
-            date_col="ds",
             country_col=country_col if country_col in val_df.columns else None,
-            default_country=default_country,
+            **rebuild_kw,
         )
         h_te = build_country_month_holiday_features(
             test_df,
-            holiday_keys=keys,
-            encoding=enc_name,
-            sku_col="id_var",
-            date_col="ds",
             country_col=country_col if country_col in test_df.columns else None,
-            default_country=default_country,
+            **rebuild_kw,
         )
 
     Xtr_df, states = cfg.create_features(train_df, h_tr, return_states=True)
@@ -1197,19 +1257,25 @@ def run_carparts(args):
         yhat_tsb[i] = croston_variants(s["y"][mask])["tsb"]
 
     use_hol_marks = bool(cfg.holiday_names) or bool(args.holiday_markers)
+    enc_name = _normalize_monthly_encoding(meta.get("holiday_encoding", "none"))
+    distance_scope = str(
+        meta.get("holiday_distance_scope", meta.get("distance_scope", "year"))
+    )
     onestep = {}
     dump_onestep = {
         "protocol": "one_step_test",
         "seed": args.seed,
+        "epochs": args.epochs,
         "feature_config": str(cfg_path.name),
         "holiday_encoding": meta.get("holiday_encoding"),
+        "holiday_distance_scope": distance_scope,
         "holiday_calendar": meta.get("holiday_calendar", "static"),
         "holiday_country_default": default_country,
         "skus": {},
         "metrics": {},
     }
     hol_flag_all = np.zeros(len(test_df), dtype=np.float64)
-    if cfg.holiday_names and str(meta.get("holiday_encoding", "")).lower() == "month_has":
+    if cfg.holiday_names and enc_name in ("month_has", "months_from_month_has"):
         hol_cols = [c for c in Xte_df.columns if c.startswith("month_has_")]
         if hol_cols:
             hol_flag_all = Xte_df[hol_cols].to_numpy(np.float64).max(axis=1)
@@ -1248,11 +1314,11 @@ def run_carparts(args):
     title_os = "Car Parts (monthly) — one-step forecasts (test window)"
     if use_country and cfg.holiday_names:
         title_os = (
-            f"Car Parts monthly — country month_has "
-            f"(default {default_country}; no country on T#### ids)"
+            f"Car Parts monthly — country {enc_name} "
+            f"(scope={distance_scope}; default {default_country}; no country on T#### ids)"
         )
     elif cfg.holiday_names:
-        title_os = "Car Parts monthly — one-step with month_has holidays"
+        title_os = f"Car Parts monthly — one-step with {enc_name} holidays"
     _plot_onestep_panel(
         onestep,
         title_os,
@@ -1337,11 +1403,11 @@ def run_carparts(args):
         title_rec = "Car Parts recursive forecasts from pre-test origin (DS vs TSB)"
         if use_country and cfg.holiday_names:
             title_rec = (
-                f"Car Parts recursive — country month_has "
-                f"(default {default_country})"
+                f"Car Parts recursive — country {enc_name} "
+                f"(scope={distance_scope}; default {default_country})"
             )
         elif cfg.holiday_names:
-            title_rec = "Car Parts recursive — month_has holidays"
+            title_rec = f"Car Parts recursive — {enc_name} holidays"
         _plot_horizon_panel(
             horiz,
             title_rec,

@@ -210,6 +210,29 @@ def test_months_from_country_sentinel_for_na():
     assert hol.loc[0, "months_from_July4"] == NA_DISTANCE_DAYS
 
 
+def test_months_from_month_has_combined_encoding():
+    """Combined encoding returns both column families under year scope."""
+    df = pd.DataFrame(
+        {
+            "id_var": ["T1851", "T1851"],
+            "ds": [pd.Timestamp(2001, 1, 1), pd.Timestamp(2001, 12, 1)],
+            "Quantity": [1.0, 2.0],
+        }
+    )
+    hol = build_country_month_holiday_features(
+        df,
+        encoding="months_from_month_has",
+        default_country="US",
+        distance_scope="year",
+    )
+    assert "months_from_Christmas" in hol.columns
+    assert "month_has_Christmas" in hol.columns
+    assert hol.loc[0, "months_from_Christmas"] == -11.0
+    assert hol.loc[1, "months_from_Christmas"] == 0.0
+    assert hol.loc[1, "month_has_Christmas"] == 1.0
+    assert hol.loc[0, "month_has_NewYear"] == 1.0
+
+
 def test_year_scope_christmas_resets_at_year_boundary():
     """
     Year-scoped convention: days_from = obs - holiday_date(Y).
