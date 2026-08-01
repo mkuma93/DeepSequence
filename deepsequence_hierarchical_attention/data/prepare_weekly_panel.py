@@ -19,7 +19,7 @@ Does **not** touch the locked daily bake-off. Smoke artifacts also land under
 
 Example (locked 800 SKUs)::
 
-  TF_USE_LEGACY_KERAS=1 .venv-test/bin/python examples/prepare_weekly_panel.py \\
+  TF_USE_LEGACY_KERAS=1 .venv-test/bin/python -m deepsequence_hierarchical_attention.data.prepare_weekly_panel \\
     --data_dir "$DEEPSEQUENCE_DATA_DIR" \\
     --sku_list ab_runs/recompare/sku_list_daily_data42.json \\
     --out_dir ab_runs/weekly/panel_locked800
@@ -35,10 +35,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / "examples")]
+ROOT = Path(__file__).resolve().parents[2]
 
-from holiday_calendar import (  # noqa: E402
+from deepsequence_hierarchical_attention.holidays.calendar import (  # noqa: E402
     HOLIDAY_KEYS,
     days_from_holiday_features,
     days_from_holiday_features_by_country,

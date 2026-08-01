@@ -21,16 +21,15 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / "examples")]
+ROOT = Path(__file__).resolve().parents[2]
 
-from feature_config_loader import load_feature_config
+from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
 from deepsequence_hierarchical_attention.components_lightweight import (
     build_hierarchical_model_lightweight,
 )
-from train_lightweight_adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
-from classical_intermittent import predict_classical_on_panel
-from eval_helpers import (
+from deepsequence_hierarchical_attention.training.adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
+from deepsequence_hierarchical_attention.eval.classical import predict_classical_on_panel
+from deepsequence_hierarchical_attention.eval.helpers import (
     apply_iwmae_gate,
     build_deepar,
     build_tft,
@@ -181,7 +180,7 @@ def main():
     if not (data_dir / "train_split.csv").exists():
         raise SystemExit(
             f"Missing panel in {data_dir}. Run:\n"
-            "  python examples/public_data/prepare_carparts.py"
+            "  python -m deepsequence_hierarchical_attention.data.prepare_carparts"
         )
 
     print("Loading Car Parts panel...")

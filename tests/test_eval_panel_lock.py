@@ -9,9 +9,8 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "examples"))
 
-from eval_helpers import resolve_eval_seeds, select_eval_skus  # noqa: E402
+from deepsequence_hierarchical_attention.eval.helpers import resolve_eval_seeds, select_eval_skus  # noqa: E402
 
 
 def test_resolve_eval_seeds_legacy_sets_both():

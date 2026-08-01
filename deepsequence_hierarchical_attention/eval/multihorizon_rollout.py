@@ -24,7 +24,7 @@ from deepsequence_hierarchical_attention.intermittent_features import (
     SKUDemandState,
     empty_state,
 )
-from eval_helpers import cummae_from_rollout, kpi_block
+from deepsequence_hierarchical_attention.eval.helpers import cummae_from_rollout, kpi_block
 
 
 PredictFn = Callable[[np.ndarray, np.ndarray], Tuple[np.ndarray, Optional[np.ndarray]]]

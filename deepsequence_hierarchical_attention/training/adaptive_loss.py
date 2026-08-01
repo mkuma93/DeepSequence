@@ -27,9 +27,6 @@ import json
 import argparse
 import traceback
 
-# Add parent directory to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
 from deepsequence_hierarchical_attention.components_lightweight import (
     build_hierarchical_model_lightweight,
     estimate_zero_rate_by_sku,
@@ -42,7 +39,7 @@ from deepsequence_hierarchical_attention.losses import (
     spike_aware_loss_config,
     resolve_positive_bce_weight,
 )
-from feature_config_loader import load_feature_config
+from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
 
 
 class AdaptiveLossWeighting(keras.layers.Layer):

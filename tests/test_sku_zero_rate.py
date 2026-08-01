@@ -151,14 +151,7 @@ def test_adaptive_model_uses_sku_pos_weights():
     """In-graph SKU lookup: sparse SKU nonzero rows get higher BCE weight."""
     import sys
 
-    examples_dir = Path(__file__).resolve().parents[1] / "examples"
-    sys.path.insert(0, str(examples_dir))
-    spec = importlib.util.spec_from_file_location(
-        "train_lightweight_adaptive_loss",
-        examples_dir / "train_lightweight_adaptive_loss.py",
-    )
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    from deepsequence_hierarchical_attention.training import adaptive_loss as mod
 
     rates = np.array([0.2, 0.9], dtype=np.float32)
     base = build_hierarchical_model_lightweight(

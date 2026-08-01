@@ -9,10 +9,9 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "examples"))
 
-from eval_helpers import cummae_from_rollout, kpi_block  # noqa: E402
-from multihorizon_rollout import horizon_metrics  # noqa: E402
+from deepsequence_hierarchical_attention.eval.helpers import cummae_from_rollout, kpi_block  # noqa: E402
+from deepsequence_hierarchical_attention.eval.multihorizon_rollout import horizon_metrics  # noqa: E402
 
 
 def test_cummae_matches_hand_formula():

@@ -51,10 +51,19 @@ def _load_loader():
     # Pre-bind light submodules so feature_config_loader does not import package __init__.
     _load_submodule("frequency_presets")
     _load_submodule("intermittent_features")
-    path = REPO / "examples" / "feature_config_loader.py"
-    spec = importlib.util.spec_from_file_location("feature_config_loader", path)
+    path = PKG / "data" / "feature_config_loader.py"
+    full = f"{PKG_NAME}.data.feature_config_loader"
+    # Ensure data package stub
+    data_pkg = f"{PKG_NAME}.data"
+    if data_pkg not in sys.modules:
+        import types
+        m = types.ModuleType(data_pkg)
+        m.__path__ = [str(PKG / "data")]  # type: ignore[attr-defined]
+        sys.modules[data_pkg] = m
+    spec = importlib.util.spec_from_file_location(full, path)
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[full] = mod
     spec.loader.exec_module(mod)
     return mod
 

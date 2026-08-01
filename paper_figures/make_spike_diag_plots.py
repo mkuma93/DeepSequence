@@ -33,13 +33,12 @@ import tensorflow as tf
 ROOT = Path(__file__).resolve().parents[1]
 OUT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "examples"))
 
 os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 
-from eval_helpers import filter_aligned, resolve_sku_zero_rates, split_components
-from feature_config_loader import load_feature_config
-from holiday_calendar import (
+from deepsequence_hierarchical_attention.eval.helpers import filter_aligned, resolve_sku_zero_rates, split_components
+from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
+from deepsequence_hierarchical_attention.holidays.calendar import (
     RETAIL_WINDOW_KEYS,
     binary_holiday_features,
     build_country_holiday_distances,
@@ -47,7 +46,7 @@ from holiday_calendar import (
 from deepsequence_hierarchical_attention.components_lightweight import (
     build_hierarchical_model_lightweight,
 )
-from train_lightweight_adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
+from deepsequence_hierarchical_attention.training.adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
 
 INK = "#1f2933"
 C_ACT = "#37474f"

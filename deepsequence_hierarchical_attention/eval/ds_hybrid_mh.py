@@ -9,7 +9,7 @@ h=1 (1 day), h=7 (1 week), h=14 (2 weeks).
 Usage::
 
     DEEPSEQUENCE_DATA_DIR=... TF_USE_LEGACY_KERAS=1 \\
-      python examples/eval_ds_hybrid_mh.py \\
+      python -m deepsequence_hierarchical_attention.eval.ds_hybrid_mh \\
         --sku_list ab_runs/recompare/sku_list_daily_data42.json \\
         --data_seed 42 --train_seed 42 \\
         --out_json ab_runs/reclaim/daily_mh14_hybrid_d64.json
@@ -28,16 +28,15 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "examples"))
 
-from feature_config_loader import load_feature_config
+from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
 from deepsequence_hierarchical_attention.hybrid_temporal import (
     build_hierarchical_model_hybrid,
 )
-from train_lightweight_adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
-from eval_helpers import (
+from deepsequence_hierarchical_attention.training.adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
+from deepsequence_hierarchical_attention.eval.helpers import (
     add_panel_seed_args,
     filter_aligned,
     resolve_eval_seeds,
@@ -47,7 +46,7 @@ from eval_helpers import (
     train_volume_terciles,
 )
 from eval_ds_hybrid_temporal import build_hybrid_aligned_windows
-from multihorizon_rollout import (
+from deepsequence_hierarchical_attention.eval.multihorizon_rollout import (
     build_sku_timelines,
     collect_origins,
     horizon_metrics,

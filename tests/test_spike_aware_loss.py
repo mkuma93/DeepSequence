@@ -82,14 +82,7 @@ def test_focal_bce_positive_weight_higher_on_sale_days():
 
 
 def test_adaptive_spike_aware_masks_and_weights_positives():
-    examples_dir = Path(__file__).resolve().parents[1] / "examples"
-    sys.path.insert(0, str(examples_dir))
-    spec = importlib.util.spec_from_file_location(
-        "train_lightweight_adaptive_loss",
-        examples_dir / "train_lightweight_adaptive_loss.py",
-    )
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    from deepsequence_hierarchical_attention.training import adaptive_loss as mod
 
     from deepsequence_hierarchical_attention import build_hierarchical_model_lightweight
 

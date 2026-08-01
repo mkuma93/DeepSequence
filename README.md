@@ -143,7 +143,7 @@ model = build_hierarchical_model_lightweight(
 )
 
 # Compile directly with the gated DeepSequence loss. For adaptive multi-term
-# weighting, use examples/AdaptiveWeightedModel as the sole weighting layer.
+# weighting, use training.adaptive_loss.AdaptiveWeightedModel as the sole weighting layer.
 # zero_rate must come from data (or an explicit override) — there is no silent 0.9.
 zero_rate = float((y_train == 0).mean())
 # Optional: per-SKU rates for gate prior (panel mean fills sparse/unseen SKUs)
@@ -167,13 +167,10 @@ from deepsequence_hierarchical_attention import transform_panel
 feats, states = transform_panel(df, lags=[1, 2, 7], return_states=True)
 ```
 
-Full feature matrix aligned to v1.6 (including holidays) — use `examples/feature_config_loader.py`:
+Full feature matrix aligned to v1.6 (including holidays) — use the packaged loader:
 
 ```python
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path("examples").resolve()))
-from feature_config_loader import load_feature_config
+from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
 
 cfg = load_feature_config()   # version 1.6, 28 columns
 X, states = cfg.create_features(train_df, holiday_df, return_states=True)
@@ -318,10 +315,10 @@ The experiments were conducted using proprietary enterprise demand data that can
 | Included | Location |
 |----------|----------|
 | Model | `deepsequence_hierarchical_attention/` |
-| Preprocessing | `feature_config.yaml`, `examples/feature_config_loader.py`, `intermittent_features.py` |
+| Preprocessing | `feature_config.yaml`, `deepsequence_hierarchical_attention.data.feature_config_loader`, `intermittent_features.py` |
 | Synthetic example | `examples/v16_deepsequence_example.ipynb` |
-| Training configuration | `examples/training_config.sample.json` |
-| Evaluation methodology | `examples/eval_same_features_compare.py`, `REPORT_v1.6.md` |
+| Training configuration | `deepsequence_hierarchical_attention/training/training_config.sample.json` |
+| Evaluation methodology | `python -m deepsequence_hierarchical_attention.eval.same_features_compare`, `REPORT_v1.6.md` |
 
 This repository does not include company names, product names, customer/series identifiers, internal dashboards, or employer-specific metric names.
 

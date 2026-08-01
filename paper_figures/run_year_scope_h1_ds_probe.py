@@ -19,11 +19,10 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "examples"))
 
 os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 
-from holiday_calendar import HOLIDAY_KEYS, days_from_holiday_features  # noqa: E402
+from deepsequence_hierarchical_attention.holidays.calendar import HOLIDAY_KEYS, days_from_holiday_features  # noqa: E402
 
 DATA = Path(
     os.environ.get(
@@ -80,7 +79,8 @@ def _run_ds(data_dir: Path, tag: str) -> Path:
     cmd = [
         str(ROOT / ".venv-test" / "bin" / "python"),
         "-u",
-        str(ROOT / "examples" / "eval_same_features_compare.py"),
+        "-m",
+        "deepsequence_hierarchical_attention.eval.same_features_compare",
         "--data_dir",
         str(data_dir),
         "--models",

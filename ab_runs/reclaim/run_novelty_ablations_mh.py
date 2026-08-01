@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """DS-only multi-horizon novelty ablations (locked daily panel).
 
-Runs eval_multihorizon_compare.py with --models deepsequence under Level-1
+Runs deepsequence_hierarchical_attention.eval.multihorizon_compare with --models deepsequence under Level-1
 stack defaults, varying one novelty factor. Outputs under
 ab_runs/reclaim/ablate_novelty/.
 """
@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-EVAL = ROOT / "examples/eval_multihorizon_compare.py"
+EVAL_MODULE = "deepsequence_hierarchical_attention.eval.multihorizon_compare"
 OUT_DIR = ROOT / "ab_runs/reclaim/ablate_novelty"
 
 ARMS = [
@@ -85,7 +85,7 @@ def main():
             continue
         cmd = [
             args.python,
-            str(EVAL),
+            "-m", EVAL_MODULE,
             "--data_dir",
             str(args.data_dir),
             "--horizon",

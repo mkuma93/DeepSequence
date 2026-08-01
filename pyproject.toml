@@ -58,4 +58,7 @@ where = ["."]
 include = ["deepsequence_hierarchical_attention*"]
 
 [tool.setuptools.package-data]
-deepsequence_hierarchical_attention = ["feature_config.yaml"]
+deepsequence_hierarchical_attention = [
+    "feature_config.yaml",
+    "training/training_config.sample.json",
+]

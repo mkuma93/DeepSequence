@@ -8,7 +8,7 @@ All notable changes to this project are documented in this file.
 
 - **Inventory / newsvendor planning metrics** in
   `deepsequence_hierarchical_attention/inventory_metrics.py` (also re-exported /
-  attached by `examples/eval_helpers.kpi_block`). Reports asymmetric cost with
+  attached by `deepsequence_hierarchical_attention.eval.helpers.kpi_block`). Reports asymmetric cost with
   configurable `cu/co` (defaults 1, 2, 3), holding proxy on zero days, stockout
   proxy on sale days, and fill-rate / quantity-fill. Primary planning key for
   future bake-offs: `inventory_nv_cost_rounded_cu2`. Re-score locked aggregate
@@ -93,5 +93,5 @@ tested helper `create_model_from_features(...)`).
   holiday, and regressor components.
 - `AdaptiveWeightedModel` dropped its no-op `build()` override, which made tf-keras
   refuse `get_weights()` and broke `EarlyStopping(restore_best_weights=True)`.
-- `examples/eval_public_carparts.py` imports LightGBM lazily so the other models run
+- `python -m deepsequence_hierarchical_attention.eval.public_carparts` imports LightGBM lazily so the other models run
   without it installed.

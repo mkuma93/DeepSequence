@@ -178,14 +178,7 @@ def test_create_model_from_features_compiles_for_intermittent(synthetic_zero_inf
 
 def test_adaptive_train_step_clips_gradients_not_loss(synthetic_zero_inflated):
     """Spiky batches must still produce finite non-zero gradient updates."""
-    examples_dir = PACKAGE_ROOT / "examples"
-    sys.path.insert(0, str(examples_dir))
-    spec = importlib.util.spec_from_file_location(
-        "train_lightweight_adaptive_loss",
-        examples_dir / "train_lightweight_adaptive_loss.py",
-    )
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    from deepsequence_hierarchical_attention.training import adaptive_loss as mod
 
     d = synthetic_zero_inflated
     base = _build_lightweight(d)

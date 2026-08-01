@@ -20,19 +20,18 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "examples"))
 
-from feature_config_loader import load_feature_config
+from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
 from deepsequence_hierarchical_attention.components_lightweight import (
     build_hierarchical_model_lightweight,
 )
 from deepsequence_hierarchical_attention.hybrid_temporal import (
     build_hierarchical_model_hybrid,
 )
-from train_lightweight_adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
-from eval_helpers import (
+from deepsequence_hierarchical_attention.training.adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
+from deepsequence_hierarchical_attention.eval.helpers import (
     add_panel_seed_args,
     build_transformer,
     filter_aligned,

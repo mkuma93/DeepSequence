@@ -180,7 +180,7 @@ def test_builder_helpers_cover_component_and_head_paths():
 
 def test_adaptive_train_script_clips_gradients_not_loss():
     text = (
-        PACKAGE_ROOT / "examples" / "train_lightweight_adaptive_loss.py"
+        PACKAGE_ROOT / "deepsequence_hierarchical_attention" / "training" / "adaptive_loss.py"
     ).read_text(encoding="utf-8")
     assert "tf.minimum(total_loss" not in text
     assert "tf.clip_by_global_norm" in text

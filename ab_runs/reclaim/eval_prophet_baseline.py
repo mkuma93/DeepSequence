@@ -23,9 +23,8 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "examples"))
 
-from eval_helpers import (
+from deepsequence_hierarchical_attention.eval.helpers import (
     filter_aligned,
     kpi_block,
     resolve_eval_seeds,

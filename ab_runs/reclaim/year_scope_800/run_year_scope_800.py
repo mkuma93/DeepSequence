@@ -31,11 +31,10 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "examples"))
 
 os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 
-from holiday_calendar import (  # noqa: E402
+from deepsequence_hierarchical_attention.holidays.calendar import (  # noqa: E402
     HOLIDAY_KEYS,
     days_from_holiday_features,
 )
@@ -216,7 +215,8 @@ def run_h1() -> Path:
     cmd = [
         PY,
         "-u",
-        str(ROOT / "examples" / "eval_same_features_compare.py"),
+        "-m",
+        "deepsequence_hierarchical_attention.eval.same_features_compare",
         "--data_dir",
         str(HOL_DIR),
         "--models",
@@ -248,7 +248,8 @@ def run_mh() -> Path:
     cmd = [
         PY,
         "-u",
-        str(ROOT / "examples" / "eval_multihorizon_compare.py"),
+        "-m",
+        "deepsequence_hierarchical_attention.eval.multihorizon_compare",
         "--data_dir",
         str(HOL_DIR),
         "--horizon",

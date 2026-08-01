@@ -136,11 +136,8 @@ def test_series_local_rate_features_causal():
 def test_feature_config_create_features_causal():
     import importlib.util
 
-    loader_path = PACKAGE_ROOT / "examples" / "feature_config_loader.py"
-    spec = importlib.util.spec_from_file_location("feature_config_loader", loader_path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    cfg = mod.load_feature_config()
+    from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
+    cfg = load_feature_config()
 
     df = _synthetic_sku_panel()
     # Dummy holiday distances (15 cols) aligned to df

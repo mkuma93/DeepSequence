@@ -128,7 +128,7 @@ def test_residual_preserves_ds_gate_and_zero_delta_start():
 
 
 def test_calibrate_probability_temperature_helper():
-    from eval_helpers import (
+    from deepsequence_hierarchical_attention.eval.helpers import (
         apply_probability_temperature,
         calibrate_probability_temperature,
     )

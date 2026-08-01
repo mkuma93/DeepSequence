@@ -1,21 +1,32 @@
 #!/usr/bin/env python3
-"""Weekly-grain multi-horizon bake-off (ISO Monday panel).
+"""Direct multi-horizon bake-off (weekly or daily panel).
 
-Direct-MH DeepSequence + LightGBM + classical TSB (Croston/SBA optional).
-Uses ``feature_config_weekly.yaml`` and holiday CSVs when present.
+Direct-MH DeepSequence + LightGBM multi-output + classical TSB
+(Croston/SBA optional). Uses a feature config YAML and holiday CSVs
+when present.
 
-Protocol: one origin per SKU at the first test week; forecast next H weeks.
-Report horizons default to 1, 4, 8 (≈ week / month / 2-month).
+Protocol: one origin per SKU at the first test timestamp with ≥H
+future steps; forecast next H steps (direct MH for DS/LGBM).
 
-Example (locked 800)::
+Weekly example (locked 800)::
 
-  TF_USE_LEGACY_KERAS=1 .venv-test/bin/python examples/eval_weekly_mh.py \\
+  TF_USE_LEGACY_KERAS=1 .venv-test/bin/python -m deepsequence_hierarchical_attention.eval.weekly_mh \\
     --data_dir ab_runs/weekly/panel_locked800 \\
     --feature_config feature_config_weekly.yaml \\
     --sku_list ab_runs/recompare/sku_list_daily_data42.json \\
     --max_skus 800 --horizon 8 --report_horizons 1,4,8 \\
     --models deepsequence,tsb,lightgbm --epochs 15 --seed 42 \\
     --out_json ab_runs/weekly/weekly_mh8_locked800_s42.json
+
+Daily direct-MH comparator (same SKUs; H in days)::
+
+  TF_USE_LEGACY_KERAS=1 .venv-test/bin/python -m deepsequence_hierarchical_attention.eval.weekly_mh \\
+    --data_dir "$DEEPSEQUENCE_DATA_DIR" \\
+    --feature_config feature_config.yaml --dataset daily_direct_mh \\
+    --sku_list ab_runs/recompare/sku_list_daily_data42.json \\
+    --max_skus 800 --horizon 60 --report_horizons 1,7,14,28,56,60 \\
+    --mase_season 7 --models deepsequence,tsb,lightgbm --epochs 15 --seed 42 \\
+    --out_json ab_runs/weekly/daily_direct_mh60_locked800_s42.json
 """
 
 from __future__ import annotations
@@ -32,14 +43,13 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.multioutput import MultiOutputRegressor
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / "examples")]
+ROOT = Path(__file__).resolve().parents[2]
 
-from classical_intermittent import croston_variants
+from deepsequence_hierarchical_attention.eval.classical import croston_variants
 from deepsequence_hierarchical_attention.components_lightweight import (
     build_hierarchical_model_lightweight,
 )
-from eval_helpers import (
+from deepsequence_hierarchical_attention.eval.helpers import (
     add_panel_seed_args,
     class_balance_pos_weight,
     cummae_from_rollout,
@@ -52,8 +62,8 @@ from eval_helpers import (
     train_mase_scale,
     train_volume_terciles,
 )
-from feature_config_loader import load_feature_config
-from train_lightweight_adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
+from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
+from deepsequence_hierarchical_attention.training.adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
 
 ALL_MODELS = (
     "deepsequence",
@@ -74,6 +84,11 @@ def parse_args():
         "--feature_config",
         default=str(ROOT / "feature_config_weekly.yaml"),
     )
+    p.add_argument(
+        "--dataset",
+        default="weekly_aggregate_locked",
+        help="Label stored in config.dataset (e.g. weekly_aggregate_locked, daily_direct_mh).",
+    )
     p.add_argument("--max_skus", type=int, default=800)
     p.add_argument("--epochs", type=int, default=15)
     p.add_argument("--batch_size", type=int, default=1024)
@@ -82,6 +97,12 @@ def parse_args():
         "--report_horizons",
         default="1,4,8",
         help="Comma-separated 1-indexed horizons to report.",
+    )
+    p.add_argument(
+        "--mh_stride",
+        type=int,
+        default=1,
+        help="Stride for sliding MH training windows (eval origins unchanged).",
     )
     add_panel_seed_args(p)
     p.add_argument("--mase_season", type=int, default=4)
@@ -151,8 +172,9 @@ def _load_holiday(data_dir: Path, split: str, n_rows: int) -> pd.DataFrame:
     return pd.DataFrame(index=range(n_rows))
 
 
-def build_mh_xy(X, y, skus, horizon: int):
+def build_mh_xy(X, y, skus, horizon: int, stride: int = 1):
     H = int(horizon)
+    step = max(int(stride), 1)
     xs, ys, ss = [], [], []
     skus = np.asarray(skus)
     y = np.asarray(y, np.float32)
@@ -160,7 +182,7 @@ def build_mh_xy(X, y, skus, horizon: int):
         idx = np.where(skus == sku)[0]
         if len(idx) < H:
             continue
-        for i in range(len(idx) - H + 1):
+        for i in range(0, len(idx) - H + 1, step):
             sl = idx[i : i + H]
             xs.append(X[sl[0]])
             ys.append(y[sl])
@@ -309,7 +331,7 @@ def main():
     H = int(args.horizon)
     data_dir = Path(args.data_dir)
 
-    print("Loading weekly panel...")
+    print(f"Loading panel ({args.dataset})...")
     train_df = pd.read_csv(data_dir / "train_split.csv", parse_dates=["ds"])
     val_df = pd.read_csv(data_dir / "val_split.csv", parse_dates=["ds"])
     test_df = pd.read_csv(data_dir / "test_split.csv", parse_dates=["ds"])
@@ -317,7 +339,7 @@ def main():
     h_va = _load_holiday(data_dir, "val", len(val_df))
     h_te = _load_holiday(data_dir, "test", len(test_df))
 
-    # Universe = all splits: weekly prepare can leave a few locked SKUs with
+    # Universe = all splits: prepare scripts can leave a few locked SKUs with
     # test-only history (no rows before the train cut).
     universe = (
         pd.concat([train_df["id_var"], val_df["id_var"], test_df["id_var"]], ignore_index=True)
@@ -395,7 +417,8 @@ def main():
         X[:, t_idx] = (X[:, t_idx] - tmin) / span
 
     sk_te = test_df["id_var"].astype(str).to_numpy()
-    X_origin, y_true_mh, sk_origin = build_mh_xy(X_test, y_test, sk_te, H)
+    # Origins: first eligible test start per SKU (stride=1); training may use mh_stride.
+    X_origin, y_true_mh, sk_origin = build_mh_xy(X_test, y_test, sk_te, H, stride=1)
     keep, seen = [], set()
     for i, s in enumerate(sk_origin):
         if s in seen:
@@ -405,7 +428,7 @@ def main():
     keep = np.asarray(keep, np.int64)
     X_origin, y_true_mh, sk_origin = X_origin[keep], y_true_mh[keep], sk_origin[keep]
     sku_origin = np.array([sku_map[str(s)] for s in sk_origin], np.int32).reshape(-1, 1)
-    print(f"origins={len(sk_origin)} (one per series at test start)")
+    print(f"origins={len(sk_origin)} (one per series at first test start with ≥H steps)")
 
     hist_y = []
     for sku in sk_origin:
@@ -417,14 +440,18 @@ def main():
             )
         )
 
+    mh_stride = max(int(args.mh_stride), 1)
     ds_stack = _ds_builder_kwargs(args)
     results = {
         "config": {
-            "dataset": "weekly_aggregate_locked",
-            "protocol": "fixed origin = first test week; forecast H weeks (direct MH)",
-            "week_rule": "ISO Monday-start",
+            "dataset": args.dataset,
+            "protocol": (
+                f"fixed origin = first test step with ≥{H} future steps; "
+                "forecast H steps (direct MH for DS/LGBM; classical recursive for TSB/Croston/SBA)"
+            ),
             "horizon": H,
             "report_horizons": report_horizons,
+            "mh_stride_train": mh_stride,
             "n_skus": n_skus,
             "seed": args.seed,
             "data_seed": data_seed,
@@ -441,6 +468,8 @@ def main():
         },
         "models": {},
     }
+    if "weekly" in str(args.dataset).lower():
+        results["config"]["week_rule"] = "ISO Monday-start"
 
     classical = selected & {"croston", "sba", "tsb"}
     if classical:
@@ -466,8 +495,12 @@ def main():
         print("\n=== DeepSequence direct MH ===")
         sk_tr = train_df["id_var"].astype(str).to_numpy()
         sk_va = val_df["id_var"].astype(str).to_numpy()
-        Xtr_mh, ytr_mh, sktr_mh = build_mh_xy(X_train, y_train, sk_tr, H)
-        Xva_mh, yva_mh, skva_mh = build_mh_xy(X_val, y_val, sk_va, H)
+        Xtr_mh, ytr_mh, sktr_mh = build_mh_xy(
+            X_train, y_train, sk_tr, H, stride=mh_stride
+        )
+        Xva_mh, yva_mh, skva_mh = build_mh_xy(
+            X_val, y_val, sk_va, H, stride=mh_stride
+        )
         if len(Xva_mh) == 0:
             Xva_mh, yva_mh, skva_mh = Xtr_mh[-n_skus:], ytr_mh[-n_skus:], sktr_mh[-n_skus:]
         sktr = np.array([sku_map[str(s)] for s in sktr_mh], np.int32).reshape(-1, 1)
@@ -475,7 +508,10 @@ def main():
         tr = split_components(Xtr_mh, cfg)
         va = split_components(Xva_mh, cfg)
         te = split_components(X_origin, cfg)
-        print(f"MH windows train/val={len(ytr_mh)}/{len(yva_mh)}")
+        print(
+            f"MH windows train/val={len(ytr_mh)}/{len(yva_mh)} "
+            f"(stride={mh_stride})"
+        )
         _, sku_rates = resolve_sku_zero_rates(y_train, sku_train, n_skus=n_skus)
         _ = sku_rates  # rates used implicitly via panel zero_rate / BCE
         base = build_hierarchical_model_lightweight(
@@ -532,7 +568,9 @@ def main():
         import lightgbm as lgb
 
         sk_tr = train_df["id_var"].astype(str).to_numpy()
-        Xtr_mh, ytr_mh, sktr_mh = build_mh_xy(X_train, y_train, sk_tr, H)
+        Xtr_mh, ytr_mh, sktr_mh = build_mh_xy(
+            X_train, y_train, sk_tr, H, stride=mh_stride
+        )
         sktr = np.array([sku_map[str(s)] for s in sktr_mh], np.float32).reshape(-1, 1)
         Xtr = np.concatenate([Xtr_mh, sktr], axis=1)
         Xte = np.concatenate([X_origin, sku_origin.astype(np.float32)], axis=1)
@@ -614,7 +652,10 @@ def main():
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(results, indent=2) + "\n")
     print("\n" + "=" * 72)
-    print(f"WEEKLY MH BAKE-OFF  H={H}  (primary: mean_1_to_H iwmae_rounded)")
+    print(
+        f"{args.dataset.upper()} DIRECT-MH BAKE-OFF  H={H}  "
+        "(primary: mean_1_to_H iwmae_rounded)"
+    )
     print("=" * 72)
     for row in comparison:
         hs = " ".join(

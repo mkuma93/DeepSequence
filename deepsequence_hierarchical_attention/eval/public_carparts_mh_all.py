@@ -25,17 +25,16 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.multioutput import MultiOutputRegressor
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / "examples")]
+ROOT = Path(__file__).resolve().parents[2]
 
-from classical_intermittent import croston_variants
+from deepsequence_hierarchical_attention.eval.classical import croston_variants
 from deepsequence_hierarchical_attention.components_lightweight import (
     build_hierarchical_model_lightweight,
 )
 from deepsequence_hierarchical_attention.intermittent_features import (
     empty_state,
 )
-from eval_helpers import (
+from deepsequence_hierarchical_attention.eval.helpers import (
     add_panel_seed_args,
     build_deepar,
     build_tft,
@@ -52,8 +51,8 @@ from eval_helpers import (
     train_mase_scale,
     train_volume_terciles,
 )
-from feature_config_loader import load_feature_config
-from train_lightweight_adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
+from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
+from deepsequence_hierarchical_attention.training.adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
 
 ALL_MODELS = (
     "deepsequence",

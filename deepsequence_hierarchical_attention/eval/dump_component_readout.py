@@ -10,7 +10,7 @@ readout. For MH, call ``predict_with_components`` at each rollout step.
 
 Example::
 
-  TF_USE_LEGACY_KERAS=1 .venv-test/bin/python examples/dump_component_readout.py \\
+  TF_USE_LEGACY_KERAS=1 .venv-test/bin/python -m deepsequence_hierarchical_attention.eval.dump_component_readout \\
     --data_dir "$DEEPSEQUENCE_DATA_DIR" --max_skus 8 --epochs 3 \\
     --out_json ab_runs/reclaim/component_readout_sample.json
 """
@@ -30,16 +30,15 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / "examples")]
+ROOT = Path(__file__).resolve().parents[2]
 
 from deepsequence_hierarchical_attention import (  # noqa: E402
     build_hierarchical_model_lightweight,
     predict_with_components,
 )
 from deepsequence_hierarchical_attention.losses import three_term_loss_config  # noqa: E402
-from eval_helpers import select_eval_skus, split_components  # noqa: E402
-from feature_config_loader import load_feature_config  # noqa: E402
+from deepsequence_hierarchical_attention.eval.helpers import select_eval_skus, split_components  # noqa: E402
+from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config  # noqa: E402
 
 
 def parse_args():

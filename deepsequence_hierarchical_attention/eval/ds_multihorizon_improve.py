@@ -23,16 +23,15 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / "examples")]
+ROOT = Path(__file__).resolve().parents[2]
 
-from feature_config_loader import load_feature_config
+from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
 from deepsequence_hierarchical_attention.components_lightweight import (
     build_hierarchical_model_lightweight,
 )
 from deepsequence_hierarchical_attention.losses import weighted_bce_loss, masked_mae_loss
-from train_lightweight_adaptive_loss import AdaptiveWeightedModel
-from eval_helpers import (
+from deepsequence_hierarchical_attention.training.adaptive_loss import AdaptiveWeightedModel
+from deepsequence_hierarchical_attention.eval.helpers import (
     add_panel_seed_args,
     filter_aligned,
     resolve_eval_seeds,
@@ -41,7 +40,7 @@ from eval_helpers import (
     train_mase_scale,
     train_volume_terciles,
 )
-from multihorizon_rollout import (
+from deepsequence_hierarchical_attention.eval.multihorizon_rollout import (
     build_sku_timelines,
     collect_origins,
     horizon_metrics,

@@ -183,7 +183,8 @@ def run_daily_seed(seed: int, *, force: bool = False) -> tuple[Path, Path]:
     else:
         cmd = [
             PY,
-            "examples/eval_multihorizon_compare.py",
+            "-m",
+            "deepsequence_hierarchical_attention.eval.multihorizon_compare",
             "--data_dir",
             DAILY_DATA,
             "--horizon",
@@ -249,7 +250,8 @@ def run_carparts_seed(seed: int, *, force: bool = False) -> tuple[Path, Path]:
     else:
         cmd = [
             PY,
-            "examples/eval_public_carparts_mh_all.py",
+            "-m",
+            "deepsequence_hierarchical_attention.eval.public_carparts_mh_all",
             "--horizon",
             "6",
             "--models",

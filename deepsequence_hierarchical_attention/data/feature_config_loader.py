@@ -22,49 +22,24 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Tuple, Union
 
-try:
-    from deepsequence_hierarchical_attention.frequency_presets import (
-        coerce_lag_list,
-        default_fourier_periods_for_frequency,
-        default_lags_for_frequency,
-        is_auto_lags_spec,
-        normalize_frequency,
-    )
-    from deepsequence_hierarchical_attention.intermittent_features import (
-        INTERMITTENT_FEATURE_NAMES,
-        SKUDemandState,
-        StateMap,
-        transform_panel,
-        build_states_from_history,
-        save_states,
-        load_states,
-        features_from_state,
-        update_state,
-    )
-except ImportError:  # running from examples/ without package install
-    import sys
-
-    _pkg = Path(__file__).resolve().parents[1] / "deepsequence_hierarchical_attention"
-    if str(_pkg.parent) not in sys.path:
-        sys.path.insert(0, str(_pkg.parent))
-    from deepsequence_hierarchical_attention.frequency_presets import (
-        coerce_lag_list,
-        default_fourier_periods_for_frequency,
-        default_lags_for_frequency,
-        is_auto_lags_spec,
-        normalize_frequency,
-    )
-    from deepsequence_hierarchical_attention.intermittent_features import (
-        INTERMITTENT_FEATURE_NAMES,
-        SKUDemandState,
-        StateMap,
-        transform_panel,
-        build_states_from_history,
-        save_states,
-        load_states,
-        features_from_state,
-        update_state,
-    )
+from deepsequence_hierarchical_attention.frequency_presets import (
+    coerce_lag_list,
+    default_fourier_periods_for_frequency,
+    default_lags_for_frequency,
+    is_auto_lags_spec,
+    normalize_frequency,
+)
+from deepsequence_hierarchical_attention.intermittent_features import (
+    INTERMITTENT_FEATURE_NAMES,
+    SKUDemandState,
+    StateMap,
+    transform_panel,
+    build_states_from_history,
+    save_states,
+    load_states,
+    features_from_state,
+    update_state,
+)
 
 
 class FeatureConfig:
@@ -78,9 +53,10 @@ class FeatureConfig:
         candidates = []
         if config_path is not None:
             candidates.append(Path(config_path))
-        # Repo root (examples/../feature_config.yaml)
-        candidates.append(Path(__file__).resolve().parent.parent / "feature_config.yaml")
-        # Packaged copy inside installed module
+        # Packaged copy next to the package root module
+        candidates.append(Path(__file__).resolve().parents[1] / "feature_config.yaml")
+        # Repo-root copy (editable checkout)
+        candidates.append(Path(__file__).resolve().parents[2] / "feature_config.yaml")
         try:
             import deepsequence_hierarchical_attention as _pkg
 
@@ -492,12 +468,12 @@ class FeatureConfig:
                 enc_norm = "months_from_month_has"
             if enc_norm in ("month_has", "months_from", "months_from_month_has"):
                 try:
-                    from holiday_calendar import (
+                    from deepsequence_hierarchical_attention.holidays.calendar import (
                         month_has_holiday_features,
                         months_from_holiday_features,
                     )
                 except ImportError:
-                    from examples.holiday_calendar import (  # type: ignore
+                    from deepsequence_hierarchical_attention.holidays.calendar import (  # type: ignore
                         month_has_holiday_features,
                         months_from_holiday_features,
                     )
@@ -532,11 +508,11 @@ class FeatureConfig:
                 build_enc = enc_norm
                 if holiday_calendar_mode in ("country", "per_country", "country_aware"):
                     try:
-                        from holiday_calendar import (
+                        from deepsequence_hierarchical_attention.holidays.calendar import (
                             build_country_month_holiday_features,
                         )
                     except ImportError:
-                        from examples.holiday_calendar import (  # type: ignore
+                        from deepsequence_hierarchical_attention.holidays.calendar import (  # type: ignore
                             build_country_month_holiday_features,
                         )
                     country_col = meta.get("holiday_country_column")
@@ -587,9 +563,9 @@ class FeatureConfig:
                 # per-country calendars (sku_id prefix / country column).
                 if holiday_calendar_mode in ("country", "per_country", "country_aware"):
                     try:
-                        from holiday_calendar import build_country_holiday_distances
+                        from deepsequence_hierarchical_attention.holidays.calendar import build_country_holiday_distances
                     except ImportError:
-                        from examples.holiday_calendar import (  # type: ignore
+                        from deepsequence_hierarchical_attention.holidays.calendar import (  # type: ignore
                             build_country_holiday_distances,
                         )
                     keys = [
@@ -624,12 +600,12 @@ class FeatureConfig:
                 binary_holiday_names = self.binary_holiday_names
                 if binary_holiday_names:
                     try:
-                        from holiday_calendar import (
+                        from deepsequence_hierarchical_attention.holidays.calendar import (
                             RETAIL_WINDOW_KEYS,
                             binary_holiday_features,
                         )
                     except ImportError:
-                        from examples.holiday_calendar import (  # type: ignore
+                        from deepsequence_hierarchical_attention.holidays.calendar import (  # type: ignore
                             RETAIL_WINDOW_KEYS,
                             binary_holiday_features,
                         )
@@ -723,7 +699,7 @@ def load_feature_config(config_path=None):
     Search order:
       1. Explicit ``config_path``
       2. Packaged ``deepsequence_hierarchical_attention/feature_config.yaml``
-      3. Repo-root ``feature_config.yaml`` next to ``examples/``
+      3. Repo-root ``feature_config.yaml``
     """
     if config_path is not None:
         return FeatureConfig(config_path)
@@ -737,7 +713,11 @@ def load_feature_config(config_path=None):
     except Exception:
         pass
 
-    repo_root = Path(__file__).resolve().parents[1] / "feature_config.yaml"
+    packaged_local = Path(__file__).resolve().parents[1] / "feature_config.yaml"
+    if packaged_local.exists():
+        return FeatureConfig(packaged_local)
+
+    repo_root = Path(__file__).resolve().parents[2] / "feature_config.yaml"
     return FeatureConfig(repo_root)
 
 

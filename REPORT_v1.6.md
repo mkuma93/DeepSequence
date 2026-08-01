@@ -142,9 +142,9 @@ For **multi-horizon recursive rollout**, see §7: prefer IWMAE / nonzero / under
 - Python package: `deepsequence-hierarchical-attention` (see `pyproject.toml`)
 - Feature SSOT: `feature_config.yaml` (v1.6), also shipped inside the package
 - Synthetic example: `examples/v16_deepsequence_example.ipynb`
-- Training configuration sample: `examples/training_config.sample.json`
-- Evaluation harness (1-step): `examples/eval_same_features_compare.py`
-- Evaluation harness (multi-horizon): `examples/eval_multihorizon_compare.py`
+- Training configuration sample: `deepsequence_hierarchical_attention/training/training_config.sample.json`
+- Evaluation harness (1-step): `python -m deepsequence_hierarchical_attention.eval.same_features_compare`
+- Evaluation harness (multi-horizon): `python -m deepsequence_hierarchical_attention.eval.multihorizon_compare`
 - Aggregated 1-step metrics: `eval_results_same_features_v16_distance_holidays.json`
 - Aggregated multi-horizon metrics: `eval_results_multihorizon_v16.json`
 
@@ -232,4 +232,4 @@ Bias accumulation under recursion: h1 reaches +1.27 at h=7 / +1.20 at h=14. Dire
 **Recommendation.**
 - **h=1 / next-day default:** `ds_h1` (best h=1 IWMAE overall).
 - **Multi-day planning (H≥7):** `ds_mh_tuned` (best long-horizon IWMAE, outperforms TST/TFT/LGBM).
-- Artifacts: `eval_results_ds_mh_improve_v16.json` · harness: `examples/eval_ds_multihorizon_improve.py`.
+- Artifacts: `eval_results_ds_mh_improve_v16.json` · harness: `python -m deepsequence_hierarchical_attention.eval.ds_multihorizon_improve`.

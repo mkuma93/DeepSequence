@@ -10,9 +10,8 @@ import pandas as pd
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "examples"))
 
-from holiday_calendar import (  # noqa: E402
+from deepsequence_hierarchical_attention.holidays.calendar import (  # noqa: E402
     NA_DISTANCE_DAYS,
     binary_holiday_features,
     build_country_holiday_distances,
