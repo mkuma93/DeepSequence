@@ -112,7 +112,7 @@ Each expert emits a scalar contribution. By default, a **softsign** output activ
 
 Trend uses `ChangepointReLU`: learnable deltas \(\delta\in\mathbb{R}^{K}\) (\(K{=}10\) default; locked runs often use \(K{=}15\)) are mapped to **ordered** locations via \(\delta^{+}=\mathrm{softplus}(\delta)\), \(\mathrm{cp}=\mathrm{cumsum}(\delta^{+})\), then rescaled into \([t_{\min},t_{\max}]\). Hinge features are \(\phi_k(t)=\mathrm{ReLU}(t-\mathrm{cp}_k)\). Locations are continuous parameters—not a discrete subset selection. Under the locked monotone path there is **no** Level-1 attention over changepoints (the legacy unconstrained path that attended over hinges is disabled).
 
-![Figure 1. Changepoint selection.](paper_figures/fig_m1_changepoint_selection.png)
+<img src="./paper_figures/fig_m1_changepoint_selection.png" alt="Figure 1. Changepoint selection." width="900" />
 
 *Figure 1. Ordered changepoint parameterization: softplus deltas → cumsum → scale → ReLU hinges (matches `ChangepointReLU`).*
 
@@ -126,7 +126,7 @@ m = \mathrm{softplus}(s)\times \tanh(\sigma),
 
 so magnitude is nonnegative and direction is a learned sign (not a hyperparameter). Trend shares one sign across hinges; holiday and regressor learn a sign per channel. SKU FiLM uses a softplus scale so per-SKU affine personalization preserves monotonicity in the structured input for a fixed SKU.
 
-![Figure 2. Monotone softplus–PWL maps.](paper_figures/fig_m2_monotone_softplus.png)
+<img src="./paper_figures/fig_m2_monotone_softplus.png" alt="Figure 2. Monotone softplus-PWL maps." width="900" />
 
 *Figure 2. Softplus×tanh slope constraint on trend / holiday / regressor hinge maps.*
 
@@ -138,7 +138,7 @@ so magnitude is nonnegative and direction is a learned sign (not a hyperparamete
 - *Holiday / regressor:* each channel is first mapped by the softplus-PWL monotone map, then aggregated by temperature-softmax **selection attention** (`MaskedEntropyAttention`) over channels. Ablating Level-1 replaces learned weights with uniform \(1/n\).
 - *Trend:* deliberately without Level-1 attention—one monotone temporal basis, avoiding competing trend heads.
 
-![Figure 3. Level-1 selection attention.](paper_figures/fig_m3_level1_attention.png)
+<img src="./paper_figures/fig_m3_level1_attention.png" alt="Figure 3. Level-1 selection attention." width="900" />
 
 *Figure 3. Intra-expert selection attention over monotone holiday and lag channels; seasonal freq attention; trend has no Level-1.*
 
@@ -152,7 +152,7 @@ q_{i,t} = \bigl[\, e_i \,;\; \mathrm{Dense}(c_{i,t}) \,\bigr],
 
 where \(e_i\) is an optional SKU embedding and \(c_{i,t}\) are regressor-block regime signals (lags, days/months since last sale, and related intermittent state)—**not** calendar, Fourier, or holiday distances, which remain inside their experts. Temperature-softmax weights over stacked expert scalars (entropy + orthogonality regularization) yield the mixed base. This is *component* reweighting, not temporal self-attention over a lookback window. Ablating the mixer (SKU-only or stack-only Level-2) is a protocol comparison; locked runs keep the context mixer on.
 
-![Figure 4. Context-aware component mixer.](paper_figures/fig_m4_context_mixer.png)
+<img src="./paper_figures/fig_m4_context_mixer.png" alt="Figure 4. Context-aware component mixer." width="900" />
 
 *Figure 4. Level-2 mixer: query from SKU embedding ⊕ lag/intermittent context; softmax over expert scalars.*
 
@@ -166,7 +166,7 @@ p_{i,t}=\sigma\bigl(g(x_{i,t}, e_i)\bigr),\quad
 
 Interpretation: \(p\) is the predicted probability that demand occurs; \(b\) is the predicted magnitude given structural drivers; the product is a soft Bernoulli–magnitude expectation. Optional per-SKU zero-rate priors can bias gate logits from historical zero rates (secondary). Cross-network layers default off.
 
-![Figure 5. End-to-end DeepSequence architecture.](paper_figures/fig_m5_architecture.png)
+<img src="./paper_figures/fig_m5_architecture.png" alt="Figure 5. End-to-end DeepSequence architecture." width="900" />
 
 *Figure 5. Experts → Level-1 → context mixer → gate \(\hat{y}=p\cdot b\).*
 
@@ -284,7 +284,7 @@ Recursive rollout after origin \(t\); known-future calendar and holidays; demand
 
 **Reading.** Short horizons favor the **temporal transformer**; DeepSequence leads at **long horizons** (\(h=28/60\)) on both the seed-42 full bake-off and the five-seed mean. DeepSequence beats TST IWMAE at \(h=28\) and \(h=60\) in **\(5/5\)** seeds. This is the opposite of a claim that DeepSequence wins one-step IWMAE everywhere. Figure 6 plots the multi-seed IWMAE curves from Table 2.
 
-![Figure 6. Daily multi-seed IWMAE vs horizon.](paper_figures/fig1_daily_iwmae_horizon.png)
+<img src="./paper_figures/fig1_daily_iwmae_horizon.png" alt="Figure 6. Daily multi-seed IWMAE vs horizon." width="900" />
 
 *Figure 6. Daily recursive IWMAE (mean ± std over training seeds \(42\)–\(46\)) for DeepSequence, TST, and LightGBM at \(h\in\{1,7,14,28,60\}\). Short horizons favor TST; DeepSequence leads at \(h=28/60\).*
 
@@ -312,7 +312,7 @@ Without loyalty (\(C_{\mathrm{loyalty}}=0\)), **LightGBM** often wins **low-marg
 
 Loyalty collapses LightGBM’s low-margin win rate (\(h=7/14\): \(5/5\to0/5\); \(h=28\): \(5/5\to2/5\); \(h=60\): \(5/5\to1/5\)). Figure 7 shows the multi-seed mid-margin \(\pi\) curves from Table 4.
 
-![Figure 7. Daily multi-seed mid-margin \(\pi\) vs horizon.](paper_figures/fig3_daily_decision_pi_horizon.png)
+<img src="./paper_figures/fig3_daily_decision_pi_horizon.png" alt="Figure 7. Daily multi-seed mid-margin pi vs horizon." width="900" />
 
 *Figure 7. Daily multi-seed mid-margin decision \(\pi\) at \(C_{\mathrm{loyalty}}=0.25\) (higher is better; mean ± std over seeds \(42\)–\(46\)). TST leads at short lead times; DeepSequence dominates \(h=28/60\).*
 
@@ -342,7 +342,7 @@ Prophet is competitive at \(h=6\) but loses short horizons to TSB and DeepSequen
 
 TSB is seed-invariant (classical). DeepSequence’s long-horizon (\(h=6\)) IWMAE edge over TSB is stable across seeds on the multi-seed (rounded) table, but mid-margin \(\pi\) with \(C_{\mathrm{loyalty}}=0.25\) still favors **TSB** on all horizons (\(0/5\) DeepSequence mid-\(\pi\) wins at \(h=6\))—reinforcing domain mismatch versus covariate-rich daily retail. Prefer TSB (then SBA/Croston) as the short-horizon monthly default; treat DeepSequence as a structural long-horizon IWMAE competitor when a neural panel model is required. Prophet confirms that a structural baseline is present but does not overturn TSB on this panel. Figure 8 summarizes Tables 5–6.
 
-![Figure 8. Car Parts IWMAE vs horizon.](paper_figures/fig2_carparts_iwmae_horizon.png)
+<img src="./paper_figures/fig2_carparts_iwmae_horizon.png" alt="Figure 8. Car Parts IWMAE vs horizon." width="900" />
 
 *Figure 8. Left: Car Parts multi-seed IWMAE (mean ± std; DeepSequence / TSB / LightGBM). Right: seed-42 bake-off including per-series Prophet. Do not mix absolute levels across panels (Section 5.3 protocol note).*
 
@@ -385,7 +385,7 @@ On a **150-SKU** evenly spaced subset of the locked daily list (at most four ori
 
 Ablations are single-seed; they motivate the locked stack but do not replace multi-seed Tables 2 and 4. Figure 9 visualizes Tables 7–8 (gate at one step; long-horizon Full vs structural ablations).
 
-![Figure 9. Novelty ablation IWMAE.](paper_figures/fig4_novelty_ablation.png)
+<img src="./paper_figures/fig4_novelty_ablation.png" alt="Figure 9. Novelty ablation IWMAE." width="900" />
 
 *Figure 9. Left: one-step DeepSequence novelty ablation (seed 42); −gate dominates the IWMAE gap. Right: recursive \(h=28/60\) ablations (gate omitted; MH arms without gate). Full wins both long horizons.*
 
@@ -395,21 +395,21 @@ To illustrate intermittent shape (long zero runs, sparse spikes), we dump actual
 
 **Daily (DeepSequence vs TST).** Figure 10 shows one-step test-window forecasts; Figure 11 shows recursive rollout from a locked test origin for short (\(h{=}1..7\)) and longer (\(h{=}1..28\)) horizons.
 
-![Figure 10. Daily one-step forecasts (intermittent SKUs).](paper_figures/fig_forecast_daily_onestep.png)
+<img src="./paper_figures/fig_forecast_daily_onestep.png" alt="Figure 10. Daily one-step forecasts (intermittent SKUs)." width="900" />
 
 *Figure 10. Daily enterprise panel: actual vs DeepSequence vs TST on the test window for three intermittent locked SKUs.*
 
-![Figure 11. Daily recursive forecasts (short and long).](paper_figures/fig_forecast_daily_recursive.png)
+<img src="./paper_figures/fig_forecast_daily_recursive.png" alt="Figure 11. Daily recursive forecasts (short and long)." width="900" />
 
 *Figure 11. Daily recursive forecasts from one test origin per SKU (\(h{=}1..7\) and \(h{=}1..28\)).*
 
 **Car Parts (DeepSequence vs TSB).** Figure 12 shows one-step monthly test forecasts; Figure 13 shows recursive \(h{=}1..2\) and \(h{=}1..6\) from the pre-test origin (same origin convention as the Car Parts MH bake-off).
 
-![Figure 12. Car Parts one-step forecasts.](paper_figures/fig_forecast_carparts_onestep.png)
+<img src="./paper_figures/fig_forecast_carparts_onestep.png" alt="Figure 12. Car Parts one-step forecasts." width="900" />
 
 *Figure 12. Monash Car Parts: actual vs DeepSequence vs TSB on the six-month test window.*
 
-![Figure 13. Car Parts recursive forecasts.](paper_figures/fig_forecast_carparts_recursive.png)
+<img src="./paper_figures/fig_forecast_carparts_recursive.png" alt="Figure 13. Car Parts recursive forecasts." width="900" />
 
 *Figure 13. Car Parts recursive forecasts from the pre-test origin (\(h{=}1..2\) and \(h{=}1..6\)).*
 
