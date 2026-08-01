@@ -299,6 +299,11 @@ class FeatureConfig:
         return []
 
     @property
+    def holiday_block_names(self):
+        """Distance (+ optional binary) columns appended after regressors."""
+        return self.holiday_names + self.binary_holiday_names
+
+    @property
     def feature_names(self):
         return self.config["feature_order"]
 
@@ -499,10 +504,49 @@ class FeatureConfig:
 
                 binary_holiday_names = self.binary_holiday_names
                 if binary_holiday_names:
-                    for dist_name, binary_name in zip(expected_holidays, binary_holiday_names):
-                        features_df[binary_name] = (
-                            holiday_sorted[dist_name].values == 0
-                        ).astype(int)
+                    try:
+                        from holiday_calendar import (
+                            RETAIL_WINDOW_KEYS,
+                            binary_holiday_features,
+                        )
+                    except ImportError:
+                        from examples.holiday_calendar import (  # type: ignore
+                            RETAIL_WINDOW_KEYS,
+                            binary_holiday_features,
+                        )
+                    meta = self.config.get("metadata", {}) or {}
+                    window_days = int(meta.get("binary_holiday_window_days", 0))
+                    window_keys = meta.get("binary_holiday_window_keys")
+                    if window_keys is None and window_days > 0:
+                        window_keys = list(RETAIL_WINDOW_KEYS)
+                    # Keys implied by is_* names (exclude is_any_holiday).
+                    keys = []
+                    want_any = False
+                    for bname in binary_holiday_names:
+                        if bname in ("is_any_holiday", "is_AnyHoliday"):
+                            want_any = True
+                            continue
+                        if not bname.startswith("is_"):
+                            raise ValueError(
+                                f"binary holiday name must start with is_, got {bname}"
+                            )
+                        keys.append(bname[len("is_") :])
+                    built = binary_holiday_features(
+                        holiday_sorted,
+                        holiday_keys=keys or [
+                            n.replace("days_from_", "", 1) for n in expected_holidays
+                        ],
+                        window_days=window_days,
+                        window_keys=window_keys,
+                        include_any=want_any,
+                    )
+                    for bname in binary_holiday_names:
+                        if bname not in built.columns:
+                            raise ValueError(
+                                f"binary holiday feature {bname} not produced "
+                                f"(have {list(built.columns)})"
+                            )
+                        features_df[bname] = built[bname].to_numpy()
         elif len(holiday_features_df.columns) > 0 and len(holiday_sorted.columns) > 0:
             pass
 

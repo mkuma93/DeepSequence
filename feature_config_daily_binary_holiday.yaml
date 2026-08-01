@@ -1,0 +1,306 @@
+# Feature Configuration — Daily qualitative / forecast-only (binary holidays ON)
+# Version: 1.6-binary-hol-forecast
+# Date: 2026-08-01
+#
+# NOT the locked bake-off contract. Locked v1.6 remains feature_config.yaml
+# (days_from_* only; binary_holiday_features: []).
+#
+# This config keeps all 15 days_from_* distances and adds on-day / retail-window
+# is_* binaries (+ is_any_holiday). Both distance and binary channels feed the
+# HolidayComponent (concatenated). Use for qualitative holiday-response plots.
+
+# Total aligned features: 44
+# Breakdown: 1 trend + 6 cyclical + 3 lags + 3 intermittent
+#          + 15 holiday distances + 16 binary holiday indicators
+
+trend_features:
+  - name: time_index
+    description: "Numeric time index (days since Unix epoch 1970-01-01)"
+    source_column: "ds"
+    transformation: "days_since_epoch"
+    index: 0
+
+cyclical_features:
+  - name: dow_sin
+    description: "Sine encoding of day of week (0-6)"
+    formula: "sin(2π * day_of_week / 7)"
+    index: 1
+
+  - name: dow_cos
+    description: "Cosine encoding of day of week (0-6)"
+    formula: "cos(2π * day_of_week / 7)"
+    index: 2
+
+  - name: month_sin
+    description: "Sine encoding of month (1-12)"
+    formula: "sin(2π * month / 12)"
+    index: 3
+
+  - name: month_cos
+    description: "Cosine encoding of month (1-12)"
+    formula: "cos(2π * month / 12)"
+    index: 4
+
+  - name: year_sin
+    description: "Sine encoding of day of year (1-365/366)"
+    formula: "sin(2π * day_of_year / 365.25)"
+    index: 5
+
+  - name: year_cos
+    description: "Cosine encoding of day of year (1-365/366)"
+    formula: "cos(2π * day_of_year / 365.25)"
+    index: 6
+
+lag_features:
+  - name: lag_1
+    description: "Demand 1 day ago (causal shift)"
+    lag: 1
+    index: 7
+
+  - name: lag_2
+    description: "Demand 2 days ago (causal shift)"
+    lag: 2
+    index: 8
+
+  - name: lag_7
+    description: "Demand 7 days ago (weekly pattern, causal shift)"
+    lag: 7
+    index: 9
+
+intermittent_features:
+  - name: days_since_last_sale
+    description: "Days since last Quantity>0 strictly before t; -1 if never sold"
+    index: 10
+
+  - name: last_sale_quantity
+    description: "Last non-zero Quantity strictly before t; 0 if never sold"
+    index: 11
+
+  - name: lifetime_cumsum
+    description: "Sum of Quantity strictly before t"
+    index: 12
+
+holiday_features:
+  - name: days_from_NewYear
+    description: "Days to/from New Year"
+    index: 13
+
+  - name: days_from_MLK
+    description: "Days to/from Martin Luther King Jr. Day"
+    index: 14
+
+  - name: days_from_Presidents
+    description: "Days to/from Presidents Day"
+    index: 15
+
+  - name: days_from_Valentine
+    description: "Days to/from Valentine's Day"
+    index: 16
+
+  - name: days_from_Easter
+    description: "Days to/from Easter"
+    index: 17
+
+  - name: days_from_Mothers
+    description: "Days to/from Mother's Day"
+    index: 18
+
+  - name: days_from_Memorial
+    description: "Days to/from Memorial Day"
+    index: 19
+
+  - name: days_from_Fathers
+    description: "Days to/from Father's Day"
+    index: 20
+
+  - name: days_from_July4
+    description: "Days to/from Independence Day"
+    index: 21
+
+  - name: days_from_Labor
+    description: "Days to/from Labor Day"
+    index: 22
+
+  - name: days_from_Halloween
+    description: "Days to/from Halloween"
+    index: 23
+
+  - name: days_from_Thanksgiving
+    description: "Days to/from Thanksgiving"
+    index: 24
+
+  - name: days_from_BlackFriday
+    description: "Days to/from Black Friday"
+    index: 25
+
+  - name: days_from_Christmas
+    description: "Days to/from Christmas"
+    index: 26
+
+  - name: days_from_NewYearEve
+    description: "Days to/from New Year's Eve"
+    index: 27
+
+# On-day binaries for all calendar events; retail keys also use ±1 day window
+# (see metadata.binary_holiday_window_*). is_any_holiday = max over is_*.
+binary_holiday_features:
+  - name: is_NewYear
+    description: "1 on New Year (exact day)"
+    index: 28
+
+  - name: is_MLK
+    description: "1 on MLK Day (exact day)"
+    index: 29
+
+  - name: is_Presidents
+    description: "1 on Presidents Day (exact day)"
+    index: 30
+
+  - name: is_Valentine
+    description: "1 on Valentine ±1 day (retail window)"
+    index: 31
+
+  - name: is_Easter
+    description: "1 on Easter ±1 day (retail window)"
+    index: 32
+
+  - name: is_Mothers
+    description: "1 on Mother's Day (exact day)"
+    index: 33
+
+  - name: is_Memorial
+    description: "1 on Memorial Day (exact day)"
+    index: 34
+
+  - name: is_Fathers
+    description: "1 on Father's Day (exact day)"
+    index: 35
+
+  - name: is_July4
+    description: "1 on Independence Day (exact day)"
+    index: 36
+
+  - name: is_Labor
+    description: "1 on Labor Day (exact day)"
+    index: 37
+
+  - name: is_Halloween
+    description: "1 on Halloween ±1 day (retail window)"
+    index: 38
+
+  - name: is_Thanksgiving
+    description: "1 on Thanksgiving ±1 day (retail window)"
+    index: 39
+
+  - name: is_BlackFriday
+    description: "1 on Black Friday ±1 day (retail window)"
+    index: 40
+
+  - name: is_Christmas
+    description: "1 on Christmas ±1 day (retail window)"
+    index: 41
+
+  - name: is_NewYearEve
+    description: "1 on New Year's Eve (exact day)"
+    index: 42
+
+  - name: is_any_holiday
+    description: "1 if any is_* holiday indicator is on"
+    index: 43
+
+model_architecture:
+  trend_component:
+    description: "Long-term trend from time index"
+    feature_indices: [0]
+    feature_names: [time_index]
+
+  seasonal_component:
+    description: "Cyclical time encodings for seasonal patterns"
+    feature_indices: [1, 2, 3, 4, 5, 6]
+    feature_names: [dow_sin, dow_cos, month_sin, month_cos, year_sin, year_cos]
+
+  regressor_component:
+    description: "Causal lag + intermittent demand-history features"
+    feature_indices: [7, 8, 9, 10, 11, 12]
+    feature_names: [lag_1, lag_2, lag_7, days_since_last_sale, last_sale_quantity, lifetime_cumsum]
+
+  holiday_component:
+    description: "Holiday distances + on-day/window binary indicators (forecast-only)"
+    feature_indices: [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+                      28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43]
+    feature_names: [days_from_NewYear, days_from_MLK, days_from_Presidents,
+                    days_from_Valentine, days_from_Easter, days_from_Mothers,
+                    days_from_Memorial, days_from_Fathers, days_from_July4,
+                    days_from_Labor, days_from_Halloween, days_from_Thanksgiving,
+                    days_from_BlackFriday, days_from_Christmas, days_from_NewYearEve,
+                    is_NewYear, is_MLK, is_Presidents, is_Valentine, is_Easter,
+                    is_Mothers, is_Memorial, is_Fathers, is_July4, is_Labor,
+                    is_Halloween, is_Thanksgiving, is_BlackFriday, is_Christmas,
+                    is_NewYearEve, is_any_holiday]
+
+feature_order:
+  - time_index
+  - dow_sin
+  - dow_cos
+  - month_sin
+  - month_cos
+  - year_sin
+  - year_cos
+  - lag_1
+  - lag_2
+  - lag_7
+  - days_since_last_sale
+  - last_sale_quantity
+  - lifetime_cumsum
+  - days_from_NewYear
+  - days_from_MLK
+  - days_from_Presidents
+  - days_from_Valentine
+  - days_from_Easter
+  - days_from_Mothers
+  - days_from_Memorial
+  - days_from_Fathers
+  - days_from_July4
+  - days_from_Labor
+  - days_from_Halloween
+  - days_from_Thanksgiving
+  - days_from_BlackFriday
+  - days_from_Christmas
+  - days_from_NewYearEve
+  - is_NewYear
+  - is_MLK
+  - is_Presidents
+  - is_Valentine
+  - is_Easter
+  - is_Mothers
+  - is_Memorial
+  - is_Fathers
+  - is_July4
+  - is_Labor
+  - is_Halloween
+  - is_Thanksgiving
+  - is_BlackFriday
+  - is_Christmas
+  - is_NewYearEve
+  - is_any_holiday
+
+metadata:
+  total_features: 44
+  version: "1.6-binary-hol-forecast"
+  last_updated: "2026-08-01"
+  frequency: daily
+  holiday_encoding: days_from
+  binary_holiday_window_days: 1
+  binary_holiday_window_keys:
+    - Valentine
+    - Easter
+    - Halloween
+    - Thanksgiving
+    - BlackFriday
+    - Christmas
+  dataset_context: "Forecast-only qualitative config; does not alter locked IWMAE bake-off"
+  rationale: "Keep days_from_* and add is_* binaries (±1 day retail window) so HolidayComponent can learn on-day calendar bumps for qualitative forecast plots."
+  intermittent_features:
+    causal: true
+    cold_start_days_since_sentinel: -1
+    built_by: intermittent_features.transform_panel

@@ -88,3 +88,15 @@ Trend time index; fixed Fourier (learnable \(\omega\) optional); four experts (T
 
 [Open PNG](paper_figures/fig_forecast_carparts_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_carparts_recursive.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_carparts_recursive.png)
 
+## Figure 14. Daily one-step forecasts (binary holidays ON)
+
+![Daily one-step binary holidays](paper_figures/fig_forecast_daily_binary_hol_onestep.png)
+
+[Open PNG](paper_figures/fig_forecast_daily_binary_hol_onestep.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_binary_hol_onestep.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_binary_hol_onestep.png)
+
+## Figure 15. Daily recursive forecasts (binary holidays ON)
+
+![Daily recursive binary holidays](paper_figures/fig_forecast_daily_binary_hol_recursive.png)
+
+[Open PNG](paper_figures/fig_forecast_daily_binary_hol_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_binary_hol_recursive.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_binary_hol_recursive.png)
+

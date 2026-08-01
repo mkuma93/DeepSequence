@@ -1,0 +1,158 @@
+# Feature Configuration — Monthly forecast-only (month_has holidays)
+# Version: 1.7-monthly-month-has-forecast
+# Date: 2026-08-01
+#
+# NOT the locked Car Parts bake-off contract (feature_config_monthly.yaml
+# keeps holiday_encoding: none). This YAML enables month_has_* for qualitative
+# / forecast-only experiments. Recursive assemble_monthly_row in the locked
+# MH path does not yet append holiday columns — wire that before using this
+# config in carparts recursive rollouts.
+
+trend_features:
+  - name: month_index
+    description: "Absolute month index (year*12 + month) for trend/changepoints"
+    source_column: "ds"
+    transformation: "months_since_epoch"
+    index: 0
+
+cyclical_features:
+  - name: quarter_sin
+    source: month_index
+    period: 3
+    index: 1
+  - name: quarter_cos
+    source: month_index
+    period: 3
+    index: 2
+  - name: calendar_month_sin
+    source: month_of_year
+    period: 12
+    index: 3
+  - name: calendar_month_cos
+    source: month_of_year
+    period: 12
+    index: 4
+
+lag_features:
+  - name: lag_1
+    description: "Demand 1 month ago"
+    lag: 1
+    index: 5
+  - name: lag_2
+    description: "Demand 2 months ago"
+    lag: 2
+    index: 6
+  - name: lag_12
+    description: "Demand 12 months ago (year; series-specific level)"
+    lag: 12
+    index: 7
+
+intermittent_features:
+  - name: months_since_last_sale
+    description: "Months since last Quantity>0 strictly before t; -1 if never sold"
+    index: 8
+  - name: last_sale_quantity
+    description: "Last non-zero Quantity strictly before t; 0 if never sold"
+    index: 9
+  - name: lifetime_cumsum
+    description: "Sum of Quantity strictly before t"
+    index: 10
+
+holiday_features:
+  - name: month_has_NewYear
+    index: 11
+  - name: month_has_MLK
+    index: 12
+  - name: month_has_Presidents
+    index: 13
+  - name: month_has_Valentine
+    index: 14
+  - name: month_has_Easter
+    index: 15
+  - name: month_has_Mothers
+    index: 16
+  - name: month_has_Memorial
+    index: 17
+  - name: month_has_Fathers
+    index: 18
+  - name: month_has_July4
+    index: 19
+  - name: month_has_Labor
+    index: 20
+  - name: month_has_Halloween
+    index: 21
+  - name: month_has_Thanksgiving
+    index: 22
+  - name: month_has_BlackFriday
+    index: 23
+  - name: month_has_Christmas
+    index: 24
+  - name: month_has_NewYearEve
+    index: 25
+
+binary_holiday_features: []
+
+feature_order:
+  - month_index
+  - quarter_sin
+  - quarter_cos
+  - calendar_month_sin
+  - calendar_month_cos
+  - lag_1
+  - lag_2
+  - lag_12
+  - months_since_last_sale
+  - last_sale_quantity
+  - lifetime_cumsum
+  - month_has_NewYear
+  - month_has_MLK
+  - month_has_Presidents
+  - month_has_Valentine
+  - month_has_Easter
+  - month_has_Mothers
+  - month_has_Memorial
+  - month_has_Fathers
+  - month_has_July4
+  - month_has_Labor
+  - month_has_Halloween
+  - month_has_Thanksgiving
+  - month_has_BlackFriday
+  - month_has_Christmas
+  - month_has_NewYearEve
+
+model_architecture:
+  trend_component:
+    description: "Long-term trend from month index"
+    feature_indices: [0]
+    feature_names: [month_index]
+  seasonal_component:
+    description: "Quarter Fourier (P=3) + calendar-month annual phase (P=12)"
+    feature_indices: [1, 2, 3, 4]
+    feature_names:
+      [quarter_sin, quarter_cos, calendar_month_sin, calendar_month_cos]
+  regressor_component:
+    description: "Causal lags 1/2/12 + intermittent monthly state"
+    feature_indices: [5, 6, 7, 8, 9, 10]
+    feature_names:
+      [lag_1, lag_2, lag_12, months_since_last_sale, last_sale_quantity, lifetime_cumsum]
+  holiday_component:
+    description: "month_has_* binary indicators (forecast-only; not locked bake-off)"
+    feature_indices: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+    feature_names:
+      [month_has_NewYear, month_has_MLK, month_has_Presidents, month_has_Valentine,
+       month_has_Easter, month_has_Mothers, month_has_Memorial, month_has_Fathers,
+       month_has_July4, month_has_Labor, month_has_Halloween, month_has_Thanksgiving,
+       month_has_BlackFriday, month_has_Christmas, month_has_NewYearEve]
+
+metadata:
+  version: "1.7-monthly-month-has-forecast"
+  total_features: 26
+  created_date: "2026-08-01"
+  frequency: monthly
+  description: "Forecast-only monthly with month_has holidays; locked carparts YAML stays holiday-free"
+  holiday_encoding: month_has
+  intermittent_features:
+    gap_unit: months
+    cold_start_days_since_sentinel: -1.0
+  fourier_periods_months: [3, 12]
+  lag_periods_months: [1, 2, 12]

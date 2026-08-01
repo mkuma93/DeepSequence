@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -167,4 +167,52 @@ def days_from_holiday_features(
         delta = (d[:, None] - events[None, :]).astype("timedelta64[D]").astype(np.int32)
         idx = np.argmin(np.abs(delta), axis=1)
         out[f"days_from_{k}"] = delta[np.arange(len(d)), idx].astype(np.float32)
+    return pd.DataFrame(out)
+
+
+# Retail-sensitive events often spill ±1 day around the calendar date.
+RETAIL_WINDOW_KEYS: Sequence[str] = (
+    "Valentine",
+    "Easter",
+    "Halloween",
+    "Thanksgiving",
+    "BlackFriday",
+    "Christmas",
+)
+
+
+def binary_holiday_features(
+    days_from_df: pd.DataFrame,
+    holiday_keys: Sequence[str] = HOLIDAY_KEYS,
+    window_days: int = 0,
+    window_keys: Optional[Sequence[str]] = None,
+    prefix: str = "is_",
+    include_any: bool = False,
+) -> pd.DataFrame:
+    """
+    On-day (or short-window) binary indicators from signed ``days_from_*``.
+
+    For each key ``K``, ``{prefix}{K}=1`` when ``|days_from_K| <= w(K)``,
+    where ``w(K)=window_days`` if ``K`` is in ``window_keys`` (default: all
+    keys when ``window_keys`` is None), else ``w(K)=0`` (exact on-day).
+
+    When ``include_any=True``, also emits ``{prefix}any_holiday`` = max over
+    per-holiday binaries.
+    """
+    keys = list(holiday_keys)
+    win_set = set(window_keys) if window_keys is not None else set(keys)
+    out: Dict[str, np.ndarray] = {}
+    flags = []
+    for k in keys:
+        col = f"days_from_{k}"
+        if col not in days_from_df.columns:
+            raise ValueError(f"Missing distance column {col} for binary holiday {k}")
+        w = int(window_days) if k in win_set else 0
+        flag = (np.abs(days_from_df[col].to_numpy(dtype=np.float32)) <= w).astype(
+            np.float32
+        )
+        out[f"{prefix}{k}"] = flag
+        flags.append(flag)
+    if include_any and flags:
+        out[f"{prefix}any_holiday"] = np.maximum.reduce(flags).astype(np.float32)
     return pd.DataFrame(out)

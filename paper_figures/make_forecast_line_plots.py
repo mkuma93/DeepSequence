@@ -7,6 +7,11 @@ Car Parts: DeepSequence vs TSB.
 Outputs under paper_figures/:
   fig_forecast_daily_*.{png,pdf,json}
   fig_forecast_carparts_*.{png,pdf,json}
+
+Binary-holiday qualitative (forecast-only; does not touch locked v1.6):
+  python paper_figures/make_forecast_line_plots.py --only daily --epochs 30 \\
+    --feature_config_daily feature_config_daily_binary_holiday.yaml \\
+    --fig_prefix_daily fig_forecast_daily_binary_hol --holiday_markers 1
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ from eval_helpers import (
     split_components,
 )
 from feature_config_loader import load_feature_config
+from holiday_calendar import RETAIL_WINDOW_KEYS, binary_holiday_features
 from multihorizon_rollout import (
     build_sku_timelines,
     collect_origins,
@@ -57,6 +63,7 @@ INK = "#1f2933"
 C_ACT = "#37474f"
 C_DS = "#1e88e5"
 C_BASE = "#ef6c00"
+C_HOL = "#c62828"
 FONT = "DejaVu Sans"
 
 # Locked-list intermittent exemplars (chosen for sparse but visible sales).
@@ -75,6 +82,47 @@ def _save_fig(fig, stem: str):
     fig.savefig(pdf, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     print(f"wrote {png.name} + {pdf.name}")
+
+
+def _attach_binary_holidays(hol_df: pd.DataFrame, cfg) -> pd.DataFrame:
+    """Ensure binary is_* columns exist on a days_from_* holiday frame."""
+    names = cfg.binary_holiday_names
+    if not names:
+        return hol_df
+    out = hol_df.copy()
+    meta = cfg.config.get("metadata", {}) or {}
+    window_days = int(meta.get("binary_holiday_window_days", 0))
+    window_keys = meta.get("binary_holiday_window_keys")
+    if window_keys is None and window_days > 0:
+        window_keys = list(RETAIL_WINDOW_KEYS)
+    keys = []
+    want_any = False
+    for bname in names:
+        if bname in ("is_any_holiday", "is_AnyHoliday"):
+            want_any = True
+            continue
+        if bname.startswith("is_"):
+            keys.append(bname[len("is_") :])
+    built = binary_holiday_features(
+        out,
+        holiday_keys=keys
+        or [n.replace("days_from_", "", 1) for n in cfg.holiday_names],
+        window_days=window_days,
+        window_keys=window_keys,
+        include_any=want_any,
+    )
+    for col in built.columns:
+        out[col] = built[col].to_numpy()
+    return out
+
+
+def _mark_holidays(ax, dates, mark_dates):
+    if not mark_dates:
+        return
+    dset = set(mark_dates)
+    for d in pd.to_datetime(dates):
+        if str(d)[:10] in dset:
+            ax.axvline(d, color=C_HOL, alpha=0.22, lw=1.0, zorder=0)
 
 
 def _build_1step_windows(train_df, val_df, X_train, X_val, lookback: int):
@@ -211,13 +259,15 @@ def _train_tst(Xseq, yseq, sku_seq, split_seq, n_skus, n_channels, lookback, zer
     return model
 
 
-def _plot_onestep_panel(series_dict, title, stem, baseline_name):
+def _plot_onestep_panel(series_dict, title, stem, baseline_name, holiday_marks=False):
     n = len(series_dict)
     fig, axes = plt.subplots(n, 1, figsize=(11.5, 2.6 * n), sharex=False)
     if n == 1:
         axes = [axes]
     for ax, (sku, d) in zip(axes, series_dict.items()):
         dates = pd.to_datetime(d["dates"])
+        if holiday_marks:
+            _mark_holidays(ax, dates, d.get("holiday_dates") or [])
         ax.plot(dates, d["y"], color=C_ACT, lw=1.4, label="Actual", drawstyle="steps-mid")
         ax.plot(dates, d["ds"], color=C_DS, lw=1.5, label="DeepSequence", alpha=0.95)
         ax.plot(dates, d["baseline"], color=C_BASE, lw=1.3, ls="--", label=baseline_name, alpha=0.95)
@@ -304,7 +354,21 @@ def run_daily(args):
     sku_train, sku_val = enc(train_df), enc(val_df)
     zero_rate = float((y_train == 0).mean())
 
-    cfg = load_feature_config()
+    cfg_path = args.feature_config_daily
+    cfg = load_feature_config(cfg_path) if cfg_path else load_feature_config()
+    print(
+        f"feature_config={cfg_path or 'default'} "
+        f"n_feat={cfg.total_features} n_holiday={len(cfg.holiday_indices)} "
+        f"binary={cfg.binary_holiday_names}"
+    )
+    stem_os = args.fig_prefix_daily + "_onestep"
+    stem_rec = args.fig_prefix_daily + "_recursive"
+    use_hol_marks = bool(cfg.binary_holiday_names) or bool(args.holiday_markers)
+
+    h_tr = _attach_binary_holidays(h_tr, cfg)
+    h_va = _attach_binary_holidays(h_va, cfg)
+    h_te = _attach_binary_holidays(h_te, cfg)
+
     Xtr_df, states = cfg.create_features(train_df, h_tr, return_states=True)
     Xva_df, states = cfg.create_features(val_df, h_va, prior_states=states, return_states=True)
     Xte_df, _ = cfg.create_features(test_df, h_te, prior_states=states, return_states=True)
@@ -385,30 +449,56 @@ def run_daily(args):
             pred = tst_model.predict([win, sk], verbose=0)
             yhat_tst[test_index[key]] = float(np.asarray(pred["final_forecast"]).reshape(-1)[0])
 
+    hol_block_names = cfg.holiday_block_names
+    n_dist = len(cfg.holiday_names)
     onestep = {}
-    dump_onestep = {"protocol": "one_step_test", "seed": args.seed, "skus": {}}
+    dump_onestep = {
+        "protocol": "one_step_test",
+        "seed": args.seed,
+        "epochs": args.epochs,
+        "feature_config": str(cfg_path or "default"),
+        "binary_holiday_features": cfg.binary_holiday_names,
+        "skus": {},
+    }
     for sku in plot_skus:
         m = test_df["id_var"].astype(str).to_numpy() == sku
         if not m.any():
             continue
+        dates = [str(x)[:10] for x in pd.to_datetime(test_df.loc[m, "ds"])]
+        hol_m = h_te.loc[m, hol_block_names].to_numpy(np.float32) if hol_block_names else None
+        if use_hol_marks and hol_m is not None and hol_m.shape[1] > n_dist:
+            hol_dates = [
+                d for d, row in zip(dates, hol_m) if float(row[n_dist:].max()) > 0.5
+            ]
+        elif use_hol_marks and hol_m is not None:
+            hol_dates = [
+                d for d, row in zip(dates, hol_m) if float(np.abs(row).min()) < 0.5
+            ]
+        else:
+            hol_dates = []
         d = {
-            "dates": [str(x)[:10] for x in pd.to_datetime(test_df.loc[m, "ds"])],
+            "dates": dates,
             "y": test_df.loc[m, "Quantity"].to_numpy(np.float64).tolist(),
             "ds": yhat_ds[m].astype(np.float64).tolist(),
             "baseline": np.nan_to_num(yhat_tst[m], nan=0.0).astype(np.float64).tolist(),
+            "holiday_dates": hol_dates,
         }
         onestep[sku] = d
         dump_onestep["skus"][sku] = d
+    title_os = "Daily intermittent demand — one-step forecasts (test window)"
+    if cfg.binary_holiday_names:
+        title_os = "Daily one-step forecasts — binary holidays ON (test window)"
     _plot_onestep_panel(
         onestep,
-        "Daily intermittent demand — one-step forecasts (test window)",
-        "fig_forecast_daily_onestep",
+        title_os,
+        stem_os,
         "TST",
+        holiday_marks=use_hol_marks,
     )
-    (OUT / "fig_forecast_daily_onestep.json").write_text(json.dumps(dump_onestep, indent=2))
+    (OUT / f"{stem_os}.json").write_text(json.dumps(dump_onestep, indent=2))
 
     # recursive from one origin per plot SKU
-    timelines = build_sku_timelines(panel, hol, cfg.holiday_names)
+    timelines = build_sku_timelines(panel, hol, hol_block_names or cfg.holiday_names)
     origin_mask = {}
     for sku, g in panel.groupby(panel["id_var"].astype(str), sort=False):
         g = g.sort_values("ds", kind="mergesort")
@@ -460,6 +550,9 @@ def run_daily(args):
     dump_h = {
         "protocol": "recursive_rollout",
         "seed": args.seed,
+        "epochs": args.epochs,
+        "feature_config": str(cfg_path or "default"),
+        "binary_holiday_features": cfg.binary_holiday_names,
         "horizon": H,
         "h_short": h_short,
         "h_long": h_long,
@@ -475,15 +568,18 @@ def run_daily(args):
         }
         horiz[sku] = d
         dump_h["skus"][sku] = d
+    title_rec = "Daily recursive forecasts from a locked test origin (DS vs TST)"
+    if cfg.binary_holiday_names:
+        title_rec = "Daily recursive forecasts — binary holidays ON (DS vs TST)"
     _plot_horizon_panel(
         horiz,
-        "Daily recursive forecasts from a locked test origin (DS vs TST)",
-        "fig_forecast_daily_recursive",
+        title_rec,
+        stem_rec,
         "TST",
         h_short,
         h_long,
     )
-    (OUT / "fig_forecast_daily_recursive.json").write_text(json.dumps(dump_h, indent=2))
+    (OUT / f"{stem_rec}.json").write_text(json.dumps(dump_h, indent=2))
     print("daily forecasts done")
 
 
@@ -688,6 +784,22 @@ def parse_args():
     p.add_argument("--horizon_daily", type=int, default=28)
     p.add_argument("--horizon_carparts", type=int, default=6)
     p.add_argument("--only", choices=("daily", "carparts", "both"), default="both")
+    p.add_argument(
+        "--feature_config_daily",
+        default=None,
+        help="Override daily feature YAML (e.g. feature_config_daily_binary_holiday.yaml).",
+    )
+    p.add_argument(
+        "--fig_prefix_daily",
+        default="fig_forecast_daily",
+        help="Stem prefix for daily figs (e.g. fig_forecast_daily_binary_hol).",
+    )
+    p.add_argument(
+        "--holiday_markers",
+        type=int,
+        default=0,
+        help="Force holiday axvlines on one-step plots (1/0). Auto-on when binaries present.",
+    )
     return p.parse_args()
 
 
