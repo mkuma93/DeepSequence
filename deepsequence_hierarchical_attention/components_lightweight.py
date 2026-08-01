@@ -10,6 +10,11 @@ from tensorflow.keras.models import Model
 from tensorflow.keras import regularizers
 from tensorflow.keras.constraints import UnitNorm
 from tensorflow import keras
+# TF 2.21 + Keras 3: `tensorflow.keras` may omit `.saving` (present on standalone keras).
+if not hasattr(keras, "saving"):
+    import keras as _keras3
+
+    keras.saving = _keras3.saving
 import tensorflow_recommenders as tfrs
 
 logger = logging.getLogger(__name__)
@@ -562,6 +567,7 @@ class MaskedEntropyAttention(tf.keras.layers.Layer):
         attention_scale=2.0,
         present=1.0,
         entropy_scale=None,
+        equal_weights=False,
         name=None,
         **kwargs
     ):
@@ -572,6 +578,7 @@ class MaskedEntropyAttention(tf.keras.layers.Layer):
         self.temperature = temperature
         self.attention_scale = attention_scale
         self.present_value = present
+        self.equal_weights = bool(equal_weights)
         self.entropy_scale = (
             self.DEFAULT_ENTROPY_SCALE
             if entropy_scale is None
@@ -589,30 +596,39 @@ class MaskedEntropyAttention(tf.keras.layers.Layer):
 
     def call(self, inputs, training=None):
         x = self.layer_norm(inputs)
-        scores = self.attention_dense(x)
+        if self.equal_weights:
+            # Ablation: uniform 1/n over channels (no learned selection).
+            n = tf.cast(tf.shape(inputs)[-1], tf.float32)
+            weights = tf.ones_like(inputs) / tf.maximum(n, 1.0)
+        else:
+            scores = self.attention_dense(x)
 
-        logits = self.attention_scale * tf.tanh(scores)
-        # Temperature floor to avoid overly peaked distributions
-        temp = tf.maximum(tf.constant(0.3, dtype=tf.float32), tf.constant(self.temperature, dtype=tf.float32))
-        logits = logits / temp
+            logits = self.attention_scale * tf.tanh(scores)
+            # Temperature floor to avoid overly peaked distributions
+            temp = tf.maximum(
+                tf.constant(0.3, dtype=tf.float32),
+                tf.constant(self.temperature, dtype=tf.float32),
+            )
+            logits = logits / temp
 
-        weights = tf.nn.softmax(logits, axis=-1)
+            weights = tf.nn.softmax(logits, axis=-1)
         attended = inputs * weights
 
         output = self.projection(attended)
         output = self.dropout(output, training=training)
 
-        entropy = -tf.reduce_sum(
-            weights * tf.math.log(weights + 1e-8), axis=-1
-        )
-        present_scalar = tf.cast(self.present_value, tf.float32)
-        entropy_loss = (
-            present_scalar
-            * self.entropy_weight
-            * self.entropy_scale
-            * tf.reduce_mean(entropy)
-        )
-        self.add_loss(entropy_loss)
+        if not self.equal_weights:
+            entropy = -tf.reduce_sum(
+                weights * tf.math.log(weights + 1e-8), axis=-1
+            )
+            present_scalar = tf.cast(self.present_value, tf.float32)
+            entropy_loss = (
+                present_scalar
+                * self.entropy_weight
+                * self.entropy_scale
+                * tf.reduce_mean(entropy)
+            )
+            self.add_loss(entropy_loss)
 
         return output
 
@@ -620,6 +636,7 @@ class MaskedEntropyAttention(tf.keras.layers.Layer):
         config = super().get_config()
         config.update({
             "units": self.units,
+            "equal_weights": self.equal_weights,
             "entropy_weight": self.entropy_weight,
             "dropout_rate": self.dropout_rate,
             "temperature": self.temperature,
@@ -1287,8 +1304,14 @@ class HolidayComponentLightweight(tf.keras.layers.Layer):
     constrained hinge slopes on **absolute** distance ``|days_from_*|``
     (domain [0, 365] for ChangepointReLU), with a learned per-holiday sign
     (``softplus(raw) * tanh(raw_sign)``). Direction is not a hyperparameter.
-    Attention / Dense paths are skipped. SKU FiLM after the scalar sum
-    (softplus scale) preserves mono in |d| for a fixed SKU.
+    Stacked mono scalars then pass through **selection attention** over the
+    holiday axis (TemperatureSoftmax + weighted sum). SKU FiLM after the
+    attended scalar (softplus scale) preserves mono in |d| for a fixed SKU
+    when attention weights are fixed (e.g. single holiday).
+
+    When ``level1_selection_attention=False`` (with mono on), holiday channels
+    are combined with uniform ``1/n`` weights (no learned intra-expert
+    selection) — ablation for Level-1 hierarchical attention.
 
     When ``holiday_monotonic=False``, uses the legacy per-holiday attention +
     aggregate Dense path (unconstrained, may be non-monotone in distance).
@@ -1305,6 +1328,7 @@ class HolidayComponentLightweight(tf.keras.layers.Layer):
         output_activation='softsign',
         present=1.0,
         holiday_monotonic=True,
+        level1_selection_attention=True,
         name='holiday_lightweight',
         **kwargs
     ):
@@ -1323,6 +1347,7 @@ class HolidayComponentLightweight(tf.keras.layers.Layer):
         self.present_value = present
         self.present = tf.constant(present, dtype=tf.float32)  # 1.0 if enabled, 0.0 if disabled
         self.holiday_monotonic = bool(holiday_monotonic)
+        self.level1_selection_attention = bool(level1_selection_attention)
         
     def build(self, input_shape):
         n_holidays = input_shape[-1]
@@ -1362,6 +1387,19 @@ class HolidayComponentLightweight(tf.keras.layers.Layer):
                 trainable=True,
                 dtype=tf.float32,
             )
+            # Selection attention over mono holiday scalars (not XOR with mono).
+            # Skipped when level1_selection_attention=False (uniform 1/n).
+            if self.level1_selection_attention:
+                self.selection_logits = Dense(
+                    n_holidays,
+                    activation=None,
+                    use_bias=False,
+                    name=f'{self.name}_selection_logits',
+                )
+                self.selection_softmax = TemperatureSoftmax(
+                    temperature=self.attention_temperature,
+                    name=f'{self.name}_selection_softmax',
+                )
             sku_units = 1
         else:
             self.changepoint_norms = []
@@ -1441,7 +1479,20 @@ class HolidayComponentLightweight(tf.keras.layers.Layer):
             tf.nn.softplus(self.raw_slopes[holiday_index])
             * tf.tanh(self.raw_sign[holiday_index])
         )
-    
+
+    def _mono_channel_scalars(self, inputs):
+        """Per-holiday softplus-PWL scalars; each is mono in its ``|d|``."""
+        parts = []
+        for i in range(self.n_holidays):
+            d_abs = tf.abs(inputs[:, i:i + 1])
+            cp_features = self.changepoint_layers[i](d_abs)
+            slopes = self._monotone_slopes(i)
+            part = tf.reduce_sum(
+                cp_features * slopes, axis=-1, keepdims=True
+            ) + self.holiday_bias[i]
+            parts.append(part)
+        return tf.concat(parts, axis=-1)
+
     def call(self, inputs, sku_embedding=None, training=None):
         """
         Args:
@@ -1452,23 +1503,35 @@ class HolidayComponentLightweight(tf.keras.layers.Layer):
             holiday_forecast: [batch, 1]
         """
         if self.holiday_monotonic:
-            # Monotone in |days_from_*|: skip LayerNorm/attention.
-            parts = []
-            for i in range(self.n_holidays):
-                d_abs = tf.abs(inputs[:, i:i + 1])
-                cp_features = self.changepoint_layers[i](d_abs)
-                slopes = self._monotone_slopes(i)
-                part = tf.reduce_sum(
-                    cp_features * slopes, axis=-1, keepdims=True
-                ) + self.holiday_bias[i]
-                parts.append(part)
-            output = tf.add_n(parts)
+            # Mono channel maps ⊕ selection attention over holidays.
+            channels = self._mono_channel_scalars(inputs)
+            if self.level1_selection_attention:
+                attn_logits = self.selection_logits(channels)
+                attn_weights = self.selection_softmax(attn_logits)
+                if self.attention_entropy_weight > 0 and self.n_holidays > 1:
+                    entropy = -tf.reduce_sum(
+                        attn_weights * tf.math.log(attn_weights + 1e-8),
+                        axis=-1,
+                    )
+                    entropy_loss = (
+                        self.present
+                        * self.attention_entropy_weight
+                        * tf.reduce_mean(entropy)
+                    )
+                    self.add_loss(entropy_loss)
+            else:
+                # Ablation: equal 1/n over holiday mono channels.
+                n_h = tf.cast(tf.shape(channels)[-1], tf.float32)
+                attn_weights = tf.ones_like(channels) / tf.maximum(n_h, 1.0)
+            output = tf.reduce_sum(
+                channels * attn_weights, axis=-1, keepdims=True
+            )
             if self.use_sku_shift_scale and sku_embedding is not None:
                 beta = self.sku_beta(sku_embedding)
                 alpha = self.sku_alpha(sku_embedding)
                 output = self.sku_multiply([output, beta])
                 output = self.sku_add([output, alpha])
-            # softsign (default) bounds signed expert impact; still monotone in |d|.
+            # softsign (default) bounds signed expert impact.
             return _apply_output_activation(output, self.output_activation)
 
         # Legacy unconstrained path (may be non-monotone in distance).
@@ -1534,6 +1597,7 @@ class HolidayComponentLightweight(tf.keras.layers.Layer):
             'output_activation': self.output_activation,
             'present': self.present_value,
             'holiday_monotonic': self.holiday_monotonic,
+            'level1_selection_attention': self.level1_selection_attention,
         })
         return config
 
@@ -1548,12 +1612,16 @@ class RegressorComponentLightweight(tf.keras.layers.Layer):
 
     When ``regressor_monotonic=True`` (default), each channel uses softplus-
     constrained ChangepointReLU hinge slopes with a learned per-channel sign
-    (``softplus(raw) * tanh(raw_sign)``) so the expert is monotone in that
-    feature (others fixed). Direction is not a hyperparameter. Attention is
-    skipped. SKU FiLM after the scalar sum preserves mono for a fixed SKU.
+    (``softplus(raw) * tanh(raw_sign)``) so each channel map is monotone in
+    that feature. Direction is not a hyperparameter. Stacked mono scalars then
+    pass through **MaskedEntropyAttention** over lag channels → Dense / FiLM /
+    softsign (mono ⊕ lag attention, not XOR).
+
+    When ``level1_selection_attention=False``, lag attention uses uniform
+    ``1/n`` channel weights (ablation for Level-1 intra-expert selection).
 
     When ``regressor_monotonic=False``, uses the legacy masked-attention + Dense
-    path (unconstrained).
+    path (unconstrained) on raw lag features.
     """
     
     def __init__(
@@ -1565,6 +1633,7 @@ class RegressorComponentLightweight(tf.keras.layers.Layer):
         output_activation='softsign',
         present=1.0,
         regressor_monotonic=True,
+        level1_selection_attention=True,
         n_changepoints=5,
         feature_min=0.0,
         feature_max=100.0,
@@ -1584,6 +1653,7 @@ class RegressorComponentLightweight(tf.keras.layers.Layer):
         self.present_value = present
         self.present = tf.constant(present, dtype=tf.float32)
         self.regressor_monotonic = bool(regressor_monotonic)
+        self.level1_selection_attention = bool(level1_selection_attention)
         self.n_changepoints = int(n_changepoints)
         self.feature_min = float(feature_min)
         self.feature_max = float(feature_max)
@@ -1625,32 +1695,34 @@ class RegressorComponentLightweight(tf.keras.layers.Layer):
                 trainable=True,
                 dtype=tf.float32,
             )
-            sku_units = 1
-        else:
-            self.attention = MaskedEntropyAttention(
-                units=self.hidden_dim,
-                temperature=0.5,
-                entropy_weight=0.01,
-                dropout_rate=self.dropout_rate,
-                present=self.present_value,
-                name=f'{self.name}_attention'
-            )
 
-            self.ar_layer = Dense(
-                self.hidden_dim // 2,
-                activation=mish,
-                use_bias=False,
-                name=f'{self.name}_ar_pattern'
-            )
-            sku_units = self.hidden_dim // 2
+        # Lag selection attention (mono path: on softplus-PWL scalars;
+        # unconstrained path: on raw lag features).
+        self.attention = MaskedEntropyAttention(
+            units=self.hidden_dim,
+            temperature=0.5,
+            entropy_weight=0.01,
+            dropout_rate=self.dropout_rate,
+            present=self.present_value,
+            equal_weights=not self.level1_selection_attention,
+            name=f'{self.name}_attention'
+        )
 
-            self.output_layer = Dense(
-                1,
-                activation=_resolve_output_activation(self.output_activation),
-                use_bias=False,
-                kernel_constraint=UnitNorm(axis=0),
-                name=f'{self.name}_output'
-            )
+        self.ar_layer = Dense(
+            self.hidden_dim // 2,
+            activation=mish,
+            use_bias=False,
+            name=f'{self.name}_ar_pattern'
+        )
+        sku_units = self.hidden_dim // 2
+
+        self.output_layer = Dense(
+            1,
+            activation=_resolve_output_activation(self.output_activation),
+            use_bias=False,
+            kernel_constraint=UnitNorm(axis=0),
+            name=f'{self.name}_output'
+        )
 
         if self.use_sku_shift_scale:
             self.sku_beta = Dense(
@@ -1677,6 +1749,19 @@ class RegressorComponentLightweight(tf.keras.layers.Layer):
             tf.nn.softplus(self.raw_slopes[feature_index])
             * tf.tanh(self.raw_sign[feature_index])
         )
+
+    def _mono_channel_scalars(self, inputs):
+        """Per-lag softplus-PWL scalars; each is mono in its own feature."""
+        parts = []
+        for i in range(self.n_features):
+            x_i = inputs[:, i:i + 1]
+            cp_features = self.changepoint_layers[i](x_i)
+            slopes = self._monotone_slopes(i)
+            part = tf.reduce_sum(
+                cp_features * slopes, axis=-1, keepdims=True
+            ) + self.regressor_bias[i]
+            parts.append(part)
+        return tf.concat(parts, axis=-1)
     
     def call(self, inputs, sku_embedding=None, training=None):
         """
@@ -1688,26 +1773,12 @@ class RegressorComponentLightweight(tf.keras.layers.Layer):
             regressor_forecast: [batch, 1]
         """
         if self.regressor_monotonic:
-            # Monotone PWL per channel; sum (others fixed ⇒ mono in that feature).
-            parts = []
-            for i in range(self.n_features):
-                x_i = inputs[:, i:i + 1]
-                cp_features = self.changepoint_layers[i](x_i)
-                slopes = self._monotone_slopes(i)
-                part = tf.reduce_sum(
-                    cp_features * slopes, axis=-1, keepdims=True
-                ) + self.regressor_bias[i]
-                parts.append(part)
-            output = tf.add_n(parts)
-            if self.use_sku_shift_scale and sku_embedding is not None:
-                beta = self.sku_beta(sku_embedding)
-                alpha = self.sku_alpha(sku_embedding)
-                output = self.sku_multiply([output, beta])
-                output = self.sku_add([output, alpha])
-            # softsign (default) bounds signed expert impact; still monotone.
-            return _apply_output_activation(output, self.output_activation)
+            # Mono channel maps ⊕ lag attention over those scalars.
+            attn_inputs = self._mono_channel_scalars(inputs)
+        else:
+            attn_inputs = inputs
 
-        attended_features = self.attention(inputs, training=training)
+        attended_features = self.attention(attn_inputs, training=training)
         ar = self.ar_layer(attended_features)
         
         if self.use_sku_shift_scale and sku_embedding is not None:
@@ -1730,6 +1801,7 @@ class RegressorComponentLightweight(tf.keras.layers.Layer):
             'output_activation': self.output_activation,
             'present': self.present_value,
             'regressor_monotonic': self.regressor_monotonic,
+            'level1_selection_attention': self.level1_selection_attention,
             'n_changepoints': self.n_changepoints,
             'feature_min': self.feature_min,
             'feature_max': self.feature_max,
@@ -1801,6 +1873,150 @@ def _logit_probability(p: float) -> float:
     """Stable logit for prior probability initialization."""
     p = float(np.clip(p, 1e-6, 1.0 - 1e-6))
     return float(np.log(p / (1.0 - p)))
+
+
+def estimate_zero_rate_by_sku(y, sku_ids, n_skus=None, min_obs=1):
+    """Estimate per-SKU zero rates with panel-mean fallback.
+
+    For each SKU with ``count >= min_obs``, the rate is
+    ``mean(y ≈ 0)`` on that SKU's rows. Unseen or sparse SKUs
+    (``count < min_obs``) receive the **panel mean** so cold-start
+    IDs still get a calibrated prior.
+
+    Args:
+        y: Demand targets, shape ``[N]`` or ``[N, 1]``.
+        sku_ids: Integer SKU indices aligned with ``y``, shape ``[N]``
+            or ``[N, 1]``.
+        n_skus: Embedding vocabulary size. Defaults to
+            ``max(sku_ids) + 1``.
+        min_obs: Minimum rows required before using the SKU's own rate.
+
+    Returns:
+        dict with:
+          - ``rates``: ``np.ndarray`` shape ``[n_skus]`` (float32)
+          - ``counts``: ``np.ndarray`` shape ``[n_skus]`` (int64)
+          - ``panel_mean``: float panel zero rate
+          - ``n_skus``: int
+    """
+    y = np.asarray(y).reshape(-1)
+    sku_ids = np.asarray(sku_ids).reshape(-1).astype(np.int64)
+    if y.shape[0] != sku_ids.shape[0]:
+        raise ValueError(
+            f"y and sku_ids length mismatch: {y.shape[0]} vs {sku_ids.shape[0]}"
+        )
+    if sku_ids.size == 0:
+        raise ValueError("y / sku_ids must be non-empty")
+    if np.any(sku_ids < 0):
+        raise ValueError("sku_ids must be non-negative integer indices")
+    if n_skus is None:
+        n_skus = int(sku_ids.max()) + 1
+    else:
+        n_skus = int(n_skus)
+        if int(sku_ids.max()) >= n_skus:
+            raise ValueError(
+                f"sku_ids max {int(sku_ids.max())} >= n_skus={n_skus}"
+            )
+
+    is_zero = np.isclose(y.astype(np.float64), 0.0)
+    panel_mean = float(np.mean(is_zero))
+    counts = np.bincount(sku_ids, minlength=n_skus).astype(np.int64)
+    zero_counts = np.bincount(
+        sku_ids, weights=is_zero.astype(np.float64), minlength=n_skus
+    )
+    rates = np.full(n_skus, panel_mean, dtype=np.float64)
+    enough = counts >= int(min_obs)
+    rates[enough] = zero_counts[enough] / counts[enough].astype(np.float64)
+    return {
+        "rates": rates.astype(np.float32),
+        "counts": counts,
+        "panel_mean": panel_mean,
+        "n_skus": n_skus,
+    }
+
+
+def pos_weight_from_zero_rate(zero_rate, cap=20.0):
+    """Map a zero rate to BCE positive-class weight ``zr / (1 - zr)``."""
+    zr = float(zero_rate)
+    weight = zr / max(1.0 - zr, 1e-6)
+    if cap is None:
+        return float(weight)
+    return float(min(float(cap), weight))
+
+
+def bce_sample_weights_from_sku_zero_rates(
+    y,
+    sku_ids,
+    zero_rates,
+    *,
+    cap=20.0,
+    weight_zero=1.0,
+    reference_zero_rate=None,
+):
+    """Per-sample BCE weights from each row's SKU zero rate.
+
+    Non-zero rows get ``pos_weight_from_zero_rate(rates[sku])``; zero rows
+    get ``weight_zero``. Use as ``sample_weight`` for the
+    ``non_zero_probability`` head when enabling per-SKU class imbalance.
+
+    When ``reference_zero_rate`` is set (typically the panel mean used to
+    compile ``weighted_bce_loss(pos_weight=...)``), non-zero weights are
+    **relative** ``sku_pos / panel_pos`` so Keras sample weights compose
+    with the compiled scalar instead of double-counting.
+
+    Without ``reference_zero_rate``, weights are absolute SKU pos-weights;
+    compile BCE with ``pos_weight=1.0`` in that case.
+    """
+    y = np.asarray(y).reshape(-1)
+    sku_ids = np.asarray(sku_ids).reshape(-1).astype(np.int64)
+    rates = np.asarray(zero_rates, dtype=np.float64).reshape(-1)
+    if y.shape[0] != sku_ids.shape[0]:
+        raise ValueError(
+            f"y and sku_ids length mismatch: {y.shape[0]} vs {sku_ids.shape[0]}"
+        )
+    if np.any(sku_ids < 0) or np.any(sku_ids >= rates.shape[0]):
+        raise ValueError("sku_ids out of range for zero_rates")
+    is_nonzero = ~np.isclose(y.astype(np.float64), 0.0)
+    pos_w = np.array(
+        [pos_weight_from_zero_rate(rates[i], cap=cap) for i in sku_ids],
+        dtype=np.float32,
+    )
+    if reference_zero_rate is not None:
+        ref = pos_weight_from_zero_rate(reference_zero_rate, cap=cap)
+        pos_w = pos_w / max(float(ref), 1e-6)
+        # Zero-class stays at 1.0 relative to the compiled zero weight.
+        z_w = 1.0
+    else:
+        z_w = float(weight_zero)
+    weights = np.full(y.shape[0], z_w, dtype=np.float32)
+    weights[is_nonzero] = pos_w[is_nonzero]
+    return weights
+
+
+def multioutput_bce_sample_weight_dict(
+    y,
+    sku_ids,
+    zero_rates,
+    *,
+    cap=20.0,
+    weight_zero=1.0,
+    reference_zero_rate=None,
+    bce_key="non_zero_probability",
+    other_keys=("final_forecast", "base_forecast"),
+):
+    """Keras ``sample_weight`` dict: per-SKU BCE weights, ones elsewhere."""
+    bce_w = bce_sample_weights_from_sku_zero_rates(
+        y,
+        sku_ids,
+        zero_rates,
+        cap=cap,
+        weight_zero=weight_zero,
+        reference_zero_rate=reference_zero_rate,
+    )
+    ones = np.ones_like(bce_w, dtype=np.float32)
+    out = {str(bce_key): bce_w}
+    for k in other_keys:
+        out[str(k)] = ones
+    return out
 
 
 def _softplus_inverse(y: float) -> float:
@@ -1901,6 +2117,10 @@ class IntermittentHandlerLightweight(tf.keras.layers.Layer):
 
     Calibration knobs (defaults preserve the historical paper path):
       - ``prior_zero_rate``: bias-init the gate logit toward the panel zero rate
+        (fallback when per-SKU rates are unavailable)
+      - ``prior_zero_rates``: optional length-``n_skus`` array; when set, call
+        expects ``[features, sku_id]`` and adds a **non-trainable** Embedding
+        of ``logit(zero_rate_sku)`` to the gate logits (SKU-conditioned prior)
       - ``temperature``: divide logits before sigmoid (legacy; ``>1`` softens)
       - ``learnable_temperature``: legacy softplus *divider* (softens toward 0.5)
       - ``learnable_logit_scale``: softplus *multiplier* on logits before sigmoid.
@@ -1917,6 +2137,8 @@ class IntermittentHandlerLightweight(tf.keras.layers.Layer):
         entropy_weight=1e-5,
         present=1.0,
         prior_zero_rate=None,
+        prior_zero_rates=None,
+        n_skus=None,
         temperature=1.0,
         learnable_temperature=False,
         learnable_logit_scale=False,
@@ -1932,9 +2154,24 @@ class IntermittentHandlerLightweight(tf.keras.layers.Layer):
         self.entropy_weight = entropy_weight
         self.present_value = present
         self.present = tf.constant(present, dtype=tf.float32)
-        self.prior_zero_rate = (
-            None if prior_zero_rate is None else float(prior_zero_rate)
-        )
+        if prior_zero_rates is not None:
+            rates = np.asarray(prior_zero_rates, dtype=np.float32).reshape(-1)
+            if rates.size == 0:
+                raise ValueError("prior_zero_rates must be non-empty when provided")
+            self.prior_zero_rates = rates
+            self.n_skus = int(n_skus) if n_skus is not None else int(rates.shape[0])
+            if self.n_skus != int(rates.shape[0]):
+                raise ValueError(
+                    f"n_skus={self.n_skus} != len(prior_zero_rates)={rates.shape[0]}"
+                )
+            # SKU embedding carries the prior; avoid double-counting panel bias.
+            self.prior_zero_rate = None
+        else:
+            self.prior_zero_rates = None
+            self.n_skus = None if n_skus is None else int(n_skus)
+            self.prior_zero_rate = (
+                None if prior_zero_rate is None else float(prior_zero_rate)
+            )
         self.temperature = float(temperature)
         self.learnable_temperature = bool(learnable_temperature)
         self.learnable_logit_scale = bool(learnable_logit_scale)
@@ -1943,20 +2180,45 @@ class IntermittentHandlerLightweight(tf.keras.layers.Layer):
         self.rate_match_target = (
             None if rate_match_target is None else float(rate_match_target)
         )
+        self.sku_prior_embedding = None
+
+    def _unpack_inputs(self, inputs):
+        """Split optional ``[features_or_list, sku_id]`` from component lists."""
+        sku_ids = None
+        feature_inputs = inputs
+        if (
+            self.prior_zero_rates is not None
+            and isinstance(inputs, (list, tuple))
+            and len(inputs) == 2
+        ):
+            feature_inputs, sku_ids = inputs[0], inputs[1]
+        if isinstance(feature_inputs, (list, tuple)):
+            features = tf.concat(list(feature_inputs), axis=-1)
+        else:
+            features = feature_inputs
+        return features, sku_ids
 
     def build(self, input_shape):
-        if isinstance(input_shape, (list, tuple)):
+        feature_shape = input_shape
+        if (
+            self.prior_zero_rates is not None
+            and isinstance(input_shape, (list, tuple))
+            and len(input_shape) == 2
+        ):
+            feature_shape = input_shape[0]
+
+        if isinstance(feature_shape, (list, tuple)):
             # List of component tensors (each [None, 1]) or a single shape tuple.
-            if len(input_shape) > 0 and hasattr(input_shape[0], "as_list"):
-                n_features = len(input_shape)
-            elif all(isinstance(s, (tuple, list)) for s in input_shape):
-                n_features = len(input_shape)
+            if len(feature_shape) > 0 and hasattr(feature_shape[0], "as_list"):
+                n_features = len(feature_shape)
+            elif all(isinstance(s, (tuple, list)) for s in feature_shape):
+                n_features = len(feature_shape)
             else:
-                n_features = input_shape[-1]
+                n_features = feature_shape[-1]
                 if hasattr(n_features, "as_list"):
                     n_features = int(n_features) if n_features is not None else None
         else:
-            n_features = input_shape[-1]
+            n_features = feature_shape[-1]
             if hasattr(n_features, "value"):
                 n_features = n_features.value
             if n_features is not None:
@@ -2010,17 +2272,41 @@ class IntermittentHandlerLightweight(tf.keras.layers.Layer):
         else:
             self._logit_scale_raw = None
 
+        if self.prior_zero_rates is not None:
+            prior_logits = np.asarray(
+                [_logit_probability(float(r)) for r in self.prior_zero_rates],
+                dtype=np.float32,
+            ).reshape(-1, 1)
+            self.sku_prior_embedding = Embedding(
+                input_dim=self.n_skus,
+                output_dim=1,
+                embeddings_initializer=tf.keras.initializers.Constant(prior_logits),
+                trainable=False,
+                name=f'{self.name}_sku_zero_prior',
+            )
+        else:
+            self.sku_prior_embedding = None
+
         if n_features is not None:
             self.zero_prob_layer1.build((None, n_features))
             self.zero_prob_output.build((None, self.hidden_dim))
+        if self.sku_prior_embedding is not None:
+            self.sku_prior_embedding.build((None, 1))
 
         super(IntermittentHandlerLightweight, self).build(input_shape)
 
     def compute_output_shape(self, input_shape):
-        if isinstance(input_shape, list):
-            batch_size = input_shape[0][0]
+        feature_shape = input_shape
+        if (
+            self.prior_zero_rates is not None
+            and isinstance(input_shape, (list, tuple))
+            and len(input_shape) == 2
+        ):
+            feature_shape = input_shape[0]
+        if isinstance(feature_shape, list):
+            batch_size = feature_shape[0][0]
         else:
-            batch_size = input_shape[0]
+            batch_size = feature_shape[0]
         return (batch_size, 1)
 
     def _gate_temperature(self):
@@ -2036,14 +2322,20 @@ class IntermittentHandlerLightweight(tf.keras.layers.Layer):
         return tf.constant(1.0, dtype=tf.float32)
 
     def call(self, inputs, training=None):
-        if isinstance(inputs, list):
-            features = tf.concat(inputs, axis=-1)
-        else:
-            features = inputs
+        features, sku_ids = self._unpack_inputs(inputs)
 
         hidden = self.zero_prob_layer1(features)
         hidden = self.dropout(hidden, training=training)
         logits = self.zero_prob_output(hidden)
+        if self.sku_prior_embedding is not None:
+            if sku_ids is None:
+                raise ValueError(
+                    "IntermittentHandlerLightweight with prior_zero_rates "
+                    "expects inputs [features, sku_id]"
+                )
+            prior_logit = self.sku_prior_embedding(sku_ids)
+            prior_logit = tf.squeeze(prior_logit, axis=1)
+            logits = logits + prior_logit
         # Sharpen (multiply) then optional legacy soften (divide).
         logits = logits * self._logit_scale()
         zero_prob = tf.nn.sigmoid(logits / self._gate_temperature())
@@ -2076,6 +2368,12 @@ class IntermittentHandlerLightweight(tf.keras.layers.Layer):
             'entropy_weight': self.entropy_weight,
             'present': self.present_value,
             'prior_zero_rate': self.prior_zero_rate,
+            'prior_zero_rates': (
+                None
+                if self.prior_zero_rates is None
+                else [float(x) for x in self.prior_zero_rates]
+            ),
+            'n_skus': self.n_skus,
             'temperature': self.temperature,
             'learnable_temperature': self.learnable_temperature,
             'learnable_logit_scale': self.learnable_logit_scale,
@@ -2154,6 +2452,7 @@ def _build_components(
     trend_monotonic=True,
     holiday_monotonic=True,
     regressor_monotonic=True,
+    level1_selection_attention=True,
 ):
     """Build the four structural components and their presence flags."""
     sku_arg = sku_embedding if use_sku else None
@@ -2217,6 +2516,7 @@ def _build_components(
             use_sku_shift_scale=use_sku,
             present=holiday_present,
             holiday_monotonic=holiday_monotonic,
+            level1_selection_attention=level1_selection_attention,
             name='holiday',
         )(holiday_input, sku_embedding=sku_arg)
     else:
@@ -2245,6 +2545,7 @@ def _build_components(
         use_sku_shift_scale=use_sku,
         present=regressor_present,
         regressor_monotonic=regressor_monotonic,
+        level1_selection_attention=level1_selection_attention,
         name='regressor',
     )(lag_input, sku_embedding=sku_arg)
     regressor = regressor * tf.constant(
@@ -2547,6 +2848,9 @@ def _build_intermittent_heads(
     lag_features=None,
     gate_use_raw_regressors=False,
     intermittent_prior_zero_rate=None,
+    intermittent_prior_zero_rates=None,
+    n_skus=None,
+    sku_input=None,
     intermittent_gate_temperature=1.0,
     intermittent_learnable_temperature=False,
     intermittent_learnable_logit_scale=False,
@@ -2567,6 +2871,11 @@ def _build_intermittent_heads(
     temporal context only — not softplus magnitude or component scalars.
     ``temporal_context`` (optional ``[B, d]``) is fused into magnitude and,
     when present, into the gate.
+
+    Gate prior:
+      - ``intermittent_prior_zero_rates`` (length ``n_skus``): SKU-conditioned
+        non-trainable logit Embedding when ``use_sku`` and ``sku_input`` given.
+      - else ``intermittent_prior_zero_rate``: panel-level Dense bias prior.
     """
     # Magnitude path: fuse optional temporal context before softplus.
     if temporal_context is not None:
@@ -2671,12 +2980,38 @@ def _build_intermittent_heads(
         float(gate_rate_match_weight) if gate_prob_scale else 0.0
     )
 
+    sku_prior_rates = None
+    if intermittent_prior_zero_rates is not None:
+        if not use_sku:
+            raise ValueError(
+                "intermittent_prior_zero_rates requires use_sku=True"
+            )
+        if sku_input is None:
+            raise ValueError(
+                "intermittent_prior_zero_rates requires sku_input"
+            )
+        sku_prior_rates = np.asarray(
+            intermittent_prior_zero_rates, dtype=np.float32
+        ).reshape(-1)
+        if n_skus is None:
+            n_skus = int(sku_prior_rates.shape[0])
+        elif int(n_skus) != int(sku_prior_rates.shape[0]):
+            raise ValueError(
+                f"n_skus={n_skus} != len(intermittent_prior_zero_rates)="
+                f"{sku_prior_rates.shape[0]}"
+            )
+
     handler_kwargs = dict(
         hidden_dim=intermittent_hidden_dim,
         dropout_rate=dropout_rate,
         entropy_weight=intermittent_entropy_weight,
         present=1.0,
-        prior_zero_rate=intermittent_prior_zero_rate,
+        # Panel bias only when SKU prior Embedding is not used.
+        prior_zero_rate=(
+            None if sku_prior_rates is not None else intermittent_prior_zero_rate
+        ),
+        prior_zero_rates=sku_prior_rates,
+        n_skus=int(n_skus) if sku_prior_rates is not None else None,
         temperature=intermittent_gate_temperature,
         learnable_temperature=intermittent_learnable_temperature,
         learnable_logit_scale=intermittent_learnable_logit_scale,
@@ -2693,16 +3028,16 @@ def _build_intermittent_heads(
         intermittent_features = LayerNormalization(
             name='cross_layer_intermittent_norm'
         )(intermittent_features)
-        zero_prob = IntermittentHandlerLightweight(**handler_kwargs)(
-            intermittent_features
-        )
     else:
         intermittent_features = Concatenate(name='intermittent_concat')(
             intermittent_components
         )
-        zero_prob = IntermittentHandlerLightweight(**handler_kwargs)(
-            intermittent_components
-        )
+
+    handler = IntermittentHandlerLightweight(**handler_kwargs)
+    if sku_prior_rates is not None:
+        zero_prob = handler([intermittent_features, sku_input])
+    else:
+        zero_prob = handler(intermittent_features)
 
     scheduled_stop = ScheduledStopGradient(
         initial_prob=0.0, name='scheduled_stop'
@@ -2791,7 +3126,7 @@ def build_hierarchical_model_lightweight(
     hidden_dim=32,
     sku_embedding_dim=8,
     dropout_rate=0.1,
-    use_cross_layers=True,
+    use_cross_layers=False,
     use_intermittent=True,
     enable_trend=None,
     enable_seasonal=None,
@@ -2815,6 +3150,7 @@ def build_hierarchical_model_lightweight(
     orthogonality_weight=1e-4,
     gate_use_raw_regressors=False,
     intermittent_prior_zero_rate=None,
+    intermittent_prior_zero_rates=None,
     intermittent_gate_temperature=1.0,
     intermittent_learnable_temperature=False,
     intermittent_learnable_logit_scale=False,
@@ -2835,6 +3171,7 @@ def build_hierarchical_model_lightweight(
     trend_monotonic=True,
     holiday_monotonic=True,
     regressor_monotonic=True,
+    level1_selection_attention=True,
     context_aware_component_mixer=True,
     component_mixer_context_dim=None,
     context_film_seasonal_holiday=False,
@@ -2857,7 +3194,8 @@ def build_hierarchical_model_lightweight(
         hidden_dim: Hidden dimension for components (default: 32)
         sku_embedding_dim: SKU embedding dimension (default: 8)
         dropout_rate: Dropout rate (default: 0.1)
-        use_cross_layers: Whether to use component interaction layers
+        use_cross_layers: Opt-in DCN cross on component outputs (default False;
+            locked A/Bs favor off). Pass True for ablation.
         use_intermittent: Whether to use intermittent demand handling
         activation: Hidden layer activation (default: 'mish')
         output_activation: Signed expert scalar activation (default: 'softsign').
@@ -2889,15 +3227,26 @@ def build_hierarchical_model_lightweight(
         intermittent_hidden_dim: Hidden width of the zero-demand classifier.
         intermittent_entropy_weight: Confidence regularizer for zero probability.
         orthogonality_weight: Off-diagonal covariance penalty for active components.
+        intermittent_prior_zero_rate: Optional panel-level gate prior (Dense bias).
+            Used when per-SKU rates are not provided; also seeds rate-match target.
+        intermittent_prior_zero_rates: Optional length-``n_skus`` zero rates for a
+            non-trainable SKU Embedding prior on gate logits. Prefers this over
+            the panel bias when ``use_sku=True``. Sparse/unseen SKUs should use
+            panel-mean fallback via ``estimate_zero_rate_by_sku``.
         trend_monotonic: If True (default), trend hinge slopes use softplus
             magnitude with a learned sign so the trend expert is monotone in
             the time feature. Set False for the legacy unconstrained attention path.
         holiday_monotonic: If True (default), holiday hinge slopes use softplus
-            magnitude with a learned per-holiday sign on ``|days_from_*|``.
-            Set False for the legacy attention path.
+            magnitude with a learned per-holiday sign on ``|days_from_*|``,
+            then selection attention over holiday channels. Set False for the
+            legacy unconstrained CP-attention path.
         regressor_monotonic: If True (default), each lag/regressor channel uses
-            softplus magnitude with a learned per-channel sign (monotone in that
-            feature). Set False for the legacy masked-attention path.
+            softplus magnitude with a learned per-channel sign, then lag
+            attention over those mono scalars. Set False for unconstrained
+            masked-attention on raw lag features.
+        level1_selection_attention: If True (default), holiday/regressor mono
+            paths use learned intra-expert selection attention. Set False for
+            uniform ``1/n`` channel weights (novelty ablation).
         context_aware_component_mixer: If True (default), component attention
             also sees a projected lag/intermittent context vector so the same
             SKU can reweight experts by demand regime. Set False for the legacy
@@ -2917,6 +3266,7 @@ def build_hierarchical_model_lightweight(
     if horizon < 1:
         raise ValueError(f"horizon must be >= 1, got {horizon}")
     use_sku = bool(use_sku)
+    level1_selection_attention = bool(level1_selection_attention)
     context_aware_component_mixer = bool(context_aware_component_mixer)
     context_film_seasonal_holiday = bool(context_film_seasonal_holiday)
     if fourier_periods is None and fourier_frequency is not None:
@@ -3025,6 +3375,7 @@ def build_hierarchical_model_lightweight(
         trend_monotonic=trend_monotonic,
         holiday_monotonic=holiday_monotonic,
         regressor_monotonic=regressor_monotonic,
+        level1_selection_attention=level1_selection_attention,
     )
 
     # Lag/intermittent block already on the graph; do not pull holiday/Fourier.
@@ -3118,6 +3469,9 @@ def build_hierarchical_model_lightweight(
         lag_features=lag_input,
         gate_use_raw_regressors=gate_raw,
         intermittent_prior_zero_rate=intermittent_prior_zero_rate,
+        intermittent_prior_zero_rates=intermittent_prior_zero_rates,
+        n_skus=n_skus,
+        sku_input=sku_input,
         intermittent_gate_temperature=intermittent_gate_temperature,
         intermittent_learnable_temperature=intermittent_learnable_temperature,
         intermittent_learnable_logit_scale=intermittent_learnable_logit_scale,
@@ -3156,12 +3510,15 @@ def create_model_from_features(
     hidden_dim=64,
     sku_embedding_dim=8,
     dropout_rate=0.3,
-    use_cross_layers=True,
+    use_cross_layers=False,
     use_intermittent=True,
     learning_rate=0.001,
     loss_weights=None,
     zero_rate=None,
     y_train=None,
+    use_sku=True,
+    use_sku_gate_prior=True,
+    pos_weight=None,
 ):
     """
     Wrapper function that creates and compiles a model ready for training.
@@ -3176,13 +3533,29 @@ def create_model_from_features(
         hidden_dim: Hidden dimension for components
         sku_embedding_dim: SKU embedding dimension
         dropout_rate: Dropout rate
-        use_cross_layers: Whether to use cross-layer interactions
+        use_cross_layers: Opt-in DCN cross on component outputs (default False)
         use_intermittent: Whether to use intermittent handling
         learning_rate: Learning rate for Adam optimizer
         loss_weights: Optional override for output loss weights. If None, uses
                      data-driven weights from composite_loss().
-        zero_rate: Optional known zero rate; estimated from y_train when omitted
+        zero_rate: Optional known panel zero rate. Estimated from ``y_train``
+            when omitted. **Required** (directly or via ``y_train``) — there is
+            no silent 0.9 default.
         y_train: Optional targets used to estimate zero_rate / avg non-zero demand
+            and (with ``sku_train``) per-SKU rates for the gate prior.
+        use_sku: Enable SKU embedding personalization (default True).
+        use_sku_gate_prior: When True and ``y_train`` + ``sku_train`` are given,
+            wire per-SKU zero-rate priors into the intermittent gate. Sparse /
+            unseen SKUs fall back to the panel mean via
+            ``estimate_zero_rate_by_sku``.
+        pos_weight: Optional BCE positive-class weight. Defaults to
+            ``pos_weight_from_zero_rate(panel_zero_rate)``. This remains a
+            **panel-level** scalar compiled into BCE. When ``y_train`` +
+            ``sku_train`` are available, the model also exposes
+            ``sku_zero_rates`` and ``make_fit_sample_weights(y, sku)`` —
+            pass the returned dict as ``sample_weight`` on ``fit`` so
+            imbalance is per-SKU (weights are relative to the panel
+            ``pos_weight`` to avoid double-counting).
 
     Returns:
         model: Compiled Keras model ready for training
@@ -3195,7 +3568,45 @@ def create_model_from_features(
     n_fourier = len(feature_indices['seasonal'])
     n_holiday = len(feature_indices['holiday'])
     n_lag = len(feature_indices['regressor'])
-    
+
+    sku_rate_info = None
+    if y_train is not None and sku_train is not None and use_sku:
+        sku_rate_info = estimate_zero_rate_by_sku(
+            y_train, sku_train, n_skus=n_skus
+        )
+
+    # Fail fast: never silently hardcode 0.9.
+    if zero_rate is None:
+        if y_train is None:
+            raise ValueError(
+                "zero_rate is required when y_train is not provided. "
+                "Pass zero_rate=... or y_train=... so the intermittent loss "
+                "can be calibrated (no default of 0.9)."
+            )
+        if sku_rate_info is not None:
+            zero_rate_value = float(sku_rate_info["panel_mean"])
+        else:
+            zeros = np.sum(np.isclose(np.asarray(y_train).reshape(-1), 0.0))
+            total = int(np.asarray(y_train).reshape(-1).shape[0])
+            zero_rate_value = float(zeros) / float(max(total, 1))
+        logger.info("Estimated zero_rate from y_train: %.4f", zero_rate_value)
+    else:
+        zero_rate_value = float(zero_rate)
+
+    sku_prior_rates = None
+    if (
+        use_sku
+        and use_sku_gate_prior
+        and sku_rate_info is not None
+        and use_intermittent
+    ):
+        sku_prior_rates = sku_rate_info["rates"]
+        logger.info(
+            "Using per-SKU gate priors (panel_mean=%.4f, n_skus=%d)",
+            sku_rate_info["panel_mean"],
+            sku_rate_info["n_skus"],
+        )
+
     # Build the model
     model = build_hierarchical_model_lightweight(
         n_temporal_features=n_temporal,
@@ -3207,7 +3618,10 @@ def create_model_from_features(
         sku_embedding_dim=sku_embedding_dim,
         dropout_rate=dropout_rate,
         use_cross_layers=use_cross_layers,
-        use_intermittent=use_intermittent
+        use_intermittent=use_intermittent,
+        use_sku=use_sku,
+        intermittent_prior_zero_rate=zero_rate_value,
+        intermittent_prior_zero_rates=sku_prior_rates,
     )
     
     # Define split function for features
@@ -3220,30 +3634,21 @@ def create_model_from_features(
         return [X_temporal, X_fourier, X_holiday, X_lag, sku]
     
     from .losses import composite_loss
-    
-    # Calculate zero rate for composite loss (allow override)
-    if zero_rate is None and y_train is not None:
-        # y==0 treated as zeros; robust to floats
-        zeros = np.sum(np.isclose(y_train, 0.0))
-        total = len(y_train)
-        zero_rate_value = float(zeros) / float(max(total, 1))
-        logger.info(
-            "Estimated zero_rate from y_train: %.4f", zero_rate_value
-        )
-    else:
-        zero_rate_value = 0.9 if zero_rate is None else zero_rate
 
     avg_nonzero = None
     if y_train is not None:
-        nonzero = y_train[~np.isclose(y_train, 0.0)]
+        y_flat = np.asarray(y_train).reshape(-1)
+        nonzero = y_flat[~np.isclose(y_flat, 0.0)]
         if len(nonzero) > 0:
             avg_nonzero = float(np.mean(nonzero))
 
-    # composite_loss returns separate callables + weights for multi-output compile
+    if pos_weight is None:
+        pos_weight = pos_weight_from_zero_rate(zero_rate_value)
+    # Global pos_weight stays panel-level; per-SKU imbalance via sample_weight.
     loss_config = composite_loss(
         zero_rate=zero_rate_value,
         average_nonzero_demand=avg_nonzero,
-        pos_weight=3.0,
+        pos_weight=float(pos_weight),
     )
     compile_losses = dict(loss_config['losses'])
     compile_weights = dict(loss_config['weights']) if loss_weights is None else loss_weights
@@ -3259,6 +3664,35 @@ def create_model_from_features(
             'non_zero_probability': ['accuracy', 'binary_crossentropy']
         }
     )
+
+    # Attach per-SKU rates + fit helper when available (backward-compat API).
+    model.panel_zero_rate = float(zero_rate_value)
+    model.sku_zero_rates = (
+        None if sku_rate_info is None else sku_rate_info["rates"]
+    )
+    model.compiled_pos_weight = float(pos_weight)
+    if sku_rate_info is not None:
+        _rates = sku_rate_info["rates"]
+        _panel = float(zero_rate_value)
+
+        def make_fit_sample_weights(y, sku, **kwargs):
+            """Relative per-SKU BCE sample weights for ``model.fit``."""
+            return multioutput_bce_sample_weight_dict(
+                y,
+                sku,
+                _rates,
+                reference_zero_rate=kwargs.pop("reference_zero_rate", _panel),
+                other_keys=("final_forecast",),
+                **kwargs,
+            )
+
+        model.make_fit_sample_weights = make_fit_sample_weights
+        logger.info(
+            "Per-SKU BCE sample weights available via "
+            "model.make_fit_sample_weights(y, sku) "
+            "(relative to panel pos_weight=%.3f)",
+            float(pos_weight),
+        )
     
     return model, split_features
 
@@ -3271,7 +3705,7 @@ def compare_model_sizes(
     n_lag=3,
     n_skus=6099,
     hidden_dim=32,
-    use_cross_layers=True,
+    use_cross_layers=False,
     use_intermittent=True,
     tabnet_params=322359
 ):

@@ -1,0 +1,150 @@
+{
+  "economics_note": "Lost-sales heavy: under-forecast on sale days (customer/sales loss) dominates mild holding on zeros; prefer high cu/co (e.g. 10).",
+  "service_critical_metric": "inventory_nv_cost_rounded_cu10",
+  "crossover_ds_beats_tst_cu_co": 7.056585711583609,
+  "rankings": {
+    "cu1": [
+      {
+        "rank": 1,
+        "name": "TST lite",
+        "inventory_nv_cost_cu1": 1.58519355804674
+      },
+      {
+        "rank": 2,
+        "name": "hybrid d64_b1_decouple",
+        "inventory_nv_cost_cu1": 1.7717479514675056
+      },
+      {
+        "rank": 3,
+        "name": "plain DS",
+        "inventory_nv_cost_cu1": 1.8837671106015597
+      }
+    ],
+    "cu2": [
+      {
+        "rank": 1,
+        "name": "TST lite",
+        "inventory_nv_cost_cu2": 2.3427739513462758
+      },
+      {
+        "rank": 2,
+        "name": "hybrid d64_b1_decouple",
+        "inventory_nv_cost_cu2": 2.5120170795938206
+      },
+      {
+        "rank": 3,
+        "name": "plain DS",
+        "inventory_nv_cost_cu2": 2.592050165966328
+      }
+    ],
+    "cu3": [
+      {
+        "rank": 1,
+        "name": "TST lite",
+        "inventory_nv_cost_cu3": 3.100354344645811
+      },
+      {
+        "rank": 2,
+        "name": "hybrid d64_b1_decouple",
+        "inventory_nv_cost_cu3": 3.252286207720136
+      },
+      {
+        "rank": 3,
+        "name": "plain DS",
+        "inventory_nv_cost_cu3": 3.3003332213310967
+      }
+    ],
+    "cu5": [
+      {
+        "rank": 1,
+        "name": "TST lite",
+        "inventory_nv_cost_cu5": 4.615515131244882
+      },
+      {
+        "rank": 2,
+        "name": "plain DS",
+        "inventory_nv_cost_cu5": 4.716899332060634
+      },
+      {
+        "rank": 3,
+        "name": "hybrid d64_b1_decouple",
+        "inventory_nv_cost_cu5": 4.732824463972766
+      }
+    ],
+    "cu10": [
+      {
+        "rank": 1,
+        "name": "plain DS",
+        "inventory_nv_cost_cu10": 8.258314608884476
+      },
+      {
+        "rank": 2,
+        "name": "TST lite",
+        "inventory_nv_cost_cu10": 8.40341709774256
+      },
+      {
+        "rank": 3,
+        "name": "hybrid d64_b1_decouple",
+        "inventory_nv_cost_cu10": 8.434170104604341
+      }
+    ],
+    "cu20": [
+      {
+        "rank": 1,
+        "name": "plain DS",
+        "inventory_nv_cost_cu20": 15.341145162532161
+      },
+      {
+        "rank": 2,
+        "name": "hybrid d64_b1_decouple",
+        "inventory_nv_cost_cu20": 15.836861385867492
+      },
+      {
+        "rank": 3,
+        "name": "TST lite",
+        "inventory_nv_cost_cu20": 15.979221030737914
+      }
+    ]
+  },
+  "rows": [
+    {
+      "name": "TST lite",
+      "iwmae": 3.990259473490895,
+      "stock_nz": 6.572151100977653,
+      "hold0": 0.8577904017425546,
+      "fill_nz": 0.28996030593474686,
+      "inventory_nv_cost_cu1": 1.58519355804674,
+      "inventory_nv_cost_cu2": 2.3427739513462758,
+      "inventory_nv_cost_cu3": 3.100354344645811,
+      "inventory_nv_cost_cu5": 4.615515131244882,
+      "inventory_nv_cost_cu10": 8.40341709774256,
+      "inventory_nv_cost_cu20": 15.979221030737914
+    },
+    {
+      "name": "hybrid d64_b1_decouple",
+      "iwmae": 4.004227847494938,
+      "stock_nz": 6.421972649325839,
+      "hold0": 1.0971630518348743,
+      "fill_nz": 0.30554748765611384,
+      "inventory_nv_cost_cu1": 1.7717479514675056,
+      "inventory_nv_cost_cu2": 2.5120170795938206,
+      "inventory_nv_cost_cu3": 3.252286207720136,
+      "inventory_nv_cost_cu5": 4.732824463972766,
+      "inventory_nv_cost_cu10": 8.434170104604341,
+      "inventory_nv_cost_cu20": 15.836861385867492
+    },
+    {
+      "name": "plain DS",
+      "iwmae": 4.045039139061245,
+      "stock_nz": 6.144556079201356,
+      "hold0": 1.2305547708069873,
+      "fill_nz": 0.32839577887501215,
+      "inventory_nv_cost_cu1": 1.8837671106015597,
+      "inventory_nv_cost_cu2": 2.592050165966328,
+      "inventory_nv_cost_cu3": 3.3003332213310967,
+      "inventory_nv_cost_cu5": 4.716899332060634,
+      "inventory_nv_cost_cu10": 8.258314608884476,
+      "inventory_nv_cost_cu20": 15.341145162532161
+    }
+  ]
+}

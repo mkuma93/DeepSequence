@@ -1,0 +1,36 @@
+{
+  "arms": {
+    "full": {
+      "iwmae": 4.155869492237855,
+      "path": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/reclaim/ablate_novelty/daily_h1_full.json",
+      "skipped": true
+    },
+    "minus_mixer": {
+      "iwmae": 4.081038448270123,
+      "path": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/reclaim/ablate_novelty/daily_h1_minus_mixer.json",
+      "seconds": 48.226454973220825
+    },
+    "minus_level1_attn": {
+      "iwmae": 4.112878105935059,
+      "path": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/reclaim/ablate_novelty/daily_h1_minus_level1_attn.json",
+      "seconds": 45.76932883262634
+    },
+    "minus_mono": {
+      "iwmae": 4.191490748345763,
+      "path": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/reclaim/ablate_novelty/daily_h1_minus_mono.json",
+      "seconds": 115.49934530258179
+    },
+    "minus_gate": {
+      "iwmae": 4.577927787490555,
+      "path": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/reclaim/ablate_novelty/daily_h1_minus_gate.json",
+      "seconds": 35.50551414489746
+    },
+    "plus_cross": {
+      "iwmae": 4.096521479804597,
+      "path": "/Users/mritunjaykumar/Library/CloudStorage/GoogleDrive-mritunjay.kmr1@gmail.com/My Drive/mkuma93-profile/DeepSequence/ab_runs/reclaim/ablate_novelty/daily_h1_plus_cross.json",
+      "seconds": 54.68163466453552
+    }
+  },
+  "seed": 42,
+  "epochs": 25
+}

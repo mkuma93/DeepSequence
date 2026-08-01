@@ -300,3 +300,102 @@ def test_model_ops_cost_and_pi_proxy():
     assert pb["pi_per_day"] == pytest.approx(0.27)
     assert pb["pi_per_day"] > pa["pi_per_day"]
 
+
+def test_lost_sale_unit_cost_and_loyalty_ratio():
+    """C_lost = margin*price + C_loyalty; r_eff rises with loyalty."""
+    assert inv.lost_sale_unit_cost(0.08) == pytest.approx(0.08)
+    assert inv.lost_sale_unit_cost(0.08, loyalty_cost_per_unit=0.25) == pytest.approx(
+        0.33
+    )
+    assert inv.cost_ratio_from_margin(0.08, 0.10) == pytest.approx(0.8)
+    assert inv.cost_ratio_from_margin(
+        0.08, 0.10, loyalty_cost_per_unit=0.25
+    ) == pytest.approx(3.3)
+    assert inv.loyalty_tag(0.0) == "loyalty_0"
+    assert inv.loyalty_tag(0.25) == "loyalty_0p25"
+    assert inv.loyalty_tag(0.5) == "loyalty_0p5"
+
+
+def test_loyalty_penalty_prefers_lower_underage():
+    """Higher C_loyalty flips ranking toward the lower-U (stockout-averse) model.
+
+    Cool / under-forecasting model (high U, low H) wins at loyalty=0 + low
+    margin; after a modest switch penalty the warmer / lower-U model wins.
+    """
+    cool = {  # LGBM-like under-forecaster
+        "inventory_mean_under": 0.90,
+        "inventory_holding_cost_zero_per_day": 0.95,
+        "mean_actual": 2.0,
+    }
+    warm = {  # lower stockout, more holding
+        "inventory_mean_under": 0.70,
+        "inventory_holding_cost_zero_per_day": 1.35,
+        "mean_actual": 2.0,
+    }
+    margin = 0.08
+    hold = 0.10
+    c_model = 0.01
+
+    pi_cool_0 = inv.profit_with_model_ops(
+        cool,
+        margin=margin,
+        holding_cost_per_unit=hold,
+        model_ops_cost_per_day=c_model,
+        loyalty_cost_per_unit=0.0,
+        mean_demand_per_day=2.0,
+    )
+    pi_warm_0 = inv.profit_with_model_ops(
+        warm,
+        margin=margin,
+        holding_cost_per_unit=hold,
+        model_ops_cost_per_day=c_model,
+        loyalty_cost_per_unit=0.0,
+        mean_demand_per_day=2.0,
+    )
+    assert pi_cool_0["pi_per_day"] > pi_warm_0["pi_per_day"]
+    assert pi_cool_0["loyalty_loss_per_day"] == pytest.approx(0.0)
+    assert pi_cool_0["C_lost_per_unit"] == pytest.approx(0.08)
+
+    pi_cool_loy = inv.profit_with_model_ops(
+        cool,
+        margin=margin,
+        holding_cost_per_unit=hold,
+        model_ops_cost_per_day=c_model,
+        loyalty_cost_per_unit=0.25,
+        mean_demand_per_day=2.0,
+    )
+    pi_warm_loy = inv.profit_with_model_ops(
+        warm,
+        margin=margin,
+        holding_cost_per_unit=hold,
+        model_ops_cost_per_day=c_model,
+        loyalty_cost_per_unit=0.25,
+        mean_demand_per_day=2.0,
+    )
+    # Extra loyalty hit: 0.25 * ΔU = 0.25 * 0.20 = 0.05 against cool.
+    assert pi_cool_loy["loyalty_loss_per_day"] == pytest.approx(0.25 * 0.90)
+    assert pi_warm_loy["loyalty_loss_per_day"] == pytest.approx(0.25 * 0.70)
+    assert pi_cool_loy["C_lost_per_unit"] == pytest.approx(0.33)
+    assert pi_warm_loy["pi_per_day"] > pi_cool_loy["pi_per_day"]
+
+    # Regime table / r_eff selector agrees.
+    regimes = inv.margin_regimes_from_policy(
+        holding_cost_per_unit=hold,
+        margins=(0.08, 0.25, 0.55),
+        loyalty_cost_per_unit=0.25,
+    )
+    report = inv.decision_economics_report(
+        {"LightGBM": cool, "plain DS": warm},
+        pair=("LightGBM", "plain DS"),
+        margin_regimes={"low_margin": regimes["low_margin"]},
+    )
+    assert report["margin_regimes"]["low_margin"]["cost_ratio_r"] == pytest.approx(3.3)
+    assert report["margin_regimes"]["low_margin"]["winner"] == "plain DS"
+    pl_cool = report["margin_regimes"]["low_margin"]["profit_loss_by_model"][
+        "LightGBM"
+    ]
+    pl_warm = report["margin_regimes"]["low_margin"]["profit_loss_by_model"][
+        "plain DS"
+    ]
+    assert pl_warm["total_profit_loss_per_day"] < pl_cool["total_profit_loss_per_day"]
+

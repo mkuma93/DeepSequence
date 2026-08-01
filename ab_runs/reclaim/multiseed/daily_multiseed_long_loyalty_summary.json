@@ -1,0 +1,909 @@
+{
+  "framing": "Multi-seed long-horizon + loyalty (daily). Panel locked to sku_list_daily_data42.json; seeds vary train/init only (--data_seed 42 --sku_list locked; --seed/--train_seed vary).",
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "panel_convention": {
+    "sku_list": "ab_runs/recompare/sku_list_daily_data42.json",
+    "data_seed": 42,
+    "train_seed": "varies with --seed",
+    "note": "Same SKU panel across seeds; variance is optimization/init (TF set_random_seed(train_seed) + LightGBM random_state=seed)."
+  },
+  "ds_stack": {
+    "output_activation": "softsign",
+    "trend_monotonic": true,
+    "holiday_monotonic": true,
+    "regressor_monotonic": true,
+    "context_aware_component_mixer": true,
+    "context_film_seasonal_holiday": false,
+    "use_cross_layers": false
+  },
+  "models": [
+    "deepsequence",
+    "temporal_transformer",
+    "lightgbm"
+  ],
+  "policy": {
+    "C_hold": 0.1,
+    "margins": [
+      0.08,
+      0.25,
+      0.55
+    ],
+    "C_loyalty": [
+      0.0,
+      0.25
+    ],
+    "c_model_mode": "tier"
+  },
+  "iwmae_mean_std": {
+    "1": {
+      "deepsequence": {
+        "mean": 4.0226002147430355,
+        "std": 0.25674564974712294,
+        "n": 5,
+        "values": [
+          4.035189475096706,
+          3.9517119155528744,
+          3.663812996994736,
+          4.084888541605803,
+          4.37739814446506
+        ]
+      },
+      "temporal_transformer": {
+        "mean": 3.9123645024620637,
+        "std": 0.2727366944892938,
+        "n": 5,
+        "values": [
+          3.8603402922253225,
+          3.7939928115316786,
+          3.590623953940444,
+          3.9907921604674477,
+          4.326073294145426
+        ]
+      },
+      "lightgbm": {
+        "mean": 4.48252382189467,
+        "std": 0.3237946650791364,
+        "n": 5,
+        "values": [
+          4.451433454008903,
+          4.221672427797437,
+          4.160832699715974,
+          4.618161930933322,
+          4.960518597017713
+        ]
+      }
+    },
+    "7": {
+      "deepsequence": {
+        "mean": 4.299028884017122,
+        "std": 0.4994581850370573,
+        "n": 5,
+        "values": [
+          4.380770909288969,
+          4.95218788039043,
+          4.00663391298117,
+          3.64123556294183,
+          4.5143161544832076
+        ]
+      },
+      "temporal_transformer": {
+        "mean": 4.138922468157893,
+        "std": 0.5233461070399004,
+        "n": 5,
+        "values": [
+          4.323104012164445,
+          4.8005171963589035,
+          3.9684533872673895,
+          3.372984763164597,
+          4.2295529818341295
+        ]
+      },
+      "lightgbm": {
+        "mean": 4.5490313584256725,
+        "std": 0.5305193476447495,
+        "n": 5,
+        "values": [
+          4.688254109398693,
+          5.2680973125058745,
+          4.33769875488397,
+          3.816025088718722,
+          4.635081526621104
+        ]
+      }
+    },
+    "14": {
+      "deepsequence": {
+        "mean": 5.494432451928203,
+        "std": 0.934949851991003,
+        "n": 5,
+        "values": [
+          4.21082840844264,
+          6.455590698836041,
+          4.832128311669148,
+          5.95899201412765,
+          6.014622826565537
+        ]
+      },
+      "temporal_transformer": {
+        "mean": 5.453712358505773,
+        "std": 0.8902211296518151,
+        "n": 5,
+        "values": [
+          4.176523080271252,
+          6.5077800355340445,
+          5.004664413564695,
+          5.781036073382323,
+          5.79855818977655
+        ]
+      },
+      "lightgbm": {
+        "mean": 5.828323860701224,
+        "std": 0.8831720199598252,
+        "n": 5,
+        "values": [
+          4.61450774835337,
+          6.838684321080054,
+          5.264829895735785,
+          6.295947783415314,
+          6.127649554921597
+        ]
+      }
+    },
+    "28": {
+      "deepsequence": {
+        "mean": 4.822846929643949,
+        "std": 0.9700469539198259,
+        "n": 5,
+        "values": [
+          6.416658991910611,
+          5.067858709751521,
+          4.066223144409921,
+          4.3348443341536855,
+          4.228649467994005
+        ]
+      },
+      "temporal_transformer": {
+        "mean": 5.290095920779803,
+        "std": 0.9908814468202166,
+        "n": 5,
+        "values": [
+          6.877155319975199,
+          5.553302538002579,
+          5.0323805930432775,
+          4.542926933080732,
+          4.444714219797226
+        ]
+      },
+      "lightgbm": {
+        "mean": 5.193942177097563,
+        "std": 1.0307110653147842,
+        "n": 5,
+        "values": [
+          6.866033679142354,
+          5.50658427890726,
+          4.558743987349267,
+          4.663615579829847,
+          4.374733360259088
+        ]
+      }
+    },
+    "60": {
+      "deepsequence": {
+        "mean": 4.34457078171292,
+        "std": 0.6192117994299718,
+        "n": 5,
+        "values": [
+          3.891100494447214,
+          4.348403564689865,
+          3.677036003106859,
+          4.54371055506617,
+          5.262603291254493
+        ]
+      },
+      "temporal_transformer": {
+        "mean": 5.055000765227181,
+        "std": 0.4167793457954075,
+        "n": 5,
+        "values": [
+          4.4945979989127585,
+          5.1905065224311695,
+          4.959378288303814,
+          4.985265738713639,
+          5.645255277774526
+        ]
+      },
+      "lightgbm": {
+        "mean": 4.709629716760177,
+        "std": 0.5496064628116409,
+        "n": 5,
+        "values": [
+          4.374971163356817,
+          4.703008513465521,
+          4.088281185952836,
+          4.839640386669364,
+          5.542247334356345
+        ]
+      }
+    }
+  },
+  "pi_mid_margin_loyalty_0p25_mean_std": {
+    "7": {
+      "deepsequence": {
+        "mean": -0.24300517589851806,
+        "std": 0.021655949291036154,
+        "n": 5,
+        "values": [
+          -0.24064264555142317,
+          -0.2663935270025066,
+          -0.2259026147616855,
+          -0.218425738266806,
+          -0.263661353910169
+        ]
+      },
+      "temporal_transformer": {
+        "mean": -0.2182000171381553,
+        "std": 0.02439857092204035,
+        "n": 5,
+        "values": [
+          -0.22733842688682937,
+          -0.2437650529972593,
+          -0.2269553088249876,
+          -0.17881996288381347,
+          -0.21412133409788664
+        ]
+      },
+      "lightgbm": {
+        "mean": -0.26190231119770574,
+        "std": 0.023267764708241552,
+        "n": 5,
+        "values": [
+          -0.2689942840066206,
+          -0.2953913127611846,
+          -0.25229858055086557,
+          -0.23189267461008867,
+          -0.2609347040597692
+        ]
+      }
+    },
+    "14": {
+      "deepsequence": {
+        "mean": -0.29099668167217424,
+        "std": 0.04636594299351669,
+        "n": 5,
+        "values": [
+          -0.22840216711939093,
+          -0.31369259323051935,
+          -0.25570448713671334,
+          -0.3217489081672848,
+          -0.33543525270696267
+        ]
+      },
+      "temporal_transformer": {
+        "mean": -0.29076606152717926,
+        "std": 0.03958795388136202,
+        "n": 5,
+        "values": [
+          -0.22554425245307658,
+          -0.3335871970472516,
+          -0.2997626383153674,
+          -0.2997612567615345,
+          -0.29517496305866636
+        ]
+      },
+      "lightgbm": {
+        "mean": -0.3129163907727166,
+        "std": 0.033695464080996315,
+        "n": 5,
+        "values": [
+          -0.2649075551306827,
+          -0.3353560946699341,
+          -0.2899679228483706,
+          -0.34101821473765,
+          -0.3333321664769456
+        ]
+      }
+    },
+    "28": {
+      "deepsequence": {
+        "mean": -0.2726221206249159,
+        "std": 0.045170448608578204,
+        "n": 5,
+        "values": [
+          -0.3459653037444918,
+          -0.2832680543798245,
+          -0.23010316532867825,
+          -0.25112199597140544,
+          -0.25265208370017966
+        ]
+      },
+      "temporal_transformer": {
+        "mean": -0.3533575664082614,
+        "std": 0.06801017605692207,
+        "n": 5,
+        "values": [
+          -0.41970015661445875,
+          -0.37506434926236465,
+          -0.40811619235633867,
+          -0.2966750322849651,
+          -0.2672321015231798
+        ]
+      },
+      "lightgbm": {
+        "mean": -0.30830709820030056,
+        "std": 0.05115747656810352,
+        "n": 5,
+        "values": [
+          -0.3920911407858166,
+          -0.32068626252450694,
+          -0.28776543528390475,
+          -0.2731488024607252,
+          -0.2678438499465493
+        ]
+      }
+    },
+    "60": {
+      "deepsequence": {
+        "mean": -0.2552790882237833,
+        "std": 0.04233785146698228,
+        "n": 5,
+        "values": [
+          -0.2190633603984976,
+          -0.25362307194587097,
+          -0.21474970989569447,
+          -0.27060859134988063,
+          -0.31835070752897277
+        ]
+      },
+      "temporal_transformer": {
+        "mean": -0.3734470403426502,
+        "std": 0.04637563695309872,
+        "n": 5,
+        "values": [
+          -0.3238479158353852,
+          -0.3930719716060852,
+          -0.442502282225497,
+          -0.3432929134448543,
+          -0.3645201186014292
+        ]
+      },
+      "lightgbm": {
+        "mean": -0.30133082570668895,
+        "std": 0.03059771441256129,
+        "n": 5,
+        "values": [
+          -0.28389138320285345,
+          -0.2991617499660525,
+          -0.2672936482870135,
+          -0.3076770809714698,
+          -0.3486302661060554
+        ]
+      }
+    }
+  },
+  "win_rates": {
+    "ds_beats_tst_mid_pi_loyalty_0p25": {
+      "28": {
+        "wins": 5,
+        "n": 5,
+        "rate": 1.0
+      },
+      "60": {
+        "wins": 5,
+        "n": 5,
+        "rate": 1.0
+      }
+    },
+    "lgbm_low_margin_pi_winner": {
+      "loyalty_0": {
+        "7": {
+          "wins": 5,
+          "n": 5,
+          "rate": 1.0
+        },
+        "14": {
+          "wins": 5,
+          "n": 5,
+          "rate": 1.0
+        },
+        "28": {
+          "wins": 5,
+          "n": 5,
+          "rate": 1.0
+        },
+        "60": {
+          "wins": 5,
+          "n": 5,
+          "rate": 1.0
+        }
+      },
+      "loyalty_0p25": {
+        "7": {
+          "wins": 0,
+          "n": 5,
+          "rate": 0.0
+        },
+        "14": {
+          "wins": 0,
+          "n": 5,
+          "rate": 0.0
+        },
+        "28": {
+          "wins": 2,
+          "n": 5,
+          "rate": 0.4
+        },
+        "60": {
+          "wins": 1,
+          "n": 5,
+          "rate": 0.2
+        }
+      }
+    },
+    "mid_pi_winner_loyalty_0p25_by_seed": {
+      "7": [
+        "TST lite",
+        "TST lite",
+        "plain DS",
+        "TST lite",
+        "TST lite"
+      ],
+      "14": [
+        "TST lite",
+        "plain DS",
+        "plain DS",
+        "TST lite",
+        "TST lite"
+      ],
+      "28": [
+        "plain DS",
+        "plain DS",
+        "plain DS",
+        "plain DS",
+        "plain DS"
+      ],
+      "60": [
+        "plain DS",
+        "plain DS",
+        "plain DS",
+        "plain DS",
+        "plain DS"
+      ]
+    }
+  },
+  "per_seed": [
+    {
+      "seed": 42,
+      "iwmae": {
+        "1": {
+          "deepsequence": 4.035189475096706,
+          "temporal_transformer": 3.8603402922253225,
+          "lightgbm": 4.451433454008903
+        },
+        "7": {
+          "deepsequence": 4.380770909288969,
+          "temporal_transformer": 4.323104012164445,
+          "lightgbm": 4.688254109398693
+        },
+        "14": {
+          "deepsequence": 4.21082840844264,
+          "temporal_transformer": 4.176523080271252,
+          "lightgbm": 4.61450774835337
+        },
+        "28": {
+          "deepsequence": 6.416658991910611,
+          "temporal_transformer": 6.877155319975199,
+          "lightgbm": 6.866033679142354
+        },
+        "60": {
+          "deepsequence": 3.891100494447214,
+          "temporal_transformer": 4.4945979989127585,
+          "lightgbm": 4.374971163356817
+        }
+      },
+      "pi_mid_loyalty_0p25": {
+        "7": {
+          "deepsequence": -0.24064264555142317,
+          "temporal_transformer": -0.22733842688682937,
+          "lightgbm": -0.2689942840066206
+        },
+        "14": {
+          "deepsequence": -0.22840216711939093,
+          "temporal_transformer": -0.22554425245307658,
+          "lightgbm": -0.2649075551306827
+        },
+        "28": {
+          "deepsequence": -0.3459653037444918,
+          "temporal_transformer": -0.41970015661445875,
+          "lightgbm": -0.3920911407858166
+        },
+        "60": {
+          "deepsequence": -0.2190633603984976,
+          "temporal_transformer": -0.3238479158353852,
+          "lightgbm": -0.28389138320285345
+        }
+      },
+      "winners": {
+        "7": {
+          "mid_pi_loyalty_0p25": "TST lite",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "TST lite"
+        },
+        "14": {
+          "mid_pi_loyalty_0p25": "TST lite",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        },
+        "28": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        },
+        "60": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        }
+      }
+    },
+    {
+      "seed": 43,
+      "iwmae": {
+        "1": {
+          "deepsequence": 3.9517119155528744,
+          "temporal_transformer": 3.7939928115316786,
+          "lightgbm": 4.221672427797437
+        },
+        "7": {
+          "deepsequence": 4.95218788039043,
+          "temporal_transformer": 4.8005171963589035,
+          "lightgbm": 5.2680973125058745
+        },
+        "14": {
+          "deepsequence": 6.455590698836041,
+          "temporal_transformer": 6.5077800355340445,
+          "lightgbm": 6.838684321080054
+        },
+        "28": {
+          "deepsequence": 5.067858709751521,
+          "temporal_transformer": 5.553302538002579,
+          "lightgbm": 5.50658427890726
+        },
+        "60": {
+          "deepsequence": 4.348403564689865,
+          "temporal_transformer": 5.1905065224311695,
+          "lightgbm": 4.703008513465521
+        }
+      },
+      "pi_mid_loyalty_0p25": {
+        "7": {
+          "deepsequence": -0.2663935270025066,
+          "temporal_transformer": -0.2437650529972593,
+          "lightgbm": -0.2953913127611846
+        },
+        "14": {
+          "deepsequence": -0.31369259323051935,
+          "temporal_transformer": -0.3335871970472516,
+          "lightgbm": -0.3353560946699341
+        },
+        "28": {
+          "deepsequence": -0.2832680543798245,
+          "temporal_transformer": -0.37506434926236465,
+          "lightgbm": -0.32068626252450694
+        },
+        "60": {
+          "deepsequence": -0.25362307194587097,
+          "temporal_transformer": -0.3930719716060852,
+          "lightgbm": -0.2991617499660525
+        }
+      },
+      "winners": {
+        "7": {
+          "mid_pi_loyalty_0p25": "TST lite",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "TST lite"
+        },
+        "14": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        },
+        "28": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        },
+        "60": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        }
+      }
+    },
+    {
+      "seed": 44,
+      "iwmae": {
+        "1": {
+          "deepsequence": 3.663812996994736,
+          "temporal_transformer": 3.590623953940444,
+          "lightgbm": 4.160832699715974
+        },
+        "7": {
+          "deepsequence": 4.00663391298117,
+          "temporal_transformer": 3.9684533872673895,
+          "lightgbm": 4.33769875488397
+        },
+        "14": {
+          "deepsequence": 4.832128311669148,
+          "temporal_transformer": 5.004664413564695,
+          "lightgbm": 5.264829895735785
+        },
+        "28": {
+          "deepsequence": 4.066223144409921,
+          "temporal_transformer": 5.0323805930432775,
+          "lightgbm": 4.558743987349267
+        },
+        "60": {
+          "deepsequence": 3.677036003106859,
+          "temporal_transformer": 4.959378288303814,
+          "lightgbm": 4.088281185952836
+        }
+      },
+      "pi_mid_loyalty_0p25": {
+        "7": {
+          "deepsequence": -0.2259026147616855,
+          "temporal_transformer": -0.2269553088249876,
+          "lightgbm": -0.25229858055086557
+        },
+        "14": {
+          "deepsequence": -0.25570448713671334,
+          "temporal_transformer": -0.2997626383153674,
+          "lightgbm": -0.2899679228483706
+        },
+        "28": {
+          "deepsequence": -0.23010316532867825,
+          "temporal_transformer": -0.40811619235633867,
+          "lightgbm": -0.28776543528390475
+        },
+        "60": {
+          "deepsequence": -0.21474970989569447,
+          "temporal_transformer": -0.442502282225497,
+          "lightgbm": -0.2672936482870135
+        }
+      },
+      "winners": {
+        "7": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        },
+        "14": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        },
+        "28": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        },
+        "60": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        }
+      }
+    },
+    {
+      "seed": 45,
+      "iwmae": {
+        "1": {
+          "deepsequence": 4.084888541605803,
+          "temporal_transformer": 3.9907921604674477,
+          "lightgbm": 4.618161930933322
+        },
+        "7": {
+          "deepsequence": 3.64123556294183,
+          "temporal_transformer": 3.372984763164597,
+          "lightgbm": 3.816025088718722
+        },
+        "14": {
+          "deepsequence": 5.95899201412765,
+          "temporal_transformer": 5.781036073382323,
+          "lightgbm": 6.295947783415314
+        },
+        "28": {
+          "deepsequence": 4.3348443341536855,
+          "temporal_transformer": 4.542926933080732,
+          "lightgbm": 4.663615579829847
+        },
+        "60": {
+          "deepsequence": 4.54371055506617,
+          "temporal_transformer": 4.985265738713639,
+          "lightgbm": 4.839640386669364
+        }
+      },
+      "pi_mid_loyalty_0p25": {
+        "7": {
+          "deepsequence": -0.218425738266806,
+          "temporal_transformer": -0.17881996288381347,
+          "lightgbm": -0.23189267461008867
+        },
+        "14": {
+          "deepsequence": -0.3217489081672848,
+          "temporal_transformer": -0.2997612567615345,
+          "lightgbm": -0.34101821473765
+        },
+        "28": {
+          "deepsequence": -0.25112199597140544,
+          "temporal_transformer": -0.2966750322849651,
+          "lightgbm": -0.2731488024607252
+        },
+        "60": {
+          "deepsequence": -0.27060859134988063,
+          "temporal_transformer": -0.3432929134448543,
+          "lightgbm": -0.3076770809714698
+        }
+      },
+      "winners": {
+        "7": {
+          "mid_pi_loyalty_0p25": "TST lite",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "TST lite"
+        },
+        "14": {
+          "mid_pi_loyalty_0p25": "TST lite",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "TST lite"
+        },
+        "28": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "LightGBM"
+        },
+        "60": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "plain DS"
+        }
+      }
+    },
+    {
+      "seed": 46,
+      "iwmae": {
+        "1": {
+          "deepsequence": 4.37739814446506,
+          "temporal_transformer": 4.326073294145426,
+          "lightgbm": 4.960518597017713
+        },
+        "7": {
+          "deepsequence": 4.5143161544832076,
+          "temporal_transformer": 4.2295529818341295,
+          "lightgbm": 4.635081526621104
+        },
+        "14": {
+          "deepsequence": 6.014622826565537,
+          "temporal_transformer": 5.79855818977655,
+          "lightgbm": 6.127649554921597
+        },
+        "28": {
+          "deepsequence": 4.228649467994005,
+          "temporal_transformer": 4.444714219797226,
+          "lightgbm": 4.374733360259088
+        },
+        "60": {
+          "deepsequence": 5.262603291254493,
+          "temporal_transformer": 5.645255277774526,
+          "lightgbm": 5.542247334356345
+        }
+      },
+      "pi_mid_loyalty_0p25": {
+        "7": {
+          "deepsequence": -0.263661353910169,
+          "temporal_transformer": -0.21412133409788664,
+          "lightgbm": -0.2609347040597692
+        },
+        "14": {
+          "deepsequence": -0.33543525270696267,
+          "temporal_transformer": -0.29517496305866636,
+          "lightgbm": -0.3333321664769456
+        },
+        "28": {
+          "deepsequence": -0.25265208370017966,
+          "temporal_transformer": -0.2672321015231798,
+          "lightgbm": -0.2678438499465493
+        },
+        "60": {
+          "deepsequence": -0.31835070752897277,
+          "temporal_transformer": -0.3645201186014292,
+          "lightgbm": -0.3486302661060554
+        }
+      },
+      "winners": {
+        "7": {
+          "mid_pi_loyalty_0p25": "TST lite",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "TST lite"
+        },
+        "14": {
+          "mid_pi_loyalty_0p25": "TST lite",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "TST lite"
+        },
+        "28": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "LightGBM"
+        },
+        "60": {
+          "mid_pi_loyalty_0p25": "plain DS",
+          "low_pi_loyalty_0": "LightGBM",
+          "low_pi_loyalty_0p25": "LightGBM"
+        }
+      }
+    }
+  ],
+  "tables_pretty": {
+    "iwmae": {
+      "1": {
+        "deepsequence": "4.0226 \u00b1 0.2567",
+        "temporal_transformer": "3.9124 \u00b1 0.2727",
+        "lightgbm": "4.4825 \u00b1 0.3238"
+      },
+      "7": {
+        "deepsequence": "4.2990 \u00b1 0.4995",
+        "temporal_transformer": "4.1389 \u00b1 0.5233",
+        "lightgbm": "4.5490 \u00b1 0.5305"
+      },
+      "14": {
+        "deepsequence": "5.4944 \u00b1 0.9349",
+        "temporal_transformer": "5.4537 \u00b1 0.8902",
+        "lightgbm": "5.8283 \u00b1 0.8832"
+      },
+      "28": {
+        "deepsequence": "4.8228 \u00b1 0.9700",
+        "temporal_transformer": "5.2901 \u00b1 0.9909",
+        "lightgbm": "5.1939 \u00b1 1.0307"
+      },
+      "60": {
+        "deepsequence": "4.3446 \u00b1 0.6192",
+        "temporal_transformer": "5.0550 \u00b1 0.4168",
+        "lightgbm": "4.7096 \u00b1 0.5496"
+      }
+    },
+    "pi_mid_loyalty_0p25": {
+      "7": {
+        "deepsequence": "-0.2430 \u00b1 0.0217",
+        "temporal_transformer": "-0.2182 \u00b1 0.0244",
+        "lightgbm": "-0.2619 \u00b1 0.0233"
+      },
+      "14": {
+        "deepsequence": "-0.2910 \u00b1 0.0464",
+        "temporal_transformer": "-0.2908 \u00b1 0.0396",
+        "lightgbm": "-0.3129 \u00b1 0.0337"
+      },
+      "28": {
+        "deepsequence": "-0.2726 \u00b1 0.0452",
+        "temporal_transformer": "-0.3534 \u00b1 0.0680",
+        "lightgbm": "-0.3083 \u00b1 0.0512"
+      },
+      "60": {
+        "deepsequence": "-0.2553 \u00b1 0.0423",
+        "temporal_transformer": "-0.3734 \u00b1 0.0464",
+        "lightgbm": "-0.3013 \u00b1 0.0306"
+      }
+    }
+  },
+  "stability_verdict": {
+    "long_horizon_ds_better_iwmae_mean_28_60": true,
+    "ds_beats_tst_mid_pi_loy025_rate_ge_0p6_at_28_60": true,
+    "loyalty_reduces_lgbm_low_margin_winrate_at_h60": true,
+    "stable_across_seeds": true,
+    "note": "Stable if DS mean IWMAE beats TST at h=28/60 and DS mid-\u03c0 (C_loyalty=0.25) beats TST in \u226560% of seeds at those horizons."
+  }
+}

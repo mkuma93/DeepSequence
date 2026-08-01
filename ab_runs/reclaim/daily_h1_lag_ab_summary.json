@@ -1,0 +1,83 @@
+{
+  "protocol": {
+    "stack": "softsign + mono + mixer, FiLM off",
+    "sku_list": "ab_runs/recompare/sku_list_daily_data42.json",
+    "seed": 42,
+    "epochs": 25,
+    "batch_size": 1024,
+    "horizon": 1
+  },
+  "arms": [
+    {
+      "arm": "lag_1_2",
+      "lags": [
+        1,
+        2
+      ],
+      "n_features": 27,
+      "iwmae": 4.06216684207389,
+      "iwmae_rounded": 4.036539586832051,
+      "bias": 0.4153014511472257,
+      "mae_nonzero": 6.935917755806189,
+      "mae_all": 1.850930535190183,
+      "inventory_mean_under": 0.7178145420214787,
+      "inventory_mean_over": 1.1331159931687043,
+      "inventory_holding_cost_zero": 1.1884159283415905,
+      "sales_revenue_loss_units": 6.22724442510588,
+      "underforecast_rate_nonzero": 0.6747991093039016,
+      "best_epoch": 22,
+      "train_seconds": 28.337465047836304
+    },
+    {
+      "arm": "lag_1_6",
+      "lags": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "n_features": 31,
+      "iwmae": 4.072202688924337,
+      "iwmae_rounded": 4.046686978290605,
+      "bias": 0.43256907078591844,
+      "mae_nonzero": 6.941768110313999,
+      "mae_all": 1.8641869508749018,
+      "inventory_mean_under": 0.7158089400444917,
+      "inventory_mean_over": 1.1483780108304102,
+      "inventory_holding_cost_zero": 1.202637267534676,
+      "sales_revenue_loss_units": 6.2098452600025915,
+      "underforecast_rate_nonzero": 0.6533062251912092,
+      "best_epoch": 19,
+      "train_seconds": 29.03453278541565
+    },
+    {
+      "arm": "lag_1_2_7",
+      "lags": [
+        1,
+        2,
+        7
+      ],
+      "n_features": 28,
+      "iwmae": 4.07217850250014,
+      "iwmae_rounded": 4.045174874056161,
+      "bias": 0.33897396785763667,
+      "mae_nonzero": 7.017541564885238,
+      "mae_all": 1.8058395134882324,
+      "inventory_mean_under": 0.7334327728152977,
+      "inventory_mean_over": 1.0724067406729345,
+      "inventory_holding_cost_zero": 1.1268154401150432,
+      "sales_revenue_loss_units": 6.362737000063935,
+      "underforecast_rate_nonzero": 0.6459483009003776,
+      "best_epoch": 10,
+      "train_seconds": 18.751384019851685
+    }
+  ],
+  "winner_by_iwmae": "lag_1_2",
+  "delta_iwmae_vs_baseline_127": {
+    "lag_1_2": -0.010011660426250124,
+    "lag_1_6": 2.4186424196770417e-05,
+    "lag_1_2_7": 0.0
+  }
+}

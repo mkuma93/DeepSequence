@@ -1,0 +1,40 @@
+{
+  "primary_metric": "sales_revenue_loss_units",
+  "definition": {
+    "sales_revenue_loss_units": "mean max(y-yhat,0) on sale days (unit price=1)",
+    "sales_revenue_loss_rate": "unmet / demand on sale days",
+    "unnecessary_restock_zero": "mean yhat on zero days; stock sits, not revenue loss"
+  },
+  "ranking": [
+    {
+      "rank": 1,
+      "name": "plain DS",
+      "iwmae": 4.045039139061245,
+      "sales_revenue_loss_units": 6.144556079201356,
+      "sales_revenue_loss_rate": 0.669134140739824,
+      "sales_revenue_loss_per_day": 0.7082830553647684,
+      "unnecessary_restock_zero": 1.2305547708069873,
+      "fill_nz": 0.32839577887501215
+    },
+    {
+      "rank": 2,
+      "name": "hybrid d64_b1_decouple",
+      "iwmae": 4.004227847494938,
+      "sales_revenue_loss_units": 6.421972649325839,
+      "sales_revenue_loss_rate": 0.699344443304328,
+      "sales_revenue_loss_per_day": 0.7402691281263151,
+      "unnecessary_restock_zero": 1.0971630518348743,
+      "fill_nz": 0.30554748765611384
+    },
+    {
+      "rank": 3,
+      "name": "TST lite",
+      "iwmae": 3.990259473490895,
+      "sales_revenue_loss_units": 6.572151100977653,
+      "sales_revenue_loss_rate": 0.7156986807640234,
+      "sales_revenue_loss_per_day": 0.7575803932995355,
+      "unnecessary_restock_zero": 0.8577904017425546,
+      "fill_nz": 0.28996030593474686
+    }
+  ]
+}

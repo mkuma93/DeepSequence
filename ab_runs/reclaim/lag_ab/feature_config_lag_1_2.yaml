@@ -1,0 +1,215 @@
+# TEMP lag A/B override — lag_1_2
+# lags=[1, 2]; intermittent kept; Fourier/holiday/trend unchanged
+# Default repo feature_config.yaml remains lags 1/2/7
+
+trend_features:
+- name: time_index
+  description: Numeric time index (days since Unix epoch 1970-01-01)
+  source_column: ds
+  transformation: days_since_epoch
+  index: 0
+cyclical_features:
+- name: dow_sin
+  description: Sine encoding of day of week (0-6)
+  formula: "sin(2\u03C0 * day_of_week / 7)"
+  index: 1
+- name: dow_cos
+  description: Cosine encoding of day of week (0-6)
+  formula: "cos(2\u03C0 * day_of_week / 7)"
+  index: 2
+- name: month_sin
+  description: Sine encoding of month (1-12)
+  formula: "sin(2\u03C0 * month / 12)"
+  index: 3
+- name: month_cos
+  description: Cosine encoding of month (1-12)
+  formula: "cos(2\u03C0 * month / 12)"
+  index: 4
+- name: year_sin
+  description: Sine encoding of day of year (1-365/366)
+  formula: "sin(2\u03C0 * day_of_year / 365.25)"
+  index: 5
+- name: year_cos
+  description: Cosine encoding of day of year (1-365/366)
+  formula: "cos(2\u03C0 * day_of_year / 365.25)"
+  index: 6
+lag_features:
+- name: lag_1
+  description: Demand 1 day(s) ago (causal shift)
+  lag: 1
+  index: 7
+- name: lag_2
+  description: Demand 2 day(s) ago (causal shift)
+  lag: 2
+  index: 8
+intermittent_features:
+- name: days_since_last_sale
+  description: Days since last Quantity>0 strictly before t; -1 if never sold
+  index: 9
+- name: last_sale_quantity
+  description: Last non-zero Quantity strictly before t; 0 if never sold
+  index: 10
+- name: lifetime_cumsum
+  description: Sum of Quantity strictly before t
+  index: 11
+holiday_features:
+- name: days_from_NewYear
+  description: Days to/from New Year
+  index: 12
+- name: days_from_MLK
+  description: Days to/from Martin Luther King Jr. Day
+  index: 13
+- name: days_from_Presidents
+  description: Days to/from Presidents Day
+  index: 14
+- name: days_from_Valentine
+  description: Days to/from Valentine's Day
+  index: 15
+- name: days_from_Easter
+  description: Days to/from Easter
+  index: 16
+- name: days_from_Mothers
+  description: Days to/from Mother's Day
+  index: 17
+- name: days_from_Memorial
+  description: Days to/from Memorial Day
+  index: 18
+- name: days_from_Fathers
+  description: Days to/from Father's Day
+  index: 19
+- name: days_from_July4
+  description: Days to/from Independence Day
+  index: 20
+- name: days_from_Labor
+  description: Days to/from Labor Day
+  index: 21
+- name: days_from_Halloween
+  description: Days to/from Halloween
+  index: 22
+- name: days_from_Thanksgiving
+  description: Days to/from Thanksgiving
+  index: 23
+- name: days_from_BlackFriday
+  description: Days to/from Black Friday
+  index: 24
+- name: days_from_Christmas
+  description: Days to/from Christmas
+  index: 25
+- name: days_from_NewYearEve
+  description: Days to/from New Year's Eve
+  index: 26
+binary_holiday_features: []
+model_architecture:
+  trend_component:
+    description: Long-term trend from time index
+    feature_indices:
+    - 0
+    feature_names:
+    - time_index
+  seasonal_component:
+    description: Cyclical time encodings for seasonal patterns
+    feature_indices:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    feature_names:
+    - dow_sin
+    - dow_cos
+    - month_sin
+    - month_cos
+    - year_sin
+    - year_cos
+  regressor_component:
+    description: Causal lag + intermittent demand-history features
+    feature_indices:
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    feature_names:
+    - lag_1
+    - lag_2
+    - days_since_last_sale
+    - last_sale_quantity
+    - lifetime_cumsum
+  holiday_component:
+    description: Holiday proximity (distance) features only
+    feature_indices:
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20
+    - 21
+    - 22
+    - 23
+    - 24
+    - 25
+    - 26
+    feature_names:
+    - days_from_NewYear
+    - days_from_MLK
+    - days_from_Presidents
+    - days_from_Valentine
+    - days_from_Easter
+    - days_from_Mothers
+    - days_from_Memorial
+    - days_from_Fathers
+    - days_from_July4
+    - days_from_Labor
+    - days_from_Halloween
+    - days_from_Thanksgiving
+    - days_from_BlackFriday
+    - days_from_Christmas
+    - days_from_NewYearEve
+feature_order:
+- time_index
+- dow_sin
+- dow_cos
+- month_sin
+- month_cos
+- year_sin
+- year_cos
+- lag_1
+- lag_2
+- days_since_last_sale
+- last_sale_quantity
+- lifetime_cumsum
+- days_from_NewYear
+- days_from_MLK
+- days_from_Presidents
+- days_from_Valentine
+- days_from_Easter
+- days_from_Mothers
+- days_from_Memorial
+- days_from_Fathers
+- days_from_July4
+- days_from_Labor
+- days_from_Halloween
+- days_from_Thanksgiving
+- days_from_BlackFriday
+- days_from_Christmas
+- days_from_NewYearEve
+metadata:
+  total_features: 27
+  version: 1.6-lagAB-12
+  last_updated: '2026-07-31'
+  dataset_context: Lag A/B temp override; Fourier/holiday/trend unchanged
+  rationale: 'Temp lag A/B arm lag_1_2: lags=[1, 2] + intermittent; do not use as
+    default.'
+  intermittent_features:
+    causal: true
+    cold_start_days_since_sentinel: -1
+    built_by: intermittent_features.transform_panel
+  lag_ab_label: lag_1_2
+  lags:
+  - 1
+  - 2

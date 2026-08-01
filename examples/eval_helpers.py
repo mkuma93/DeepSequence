@@ -160,6 +160,41 @@ def class_balance_pos_weight(y: np.ndarray) -> float:
     return float(n_neg / max(n_pos, 1.0))
 
 
+def resolve_sku_zero_rates(y, sku_ids, n_skus=None, min_obs=1):
+    """Panel + per-SKU zero rates for loss / gate prior wiring.
+
+    Returns ``(panel_mean, rates)`` where ``rates`` is length ``n_skus``.
+    """
+    from deepsequence_hierarchical_attention import estimate_zero_rate_by_sku
+
+    info = estimate_zero_rate_by_sku(y, sku_ids, n_skus=n_skus, min_obs=min_obs)
+    return float(info["panel_mean"]), info["rates"]
+
+
+def fit_bce_sample_weight_dict(
+    y,
+    sku_ids,
+    zero_rates,
+    *,
+    panel_zero_rate=None,
+    other_keys=("final_forecast", "base_forecast"),
+):
+    """Keras multi-output ``sample_weight`` with per-SKU BCE imbalance.
+
+    When ``panel_zero_rate`` is set, BCE weights are relative to the compiled
+    panel ``pos_weight`` (no double-counting).
+    """
+    from deepsequence_hierarchical_attention import multioutput_bce_sample_weight_dict
+
+    return multioutput_bce_sample_weight_dict(
+        y,
+        sku_ids,
+        zero_rates,
+        reference_zero_rate=panel_zero_rate,
+        other_keys=other_keys,
+    )
+
+
 def calibrate_iwmae_gate(
     y_true: np.ndarray,
     yhat: np.ndarray,

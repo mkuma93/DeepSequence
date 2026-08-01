@@ -42,7 +42,9 @@ from eval_helpers import (
     build_tft,
     build_transformer,
     filter_aligned,
+    fit_bce_sample_weight_dict,
     resolve_eval_seeds,
+    resolve_sku_zero_rates,
     select_eval_skus,
     split_components,
     train_mase_scale,
@@ -101,6 +103,24 @@ def parse_args():
     p.add_argument("--regressor_monotonic", type=int, default=None)
     p.add_argument("--context_aware_component_mixer", type=int, default=None)
     p.add_argument("--context_film_seasonal_holiday", type=int, default=None)
+    p.add_argument(
+        "--level1_selection_attention",
+        type=int,
+        default=None,
+        help="Intra-expert selection attn (1/0). None = builder default (True).",
+    )
+    p.add_argument(
+        "--use_intermittent",
+        type=int,
+        default=None,
+        help="Occurrence gate (1/0). None = builder default (True).",
+    )
+    p.add_argument(
+        "--use_cross_layers",
+        type=int,
+        default=None,
+        help="DCN cross on component outputs (1/0). None = builder default (False).",
+    )
     return p.parse_args()
 
 
@@ -133,7 +153,8 @@ def _ds_builder_kwargs(args) -> dict:
     """Resolve DeepSequence stack kwargs from CLI (explicit overrides only).
 
     Unset CLI flags keep the preferred builder defaults: softsign experts,
-    monotone trend/holiday/regressor, context-aware mixer on, calendar FiLM off.
+    monotone trend/holiday/regressor, context-aware mixer on, calendar FiLM off,
+    cross layers off, Level-1 selection attention on, gate on.
     """
     sig = inspect.signature(build_hierarchical_model_lightweight)
     defaults = {k: sig.parameters[k].default for k in (
@@ -143,6 +164,9 @@ def _ds_builder_kwargs(args) -> dict:
         "regressor_monotonic",
         "context_aware_component_mixer",
         "context_film_seasonal_holiday",
+        "level1_selection_attention",
+        "use_intermittent",
+        "use_cross_layers",
     )}
     out = dict(defaults)
     if args.output_activation is not None:
@@ -153,6 +177,9 @@ def _ds_builder_kwargs(args) -> dict:
         "regressor_monotonic",
         "context_aware_component_mixer",
         "context_film_seasonal_holiday",
+        "level1_selection_attention",
+        "use_intermittent",
+        "use_cross_layers",
     ):
         val = getattr(args, flag)
         if val is not None:
@@ -160,7 +187,9 @@ def _ds_builder_kwargs(args) -> dict:
     return out
 
 
-def train_seq_three_term(model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, args, label):
+def train_seq_three_term(
+    model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, args, label, sku_zero_rates=None
+):
     cfg = three_term_loss_config(zero_rate, alpha_bce=0.2, w_gated=1.0, w_mag=1.0)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(0.0025),
@@ -177,12 +206,22 @@ def train_seq_three_term(model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, arg
         "base_forecast": yva.reshape(-1, 1),
         "non_zero_probability": (yva > 0).astype(np.float32).reshape(-1, 1),
     }
+    sw_tr = sw_va = None
+    if sku_zero_rates is not None:
+        sw_tr = fit_bce_sample_weight_dict(
+            ytr, skutr, sku_zero_rates, panel_zero_rate=zero_rate
+        )
+        sw_va = fit_bce_sample_weight_dict(
+            yva, skuva, sku_zero_rates, panel_zero_rate=zero_rate
+        )
     print(f"\n=== train {label} ===")
     t0 = time.time()
-    model.fit(
-        [Xtr, skutr],
-        ytr_d,
-        validation_data=([Xva, skuva], yva_d),
+    fit_kw = dict(
+        x=[Xtr, skutr],
+        y=ytr_d,
+        validation_data=(
+            ([Xva, skuva], yva_d, sw_va) if sw_va is not None else ([Xva, skuva], yva_d)
+        ),
         epochs=args.epochs,
         batch_size=args.batch_size,
         callbacks=[
@@ -195,6 +234,9 @@ def train_seq_three_term(model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, arg
         ],
         verbose=2,
     )
+    if sw_tr is not None:
+        fit_kw["sample_weight"] = sw_tr
+    model.fit(**fit_kw)
     return time.time() - t0
 
 
@@ -361,6 +403,11 @@ def main():
     ds_model = None
     if "deepsequence" in selected:
         print("\n=== DeepSequence train ===")
+        _, sku_rates = resolve_sku_zero_rates(y_train, sku_train, n_skus=n_skus)
+        print(
+            f"  per-SKU BCE imbalance ON "
+            f"(panel_zr={zero_rate:.3f}, n_skus={n_skus})"
+        )
         base = build_hierarchical_model_lightweight(
             n_temporal_features=len(cfg.trend_indices),
             n_fourier_features=len(cfg.seasonal_indices),
@@ -370,8 +417,6 @@ def main():
             hidden_dim=48,
             sku_embedding_dim=4,
             dropout_rate=0.23,
-            use_cross_layers=True,
-            use_intermittent=True,
             n_changepoints=15,
             **ds_stack,
         )
@@ -379,6 +424,40 @@ def main():
             [*(np.zeros((1, x.shape[1]), np.float32) for x in tr), np.zeros((1, 1), np.int32)],
             training=False,
         )
+        # Confirm Level-1 mono ⊕ selection attention and cross setting.
+        from deepsequence_hierarchical_attention.components_lightweight import (
+            HolidayComponentLightweight,
+            RegressorComponentLightweight,
+        )
+        found_h = found_r = False
+        h_sel = r_sel = None
+        for obj in base._flatten_layers():
+            if isinstance(obj, HolidayComponentLightweight):
+                found_h = True
+                h_sel = bool(getattr(obj, "level1_selection_attention", True))
+            if isinstance(obj, RegressorComponentLightweight):
+                found_r = True
+                r_sel = bool(getattr(obj, "level1_selection_attention", True))
+        layer_names = [l.name for l in base._flatten_layers()]
+        has_cross = any("cross_layer" in n for n in layer_names)
+        print(
+            f"  Level-1 check: holiday={found_h} regressor={found_r} "
+            f"level1_sel(h/r)={h_sel}/{r_sel} "
+            f"use_cross_layers={ds_stack.get('use_cross_layers')} "
+            f"cross_present={has_cross}"
+        )
+        if not (found_h and found_r):
+            raise RuntimeError(
+                "holiday/regressor experts missing from DeepSequence graph"
+            )
+        want_l1 = bool(ds_stack.get("level1_selection_attention", True))
+        if want_l1 and h_sel is False:
+            raise RuntimeError("expected Level-1 holiday selection attention")
+        if bool(ds_stack.get("use_cross_layers")) != has_cross:
+            raise RuntimeError(
+                f"cross mismatch: flag={ds_stack.get('use_cross_layers')} "
+                f"present={has_cross}"
+            )
         pos_weight = min(20.0, zero_rate / max(1 - zero_rate, 1e-3))
         ds_model = AdaptiveWeightedModel(
             base_model=base,
@@ -387,6 +466,7 @@ def main():
             zero_rate=zero_rate,
             avg_nonzero_demand=float(y_train[y_train > 0].mean()),
             pos_weight=pos_weight,
+            sku_zero_rates=sku_rates,
             loss_recipe="three_term",
             alpha_bce=0.2,
             w_gated=1.0,
@@ -464,6 +544,7 @@ def main():
             "temporal_transformer": build_transformer,
             "tft_lite": build_tft,
         }
+        _, seq_sku_rates = resolve_sku_zero_rates(y_train, sku_train, n_skus=n_skus)
         for name, builder in builders.items():
             if name not in selected:
                 continue
@@ -479,6 +560,7 @@ def main():
                 zero_rate,
                 args,
                 name,
+                sku_zero_rates=seq_sku_rates,
             )
             seq_models[name] = model
             results["models"].setdefault(name, {})["train_seconds"] = train_s

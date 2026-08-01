@@ -451,10 +451,33 @@ def rank_multihorizon_ops(
 # ---------------------------------------------------------------------------
 
 # Holding cost is a *policy* input (carry rate × unit cost, capital charge, etc.).
-# It is NOT inferred from margin. Margin only sets C_lost = margin * unit_price.
+# It is NOT inferred from margin. Margin sets one-period contribution loss;
+# optional loyalty / switching cost adds an extra per-unit underage penalty.
 DEFAULT_POLICY_HOLDING_COST_PER_UNIT = 0.10
 DEFAULT_UNIT_PRICE = 1.0
 DEFAULT_MARGINS: tuple[float, ...] = (0.08, 0.25, 0.55)
+# Scenario-analysis defaults (not estimated): legacy 0, modest one-time switch,
+# strong repeat / brand risk. Label clearly in reports — not fake precision.
+DEFAULT_LOYALTY_COST_PER_UNIT = 0.0
+DEFAULT_LOYALTY_SCENARIOS: tuple[float, ...] = (0.0, 0.25, 0.50)
+
+
+def loyalty_tag(loyalty_cost_per_unit: float) -> str:
+    """Stable JSON key for a loyalty scenario (0 → loyalty_0, 0.25 → loyalty_0p25)."""
+    w = float(loyalty_cost_per_unit)
+    if abs(w - round(w)) < 1e-12:
+        return f"loyalty_{int(round(w))}"
+    return "loyalty_" + str(w).replace(".", "p")
+
+
+def lost_sale_unit_cost(
+    margin: float,
+    *,
+    unit_price: float = DEFAULT_UNIT_PRICE,
+    loyalty_cost_per_unit: float = DEFAULT_LOYALTY_COST_PER_UNIT,
+) -> float:
+    """Effective underage unit cost: C_lost = margin * price + C_loyalty."""
+    return float(margin) * float(unit_price) + float(loyalty_cost_per_unit)
 
 
 def margin_regimes_from_policy(
@@ -462,43 +485,67 @@ def margin_regimes_from_policy(
     holding_cost_per_unit: float = DEFAULT_POLICY_HOLDING_COST_PER_UNIT,
     margins: tuple[float, ...] = DEFAULT_MARGINS,
     unit_price: float = DEFAULT_UNIT_PRICE,
+    loyalty_cost_per_unit: float = DEFAULT_LOYALTY_COST_PER_UNIT,
 ) -> dict:
     """Build low/mid/high margin regimes with a shared inventory holding cost.
 
     ``holding_cost_per_unit`` comes from inventory/finance policy (same across
     regimes unless the business truly has different carry by segment).
-    Only ``margin`` changes → only C_lost and r = C_lost/C_hold change.
+    ``margin`` and optional ``loyalty_cost_per_unit`` set
+    C_lost = margin*price + C_loyalty and r_eff = C_lost/C_hold.
     """
     labels = ("low_margin", "mid_margin", "high_margin")
     if len(margins) != 3:
         raise ValueError("expected three margins: low, mid, high")
     h = float(holding_cost_per_unit)
+    loy = float(loyalty_cost_per_unit)
     out = {}
     for key, m in zip(labels, margins):
+        c_lost = lost_sale_unit_cost(
+            m, unit_price=unit_price, loyalty_cost_per_unit=loy
+        )
         out[key] = {
             "label": key.replace("_", " ").title(),
             "unit_price": float(unit_price),
             "margin": float(m),
             "holding_cost_per_unit": h,
+            "loyalty_cost_per_unit": loy,
+            "C_lost_per_unit": float(c_lost),
             "note": (
                 f"C_hold={h} from policy (fixed); "
-                f"C_lost=margin*price={float(m)*float(unit_price):.4f}; "
-                f"r=C_lost/C_hold={float(m)*float(unit_price)/h:.3f}"
+                f"C_lost=margin*price+C_loyalty="
+                f"{float(m)*float(unit_price):.4f}+{loy:.4f}={c_lost:.4f}; "
+                f"r_eff=C_lost/C_hold={c_lost/h:.3f}"
             ),
         }
     return out
 
 
-# Default regimes: one policy C_hold, three catalog margins.
+# Default regimes: one policy C_hold, three catalog margins, no loyalty.
 DEFAULT_MARGIN_REGIMES: dict = margin_regimes_from_policy()
 
 
-def cost_ratio_from_margin(margin: float, holding_cost_per_unit: float) -> float:
-    """r = C_lost / C_hold with C_lost = margin * unit_price (price=1)."""
+def cost_ratio_from_margin(
+    margin: float,
+    holding_cost_per_unit: float,
+    *,
+    unit_price: float = DEFAULT_UNIT_PRICE,
+    loyalty_cost_per_unit: float = DEFAULT_LOYALTY_COST_PER_UNIT,
+) -> float:
+    """r_eff = C_lost / C_hold with C_lost = margin*unit_price + C_loyalty.
+
+    When ``unit_price=1`` and ``loyalty_cost_per_unit=0``, this matches the
+    legacy ``r = margin / C_hold`` (callers that previously passed
+    ``margin * unit_price`` as the first arg remain correct at price=1).
+    """
     h = float(holding_cost_per_unit)
     if h <= 0:
         raise ValueError("holding_cost_per_unit must be > 0")
-    return float(margin) / h
+    return lost_sale_unit_cost(
+        margin,
+        unit_price=unit_price,
+        loyalty_cost_per_unit=loyalty_cost_per_unit,
+    ) / h
 
 
 def decision_cost_components(inv_summary: dict) -> dict:
@@ -531,26 +578,44 @@ def profit_loss(
     margin: float,
     holding_cost_per_unit: float,
     unit_price: float = 1.0,
+    loyalty_cost_per_unit: float = DEFAULT_LOYALTY_COST_PER_UNIT,
 ) -> dict:
-    """Profit / contribution loss under a margin + holding regime.
+    """Profit / contribution loss under a margin + holding (+ loyalty) regime.
 
-    - Revenue (contribution) loss = margin * unit_price * unmet_per_day
-    - Holding loss = holding_cost_per_unit * hold_per_day
-    - Total = sum (lower is better)
+    - Contribution loss = margin * unit_price * U
+    - Loyalty / switching loss = loyalty_cost_per_unit * U
+      (scenario penalty for customers who leave after a stockout)
+    - Holding loss = holding_cost_per_unit * H
+    - Total inv_loss = sum (lower is better)
+
+    Effective C_lost = margin*price + C_loyalty; r_eff = C_lost / C_hold.
     """
     u = float(inv_summary["inventory_mean_under"])
     h = float(inv_summary["inventory_holding_cost_zero_per_day"])
+    loy = float(loyalty_cost_per_unit)
+    c_lost = lost_sale_unit_cost(
+        margin, unit_price=unit_price, loyalty_cost_per_unit=loy
+    )
     rev_loss = float(margin) * float(unit_price) * u
+    loyalty_loss = loy * u
     hold_loss = float(holding_cost_per_unit) * h
-    r = cost_ratio_from_margin(margin * unit_price, holding_cost_per_unit)
+    r = cost_ratio_from_margin(
+        margin,
+        holding_cost_per_unit,
+        unit_price=unit_price,
+        loyalty_cost_per_unit=loy,
+    )
     return {
         "margin": float(margin),
         "holding_cost_per_unit": float(holding_cost_per_unit),
         "unit_price": float(unit_price),
+        "loyalty_cost_per_unit": loy,
+        "C_lost_per_unit": float(c_lost),
         "cost_ratio_r": float(r),
         "contribution_loss_per_day": float(rev_loss),
+        "loyalty_loss_per_day": float(loyalty_loss),
         "holding_loss_per_day": float(hold_loss),
-        "total_profit_loss_per_day": float(rev_loss + hold_loss),
+        "total_profit_loss_per_day": float(rev_loss + loyalty_loss + hold_loss),
         "U": u,
         "H": h,
     }
@@ -673,7 +738,14 @@ def decision_economics_report(
 
     regime_table = {}
     for key, spec in regimes.items():
-        r = cost_ratio_from_margin(spec["margin"], spec["holding_cost_per_unit"])
+        loy = float(spec.get("loyalty_cost_per_unit", DEFAULT_LOYALTY_COST_PER_UNIT))
+        unit_price = float(spec.get("unit_price", DEFAULT_UNIT_PRICE))
+        r = cost_ratio_from_margin(
+            spec["margin"],
+            spec["holding_cost_per_unit"],
+            unit_price=unit_price,
+            loyalty_cost_per_unit=loy,
+        )
         pick = select_model_by_r(components, r)
         per_model = {}
         for name, inv in model_inv.items():
@@ -681,10 +753,17 @@ def decision_economics_report(
                 inv,
                 margin=spec["margin"],
                 holding_cost_per_unit=spec["holding_cost_per_unit"],
-                unit_price=spec.get("unit_price", 1.0),
+                unit_price=unit_price,
+                loyalty_cost_per_unit=loy,
             )
         regime_table[key] = {
             **spec,
+            "loyalty_cost_per_unit": loy,
+            "C_lost_per_unit": lost_sale_unit_cost(
+                spec["margin"],
+                unit_price=unit_price,
+                loyalty_cost_per_unit=loy,
+            ),
             "cost_ratio_r": r,
             "winner": pick.get("winner"),
             "ranking": pick.get("ranking"),
@@ -694,8 +773,10 @@ def decision_economics_report(
     return {
         "framing": (
             "Decision economics, not universal IWMAE winner: models are risk "
-            "profiles. r = C_lost/C_hold. cost(r)=r*U+H with U=mean underage, "
-            "H=mean holding on no-sale days (per calendar day)."
+            "profiles. r_eff = C_lost/C_hold with "
+            "C_lost = margin*price + C_loyalty. cost(r)=r*U+H with U=mean "
+            "underage, H=mean holding on no-sale days (per calendar day). "
+            "Loyalty is scenario analysis, not an estimated parameter."
         ),
         "components": components,
         "curves": curves,
@@ -778,20 +859,28 @@ def profit_with_model_ops(
     holding_cost_per_unit: float,
     model_ops_cost_per_day: float,
     unit_price: float = 1.0,
+    loyalty_cost_per_unit: float = DEFAULT_LOYALTY_COST_PER_UNIT,
     mean_demand_per_day: float | None = None,
 ) -> dict:
     """π proxy = revenue − inventory cost − model ops cost (higher is better).
 
-    Inventory side matches ``profit_loss`` (contribution loss from underage +
-    holding on no-sale days). Revenue uses ``mean_demand_per_day`` when given
-    (shared across models at a horizon), else ``mean_actual`` on the summary,
-    else falls back to underage-only ranking via negative total loss.
+    Inventory side matches ``profit_loss`` (contribution + loyalty underage +
+    holding on no-sale days)::
+
+        inv_loss = (margin*price + C_loyalty)*U + C_hold*H
+        π = margin*price*demand − inv_loss − C_model
+
+    Revenue uses ``mean_demand_per_day`` when given (shared across models at a
+    horizon), else ``mean_actual`` on the summary, else falls back to
+    underage-only ranking via negative total loss. ``C_loyalty`` is a scenario
+    switch-cost — not estimated from data.
     """
     pl = profit_loss(
         inv_summary,
         margin=margin,
         holding_cost_per_unit=holding_cost_per_unit,
         unit_price=unit_price,
+        loyalty_cost_per_unit=loyalty_cost_per_unit,
     )
     demand = mean_demand_per_day
     if demand is None:
@@ -799,9 +888,10 @@ def profit_with_model_ops(
     c_model = float(model_ops_cost_per_day)
     if demand is not None:
         revenue = float(margin) * float(unit_price) * float(demand)
-        # Fulfilled ≈ demand − U; revenue_fulfilled = margin*price*(demand−U)
-        # π = margin*price*(demand−U) − C_hold*H − C_model
-        #   = margin*price*demand − (margin*price*U + C_hold*H) − C_model
+        # Fulfilled ≈ demand − U; one-period contribution on fulfilled units.
+        # Loyalty is an *extra* stockout penalty beyond margin*price*U.
+        # π = margin*price*demand − (margin*price*U + C_loyalty*U + C_hold*H)
+        #     − C_model
         pi = revenue - pl["total_profit_loss_per_day"] - c_model
         revenue_out = float(revenue)
     else:
@@ -814,7 +904,9 @@ def profit_with_model_ops(
         "revenue_proxy_per_day": revenue_out,
         "pi_per_day": float(pi),
         "note": (
-            "π = revenue_proxy − inv_loss − C_model. C_model is a transparent "
-            "proxy (train-time or fixed tier), not a measured production bill."
+            "π = revenue_proxy − inv_loss − C_model with "
+            "inv_loss=(margin*price+C_loyalty)*U + C_hold*H. "
+            "C_loyalty is scenario analysis; C_model is a transparent proxy "
+            "(train-time or fixed tier), not a measured production bill."
         ),
     }

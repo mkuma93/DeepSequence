@@ -1,59 +1,66 @@
-# DeepSequence: Hierarchical Attention for Intermittent Demand Forecasting
+# DeepSequence: Hierarchical Attention for Multi-Series Intermittent Demand
 
-**Version:** 1.6 · **Software:** `deepsequence-hierarchical-attention` 1.6.0  
+**Version:** 1.7 (paper draft) · **Software:** `deepsequence-hierarchical-attention`  
 **Author:** Mritunjay Kumar  
-**Date:** July 2026
+**Date:** August 2026
 
 ---
 
 ## Abstract
 
-Intermittent demand—long runs of zeros punctuated by sparse, variable sales—remains difficult for both classical inventory heuristics and modern deep forecasting models. We present **DeepSequence**, a lightweight hierarchical neural forecaster that separates *occurrence* from *magnitude* through a gated head \(\hat{y}=p\cdot b\), while allocating capacity across **trend**, **seasonal**, **holiday**, and **regressor** experts via **component-level attention** (feature/component reweighting, not day-level temporal self-attention). Causal lag and intermittent-state features are built strictly from past demand. On a proprietary enterprise *daily* panel (~90% zeros; 800 series; seed 42) under a locked **28-feature** contract (v1.6), DeepSequence achieves the best **1-step IWMAE** (**4.00**) versus LightGBM, TFT-lite, a temporal transformer (TST), and DeepAR-lite trained on the *same* features. Under recursive multi-horizon rollout, 1-step DeepSequence remains best at **h=1**; a **direct multi-horizon** head (**DS-MH**) recovers the best IWMAE at **h=7/14**. For public validation we evaluate the same protocol on the **Monash Car Parts** intermittent monthly benchmark (800 series), adding classical **Croston / SBA / TSB** baselines: **TSB** leads on this short monthly spare-parts set, while DeepSequence beats Croston/SBA and remains competitive with LightGBM—highlighting that hierarchical gated models shine when daily covariates and longer histories are available, whereas classical intermittent methods remain strong defaults on short monthly panels. We release code, public-data adapters, synthetic demo, and evaluation methodology; the enterprise panel cannot be published.
+Prophet-style structural forecasting—additive **trend**, **seasonality**, **holiday**, and **regressor** effects—is widely used for single-series demand, but does not, out of the box, scale to a **shared multi-series / panel** neural model for intermittent retail and distribution demand. We present **DeepSequence**, a lightweight architecture that *extends that decomposition to panels*: shared expert trunks with optional SKU personalization, plus four architectural ingredients tailored to intermittency and interpretability.
+
+**(i) Hierarchical attention.** Level-1 (intra-expert): seasonal masked-entropy over Fourier frequencies; holiday and regressor **selection attention** over monotone-mapped distances and lags; trend uses a softplus-monotone changepoint basis with **no** within-expert attention. Level-2 (inter-expert): a component mixer over the four Prophet-like experts. **(ii) Context-aware component mixing** conditions Level-2 weights on lag / intermittent **regime** features (not SKU identity alone), so the same calendar can reweight experts by demand state. **(iii) An occurrence–magnitude gate** \(\hat{y}=p\cdot b\) with softplus magnitude. **(iv) Monotone softplus maps** on trend, holiday distances, and regressor channels as Prophet-like inductive bias. Softsign expert outputs and DCN cross-layers **off** by default are secondary design choices supported by ablations.
+
+Empirically, under a locked Level-1 / cross-off stack on an enterprise *daily* intermittent panel (800 series; SKU panel locked at `data_seed=42`; train seeds \(42\)–\(46\)), DeepSequence is **not** universally best on short-horizon IWMAE—temporal transformers often lead at \(h\le 14\)—but shows a stable **long-horizon** advantage at \(h=28/60\) (DS beats TST IWMAE in \(5/5\) seeds). Decision-economics scenarios with a loyalty / switching cost \(C_{\mathrm{loyalty}}=0.25\) reverse the “under-forecast looks cheap” ranking of LightGBM: short lead times favor TST, long lead times favor DeepSequence (\(5/5\) mid-π at \(h=28/60\)). On public **Monash Car Parts** (monthly; domain mismatch), TSB remains strong at short horizons; DeepSequence leads IWMAE at \(h=6\) across five train seeds (\(0.769\pm0.004\) vs TSB \(0.787\)), while mid-π still favors TSB (\(0/5\) DS wins at \(h=6\)). We argue for a **portfolio** view—structural multi-series Prophet for long-horizon intermittent panels—rather than a universal IWMAE claim.
 
 ---
 
 ## 1. Introduction
 
-Retail and distribution forecasting often faces **intermittent** series: most days have zero demand, and the rare non-zero days carry inventory risk. Errors on quiet days and sale days have different operational costs. Models that only minimize unconditional MAE tend to collapse toward zero; models that chase sale-day magnitude often inflate quiet-day predictions and create excess stock.
+Retail and distribution panels are often **intermittent**: long runs of zeros punctuated by sparse, variable sales. Errors on quiet days and sale days have different operational costs. Classical intermittent methods (Croston, SBA, TSB) remain strong on short sparse series. Gradient-boosted trees are competitive tabular baselines but, under L1, tend to under-forecast sale days. Temporal transformers and TFT-style models add history attention, yet rarely encode an explicit **structural** decomposition that practitioners already trust from Prophet.
 
-DeepSequence targets this setting with three design choices:
+**Prophet** [Taylor & Letham, 2018] popularized additive trend + seasonality + holiday + regressors for *single-series* forecasting with interpretable components. The open problem we target is not “beat every baseline on 1-step IWMAE,” but:
 
-1. **Hierarchical experts** for trend, seasonality, holidays, and history-based regressors, mixed by SKU-conditioned soft weights.
-2. **A gated intermittent head** that predicts occurrence probability \(p\) and magnitude \(b\) separately, with \(\hat{y}=p\cdot b\).
-3. **A three-term training loss** that jointly supervises occurrence (BCE), gated timing (inverse-weighted MAE on \(\hat{y}\)), and sale-day size (masked MAE on \(b\)).
+> How do we carry Prophet-style structural forecasting into a **shared multi-series neural model** for intermittent panels—preserving component semantics, adding intermittency handling, and personalizing across SKUs?
 
-We emphasize a fair comparison protocol: all neural and tree baselines consume the **same causal feature matrix**. Sequence models additionally receive lookback windows of demand plus that matrix. Hierarchical attention in DeepSequence means **reweighting components/features**, not multi-horizon temporal self-attention over days.
+DeepSequence answers with a hierarchical expert backbone that *mirrors* Prophet’s blocks, then adds panel-scale sharing, intermittency factorization, and two levels of attention that are **component/feature selection**, not day-level temporal self-attention.
 
-**Contributions.**
+**Contributions** (architectural novelty first; quotable for review):
 
-- A production-oriented intermittent architecture with explicit occurrence–magnitude factorization.
-- A causal feature contract (v1.6) for intermittent panels, including distance-only holiday features.
-- An empirical bake-off against LightGBM, DeepAR-lite, temporal transformer, and TFT-lite under identical features.
-- A **direct multi-horizon** extension of the hierarchical head for planning horizons.
-- **Public validation** on Monash Car Parts with classical Croston/SBA/TSB baselines.
-- An open implementation with synthetic and public-data reproducibility artifacts.
+1. **Hierarchical attention for Prophet-like experts.**  
+   - *Level-1 (intra-expert):* seasonal **masked-entropy attention** over Fourier frequencies; holiday / regressor **selection attention** over softplus-monotone channel maps; trend is a **softplus-monotone** changepoint basis with **no** Level-1 attention (single temporal basis).  
+   - *Level-2 (inter-expert):* entropy-regularized **component mixer** over \(\{\mathrm{trend},\mathrm{seasonal},\mathrm{holiday},\mathrm{regressor}\}\).
+
+2. **Context-aware component mixer.** Level-2 mixing is conditioned on lag / intermittent **context** (demand regime), optionally concatenated with a SKU embedding—not SKU-only soft weights—so the same holiday calendar can emphasize different experts after a recent sale vs. a long zero run.
+
+3. **Occurrence–magnitude gate** \(\hat{y}=p\cdot b\) for intermittency, with softplus magnitude head and (by default) softsign-bounded expert scalars.
+
+4. **Monotone softplus structural maps** on trend time, holiday distances, and regressor channels—neuralized Prophet-like inductive bias rather than unconstrained dense maps.
+
+5. **Empirical portfolio evidence** (locked Level-1, `use_cross_layers=False`; multi-seed \(42\)–\(46\)): long-horizon IWMAE advantage on daily \(h=28/60\) (\(5/5\) vs TST) and monthly car-parts \(h=6\); short horizons often favor TST (daily) or TSB (monthly); loyalty-aware decision economics (\(C_{\mathrm{loyalty}}=0.25\)) favor DeepSequence at long daily lead times and TST at short ones—while car-parts mid-π remains TSB. We do **not** claim universal IWMAE leadership.
+
+Secondary design choices (ablations in §5.4): softsign expert outputs; cross-layers **off** by default; optional per-SKU zero-rate gate priors.
 
 ---
 
 ## 2. Related work
 
-**Classical intermittent methods** (Croston, 1972; Syntetos–Boylan approximation / SBA; Teunter–Syntetos–Babai / TSB) decompose demand size and inter-demand intervals. They remain strong on short, sparse monthly spare-parts series and are required baselines for intermittent papers.
+**Structural / Prophet-style models.** Prophet decomposes a univariate series into trend, seasonality, and holiday effects with interpretable additive structure. DeepSequence keeps that *block vocabulary* but trains a **shared** neural trunk across many intermittent series, with attention *inside* and *across* blocks.
 
-**Probabilistic deep models** such as DeepAR use autoregressive RNNs with likelihoods suited to counts or continuous demand. **Temporal transformers** and the **Temporal Fusion Transformer (TFT)** add attention over history and variable selection. Recent comparative work on sparse demand also studies **PatchTST**, **TiDE**, and model routing over Favorita/M5-style panels; shallow global models often compete with heavy transformers on intermittent series.
+**Classical intermittent methods** (Croston, 1972; SBA; TSB) separate demand size and inter-demand intervals. They remain required baselines—especially on short monthly spare-parts panels—and often win short-horizon accuracy when covariates are weak.
 
-**Gradient-boosted trees** (e.g. LightGBM) remain strong tabular baselines when engineered features are available; on intermittent panels they may under-forecast sale days when optimized for L1.
+**Deep forecasting.** DeepAR, temporal transformers, and TFT provide global sequence models with likelihoods or variable selection. Comparative work on sparse retail demand often finds that shallow global models compete with heavy transformers. DeepSequence is complementary: lighter than full temporal self-attention stacks, denser in **structural** inductive bias.
 
-**Positioning.** DeepSequence targets *covariate-rich daily intermittent retail/distribution* panels: hierarchical experts + gated occurrence–magnitude + intermittent metrics (IWMAE). It is complementary to Croston-family methods (strong on short monthly series without rich calendars) and to long-horizon dense TS models (PatchTST/Chronos on ETT/Weather), which address a different problem class.
+**Positioning.**
 
-| Family | Example | Strength | Weakness for intermittent inventory |
-|--------|---------|----------|-------------------------------------|
-| Classical intermittent | Croston, SBA, TSB | Strong on short sparse series | Weak use of rich covariates / SKU pooling |
-| Trees | LightGBM | Fast tabular | MAE bias toward zeros |
-| Autoregressive DL | DeepAR | Likelihoods, global pooling | Needs adapted head/loss for zeros |
-| Temporal attention | TFT, TST, PatchTST | History / covariates | Heavier; not always best under IWMAE |
-| **This work** | **DeepSequence** | Gate + component experts + IWMAE | Needs enough history / covariates |
-
-DeepSequence sits between structured decomposition and modern deep learning: expert components mirror classical time-series structure, while the gate and loss are tailored to intermittency.
+| Family | Example | Fit for intermittent multi-series panels |
+|--------|---------|------------------------------------------|
+| Single-series structural | Prophet | Interpretable; not shared-panel by default |
+| Classical intermittent | Croston, SBA, TSB | Strong short / sparse; weak rich covariates |
+| Trees | LightGBM | Fast; L1 bias toward zeros / under-forecast |
+| Temporal DL | DeepAR, TST, TFT | Strong history models; less Prophet-like structure |
+| **This work** | **DeepSequence** | Multi-series Prophet-like experts + hierarchical attention + gate |
 
 ---
 
@@ -61,295 +68,342 @@ DeepSequence sits between structured decomposition and modern deep learning: exp
 
 ### 3.1 Problem setup
 
-For each series \(i\) and day \(t\), observe demand \(y_{i,t}\ge 0\). Let \(z_{i,t}=\mathbf{1}[y_{i,t}>0]\). Features \(x_{i,t}\) are constructed **causally** (no same-day leakage from \(y_{i,t}\) into lags or intermittent state). The model predicts \(\hat{y}_{i,t}\) for inventory decisions; we also report a rounded forecast \(\mathrm{round}(\hat{y}_{i,t})\) for discrete stock units.
+For series \(i\) and time \(t\), observe demand \(y_{i,t}\ge 0\) and occurrence \(z_{i,t}=\mathbf{1}[y_{i,t}>0]\). Features \(x_{i,t}\) are **causal** (no same-day leakage from \(y_{i,t}\) into lags or intermittent state). The model predicts \(\hat{y}_{i,t}\) for inventory decisions; metrics also use \(\mathrm{round}(\hat{y}_{i,t})\) for discrete units.
 
-### 3.2 Causal feature contract (v1.6)
+### 3.2 Causal feature contract
 
-Total dimensionality: **28**.
+**Daily (enterprise; v1.6, 28 dims).** Trend time index; day/month/year Fourier; lags \(1,2,7\); days since last sale, last sale quantity, lifetime cumsum; holiday **distances** only.
 
-| Block | Dim | Contents |
-|-------|----:|----------|
-| Trend | 1 | Normalized time index |
-| Seasonal | 6 | Day-of-week, month, and year Fourier (sin/cos) |
-| Lags | 3 | \(y\) at lags 1, 2, 7 (strictly past) |
-| Intermittent state | 3 | Days since last sale, last sale quantity, lifetime cumsum (strictly past) |
-| Holiday distance | 15 | Days from generic public holidays (distance only; binary holiday indicators removed as redundant with distance \(=0\)) |
+**Monthly (Car Parts).** Month index; quarter + calendar-month Fourier; lags \(1,3\); months-since-last-sale state; month-has-holiday indicators (not day-distance).
 
-Lags and intermittent features use only history with timestamp \(< t\). An online state machine supports inference-time updates without replaying the full panel.
+Lags and intermittent features use only history with timestamp \(< t\).
 
-### 3.3 Hierarchical DeepSequence backbone
+### 3.3 Hierarchical experts (Prophet blocks, neuralized)
 
-![Figure 0. DeepSequence hierarchical architecture.](paper_figures/fig0_architecture.png)
+![Figure 1. DeepSequence hierarchical architecture.](paper_figures/fig_architecture_ds.png)
 
-*Figure 1. DeepSequence architecture: causal features → four experts → component attention (+ optional cross-layer) → gated intermittent head \(\hat{y}=p\cdot b\). For multi-horizon mode the head emits length-\(H\) vectors.*
+*Figure 1. Causal features → four Prophet-like experts with Level-1 attention (except trend) → Level-2 context-aware mixer → gated head \(\hat{y}=p\cdot b\). Optional DCN cross-layers default **off**.*
 
-Inputs are split by block and fed to four experts:
+Inputs are routed to four experts:
 
-- **Trend:** piecewise / changepoint-style temporal basis.
-- **Seasonal:** Fourier features with within-block attention.
-- **Holiday:** distance features with within-block attention.
-- **Regressor:** lags + intermittent state.
+| Expert | Role (Prophet analogue) | Level-1 mechanism |
+|--------|-------------------------|-------------------|
+| **Trend** | Piecewise / changepoint trend | Softplus-monotone PWL in time; **no** attention (single basis) |
+| **Seasonal** | Fourier seasonality | **Masked-entropy attention** over frequency channels |
+| **Holiday** | Holiday effects | Softplus-monotone map per distance → **selection attention** |
+| **Regressor** | History regressors | Softplus-monotone map per lag/state → **selection attention** |
 
-Each expert produces a scalar contribution. A **SKU embedding** drives soft mixture weights over experts. Optional cross-layers allow limited interaction across components. The combined magnitude is passed through softplus to yield
+Each expert emits a scalar contribution (default **softsign** output activation to bound signed impact). Optional SKU FiLM can personalize expert scalars; calendar FiLM on seasonal/holiday defaults **off**.
+
+![Figure 2. Hierarchical attention internals.](paper_figures/fig_hierarchical_attention_internals.png)
+
+*Figure 2. Level-1 intra-expert attention (seasonal / holiday / regressor) and Level-2 inter-expert mixer. Trend: monotone map only.*
+
+![Figure 3. Changepoint monotone trend.](paper_figures/fig_changepoint_monotone.png)
+
+*Figure 3. Softplus-monotone changepoint trend (structural constraint).*
+
+### 3.4 Hierarchical attention (contribution 1)
+
+**Level-1 — intra-expert.**
+
+- *Seasonal:* MaskedEntropyAttention over Fourier (or learnable-frequency) channels, with entropy regularization toward sparse frequency use.
+- *Holiday / regressor:* each channel is first mapped by a **softplus magnitude × learned sign** (monotone in distance or lag), then aggregated by **TemperatureSoftmax selection attention** over channels.
+- *Trend:* deliberately **without** Level-1 attention—one monotone temporal basis, avoiding competing trend “heads.”
+
+**Level-2 — inter-expert.** Stacked expert scalars are mixed by entropy-regularized attention. This is *component* reweighting, not temporal self-attention over a lookback window.
+
+### 3.5 Context-aware component mixer (contribution 2)
+
+When `context_aware_component_mixer=True` (default), the Level-2 query is
 
 \[
-b_{i,t}=\mathrm{softplus}(\mathrm{mix}(\mathrm{experts}(x_{i,t}), e_i)).
+q = [\underbrace{e_i}_{\text{optional SKU embedding}};\; \underbrace{\mathrm{Dense}(c_{i,t})}_{\text{lag / intermittent context}}],
 \]
 
-An intermittent gate produces
+where \(c_{i,t}\) are regressor-block regime signals (lags, days/months since last sale, etc.)—**not** calendar/Fourier/holiday distances (those remain inside their experts). Thus the same holiday feature vector can receive different expert weights after a stockout-prone zero run vs. after recent sales. Ablating the mixer (SKU-only or stack-only) is a paper-protocol comparison; locked runs keep the context mixer on.
+
+### 3.6 Occurrence–magnitude gate (contribution 3)
 
 \[
-p_{i,t}=\sigma(g(x_{i,t}, e_i))\in(0,1),
-\]
-
-and the final forecast is
-
-\[
+b_{i,t}=\mathrm{softplus}(\mathrm{mix}(\mathrm{experts}(x_{i,t}), q_{i,t})),\quad
+p_{i,t}=\sigma(g(x_{i,t}, e_i)),\quad
 \hat{y}_{i,t}=p_{i,t}\cdot b_{i,t}.
 \]
 
-**Interpretation.** \(p\) answers “will there be a sale?”; \(b\) answers “how large if there is demand structure?”; the product is the expected demand under a soft Bernoulli–magnitude factorization. Hierarchical attention redistributes emphasis among structural drivers per SKU—not attention over a day window.
+Interpretation: \(p\) = “will demand occur?”; \(b\) = “how large given structural drivers?”; product = soft Bernoulli–magnitude expectation. Optional **per-SKU zero-rate priors** can bias gate logits from historical zero rates (secondary).
 
-### 3.4 Direct multi-horizon head
+### 3.7 Monotone softplus maps (contribution 4)
 
-The default model is **1-step** (\(\hat{y}_{i,t}\in\mathbb{R}\)). For planning horizons \(H>1\), recursive rollout of a 1-step model compounds gate and magnitude error through lag/intermittent state. We therefore extend the terminal heads to emit **direct** multi-horizon outputs
+For trend time, holiday \(|\mathrm{days\_from}_*|\) (or monthly holiday indicators’ monotone path), and each regressor channel, hinge slopes use
 
 \[
-b_{i,t}\in\mathbb{R}^{H}_{+},\quad
-p_{i,t}\in(0,1)^{H},\quad
-\hat{y}_{i,t}=p_{i,t}\odot b_{i,t},
+\mathrm{slope} = \mathrm{softplus}(\cdot)\times \mathrm{sign\_param},
 \]
 
-while keeping the hierarchical backbone unchanged. Training uses sliding targets \((y_{i,t},\ldots,y_{i,t+H-1})\) with the same three-term loss, optionally down-weighting farther steps by a horizon decay \(\gamma^{h}\) (\(\gamma=0.95\) in experiments). At inference, features at the first forecast day (history through the origin) produce all \(H\) steps in one forward pass. A multiplicative bias scale is calibrated on validation origins to minimize IWMAE.
+so expert response is monotone in the structured input—Prophet-like shape constraints inside a neural panel model.
 
-### 3.5 Training objective
+### 3.8 Defaults that match code (secondary)
 
-With zero rate \(\pi_0\approx P(y=0)\), the default **three-term** recipe is:
+Locked / recommended stack (`build_lightweight_model`):
+
+| Flag | Default | Role |
+|------|---------|------|
+| `output_activation` | `'softsign'` | Bound signed expert scalars |
+| `trend_monotonic` / `holiday_monotonic` / `regressor_monotonic` | `True` | Softplus mono maps |
+| `context_aware_component_mixer` | `True` | Regime-conditioned Level-2 |
+| `use_cross_layers` | **`False`** | Opt-in DCN cross; locked A/Bs prefer off |
+| `context_film_seasonal_holiday` | `False` | Extra calendar FiLM off |
+| `use_sku` | `True` (daily); often `False` on Car Parts ablations | SKU embedding / FiLM |
+
+### 3.9 Training objective
+
+With zero rate \(\pi_0\approx P(y=0)\), the default three-term loss is
 
 \[
-\begin{aligned}
 \mathcal{L}
-&= \alpha\,\mathrm{BCE}_{w_+}(z, p)
+= \alpha\,\mathrm{BCE}_{w_+}(z, p)
 + w_g\,\mathrm{MAE}_{\mathrm{inv}}(y, \hat{y})
 + w_m\,\mathrm{MAE}_{\mathrm{nz}}(y, b),
-\end{aligned}
 \]
 
-where \(\mathrm{BCE}_{w_+}\) upweights positives, \(\mathrm{MAE}_{\mathrm{inv}}\) is all-day MAE with inverse class weights (timing on quiet and sale days), and \(\mathrm{MAE}_{\mathrm{nz}}\) is MAE on sale days only (magnitude). Typical 1-step weights: \(\alpha=0.2\), \(w_g=w_m=1\). For the tuned multi-horizon variant we use \(\alpha=0.35\), \(w_m=1.25\).
+where \(\mathrm{MAE}_{\mathrm{inv}}\) is inverse-class-weighted all-day MAE (timing) and \(\mathrm{MAE}_{\mathrm{nz}}\) is sale-day magnitude MAE. Typical weights: \(\alpha=0.2\), \(w_g=w_m=1\).
 
-### 3.6 Optional residual transformer
+### 3.10 Multi-horizon evaluation
 
-After DeepSequence, a causal residual transformer may predict a magnitude residual \(\delta\) while **preserving** \(p\):
-
-\[
-\hat{y}^{\mathrm{res}}=\mathrm{relu}(b+\delta)\cdot p.
-\]
-
-On the v1.6 panel this head did not beat plain DeepSequence; it remains available for panels where residual sequence correction helps.
-
-### 3.7 Inference post-process
-
-For discrete inventory, forecasts may be rounded with a non-negativity floor. Metrics below report both raw and rounded MAE; primary rankings use **IWMAE** on rounded forecasts unless noted.
+Primary locked tables use **1-step models with recursive rollout** to horizons of interest (daily \(H=60\), report \(h\in\{1,7,14,28,60\}\); monthly \(h\in\{1,2,6\}\)). A direct multi-horizon head (\(H>1\) outputs) exists in code for planning; it is **not** the primary claim of this draft (prior DS-MH \(h=7/14\) wins belonged to an older protocol—see Appendix D).
 
 ---
 
 ## 4. Experimental setup
 
-### 4.1 Dataset availability
+### 4.1 Datasets
 
-The experiments were conducted using proprietary enterprise demand data that cannot be publicly released due to confidentiality agreements. To support reproducibility, the repository includes:
+| Panel | Grain | Series | Zeros | Role |
+|-------|-------|-------:|------:|------|
+| Proprietary enterprise | Daily | 800 (SKU list locked, `data_seed=42`) | ≈90% train | Primary daily evidence |
+| Monash Car Parts | Monthly | 800 (same lock convention) | ≈74% train | Public **domain-mismatch** sanity check |
 
-* complete model implementation,
-* preprocessing pipeline,
-* synthetic example dataset,
-* training configuration,
-* evaluation methodology.
+The enterprise panel cannot be released; code, feature contracts, synthetic demo, and public Car Parts adapters are in the repository.
 
-No company names, product names, customer IDs, or series identifiers are published with results.
-
-### 4.2 Protocol
+### 4.2 Protocol (locked)
 
 | Item | Value |
 |------|--------|
-| Series | 800 (seed 42) |
-| Train zero rate | ≈ 0.899 |
-| Volume strata | Train-volume terciles (low / mid / high) |
-| Feature matrix | Identical v1.6 columns for all models |
-| Sequence lookback | 14 (DeepAR, TST, TFT); channels = demand + 28 features |
-| Epochs (neural) | 10 with early stopping |
-| Multi-horizon | \(H=14\); ≤8 test origins per series → **6339** origins |
-| Metrics | IWMAE (primary), nonzero MAE, MASE (\(s=7\)), occurrence F1, underforecast rate on sales, AUROC/AUCPR on \(p\), bias |
+| DS stack | softsign + mono Level-1 + context mixer; FiLM off; **`use_cross_layers=False`** |
+| Features | Identical causal matrix for trees and neural models |
+| Sequence lookback | 14 (daily) / 12 (monthly) for DeepAR, TST, TFT |
+| Seeds | SKU panels locked at `data_seed=42`. Seed-42 full-baseline tables in §5.1–5.3; **multi-seed means ±std over train seeds \(42\)–\(46\)** (DS/TST/LGBM daily; DS/TSB/LGBM car-parts) |
+| Metrics | IWMAE (primary accuracy), occurrence F1, underforecast on sales, bias; decision π with loyalty scenarios (\(C_{\mathrm{loyalty}}=0.25\), \(C_{\mathrm{hold}}=0.10\)) |
+| Baselines | LightGBM; DeepAR-lite; temporal transformer (TST); TFT-lite; + Croston/SBA/TSB on Car Parts; **Prophet (per-series)** |
 
-**Why not pure MAE.** High zero rates make all-day MAE favor near-zero predictors. Primary ranking uses inverse-frequency weighted MAE (IWMAE); nonzero MAE and underforecast rate on sale days capture magnitude and stockout risk.
+**Why not all-day MAE alone.** High zero rates reward near-zero predictors. IWMAE and sale-day underforecast better reflect intermittent inventory risk.
 
-**Baselines.**
+### 4.3 Prophet baseline (required structural control)
 
-- **LightGBM:** L1 regression on tabular features + series id code.
-- **DeepAR-lite:** LSTM encoder on lookback windows; same gated head and three-term loss.
-- **Temporal transformer (TST):** multi-head self-attention encoder; same head/loss.
-- **TFT-lite:** variable selection + GRN + LSTM + causal attention; same head/loss.
+If DeepSequence is framed as a **multi-series extension of Prophet-style decomposition**, experiments must include Prophet itself:
 
-This isolates architecture effects under a locked feature contract.
+| Item | Spec |
+|------|------|
+| Implementation | `prophet` 1.3 + `cmdstanpy` (`.venv-test`) |
+| Protocol | **One Prophet model per series** (no SKU pooling) |
+| Fit window | train + val history; forecast test origins |
+| Car Parts | 800 locked SKUs; fixed origin → \(h\in\{1,2,6\}\) |
+| Daily | 150-SKU evenly spaced subset of the locked list; ≤4 origins/SKU; \(h\in\{1,28,60\}\) (full 800×Prophet deferred under concurrent training load) |
+| Features | Calendar seasonality only (yearly; weekly on daily). Holiday distances / intermittent lags **not** injected as Prophet regressors |
+| Honest limit | Prophet = local structural baseline; DS / LGBM / TSB = global or classical intermittent |
+
+Artifacts: `ab_runs/reclaim/prophet_carparts/carparts_mh_1_2_6.json`, `ab_runs/reclaim/prophet_daily/daily_subset150_h1_28_60.json`.
+
+### 4.4 Novelty ablations (isolate each claim)
+
+Locked daily panel, seed **42**, softsign Level-1 stack base; vary **one** factor:
+
+| Arm | Setting |
+|-----|---------|
+| Full | Level-1 selection attn on, mono on, context mixer on, gate on, cross **off** |
+| −context mixer | `context_aware_component_mixer=False` |
+| −Level-1 selection attn | `level1_selection_attention=False` (uniform \(1/n\) over mono channels) |
+| −mono | `*_monotonic=False` (legacy unconstrained experts) |
+| −gate | `use_intermittent=False` (magnitude-only head; H=1) |
+| +cross | `use_cross_layers=True` |
+
+Primary: daily **H=1** tabular DS-only + recursive MH \(h\in\{1,28,60\}\) DS-only. Ablations are **single-seed** (do not duplicate the multi-seed loyalty orchestrator).
+
+Artifacts: `ab_runs/reclaim/ablate_novelty/`.
+
+**Decision economics (scenario analysis).**  
+\[
+\pi \approx \mathrm{revenue\_proxy} - \underbrace{(m\cdot \mathrm{price}+C_{\mathrm{loyalty}})\,U + C_{\mathrm{hold}}\,H}_{\mathrm{inv\_loss}} - C_{\mathrm{model}},
+\]
+with \(C_{\mathrm{hold}}=0.1\), margins \(m\in\{0.08,0.25,0.55\}\), and loyalty costs \(C_{\mathrm{loyalty}}\in\{0,0.25,0.5\}\). Default reporting uses \(C_{\mathrm{loyalty}}=0.25\) (modest switching penalty) alongside the legacy \(C_{\mathrm{loyalty}}=0\) case. \(U/H\) are forecast-error underage / holding *proxies*, not a full pipeline inventory simulator; \(C_{\mathrm{loyalty}}\) is **not** fit from churn data.
+
+Artifacts: `ab_runs/reclaim/daily_mh_1_60_level1_cross_off_all_models.json`, `.../daily_decision_economics_level1_cross_off_loyalty.json`, `.../carparts_mh_1_2_6_level1_cross_off_lgbm.json`, `.../carparts_decision_economics_level1_cross_off_loyalty.json`, `.../multiseed/daily_multiseed_long_loyalty_summary.json`, `.../multiseed/carparts_multiseed_long_loyalty_summary.json`.
 
 ---
 
 ## 5. Results
 
-### 5.1 One-step bake-off (primary: IWMAE)
+### 5.1 Daily multi-horizon IWMAE (locked Level-1, cross off; seed 42)
 
-![Figure 1. One-step IWMAE ranking.](paper_figures/fig1_1step_iwmae.png)
+Recursive rollout after origin \(t\); known-future calendar/holidays; demand predictions fed into lags/intermittent state. \(n=5538\) origins, 800 SKUs.
 
-*Figure 2. One-step IWMAE on the locked v1.6 feature contract (lower is better). DeepSequence ranks first.*
+| Horizon | DeepSequence | TST | TFT | DeepAR | LightGBM | Best |
+|--------:|-------------:|----:|----:|-------:|---------:|:-----|
+| \(h=1\) | 4.035 | **3.860** | 4.010 | 4.154 | 4.451 | TST |
+| \(h=7\) | 4.381 | **4.323** | 4.566 | 5.169 | 4.688 | TST |
+| \(h=14\) | 4.211 | **4.177** | 4.589 | 5.006 | 4.615 | TST |
+| \(h=28\) | **6.417** | 6.877 | 6.891 | 7.212 | 6.866 | **DS** |
+| \(h=60\) | **3.891** | 4.495 | 4.308 | 4.696 | 4.375 | **DS** |
+| mean \(1..60\) | **4.374** | 4.666 | 4.736 | 5.103 | 4.790 | **DS** |
 
-| Rank | Model | IWMAE | MAE (all, round) | MAE (nz) | Occ F1 | Under (nz) | AUROC | Bias |
-|-----:|-------|------:|-----------------:|---------:|-------:|-----------:|------:|-----:|
-| 1 | **DeepSequence** | **4.004** | **1.732** | 6.943 | **0.401** | 0.658 | 0.826 | +0.35 |
-| 2 | TFT-lite | 4.026 | 1.798 | 6.910 | 0.394 | 0.646 | 0.825 | +0.42 |
-| 3 | Temporal transformer | 4.065 | 1.882 | **6.892** | 0.392 | 0.619 | **0.835** | +0.55 |
-| 4 | DeepAR-lite | 4.374 | 2.018 | 7.431 | 0.334 | **0.588** | 0.806 | +0.56 |
-| 5 | LightGBM | 4.567 | 1.845 | 8.026 | 0.207 | 0.778 | 0.766 | +0.06 |
+**Multi-seed IWMAE (seeds \(42\)–\(46\); locked SKU panel; DS / TST / LGBM):**
 
-DeepSequence wins on IWMAE, MASE, and occurrence F1. LightGBM’s competitive all-day MAE / near-zero bias collapses under intermittent metrics (worst IWMAE and occurrence F1).
+| Horizon | DeepSequence | TST | LightGBM |
+|--------:|-------------:|----:|---------:|
+| \(h=1\) | \(4.023\pm0.257\) | \(\mathbf{3.912\pm0.273}\) | \(4.483\pm0.324\) |
+| \(h=7\) | \(4.299\pm0.500\) | \(\mathbf{4.139\pm0.523}\) | \(4.549\pm0.531\) |
+| \(h=14\) | \(5.494\pm0.935\) | \(\mathbf{5.454\pm0.890}\) | \(5.828\pm0.883\) |
+| \(h=28\) | \(\mathbf{4.823\pm0.970}\) | \(5.290\pm0.991\) | \(5.194\pm1.031\) |
+| \(h=60\) | \(\mathbf{4.345\pm0.619}\) | \(5.055\pm0.417\) | \(4.710\pm0.550\) |
 
-![Figure 2. Intermittent metric suite.](paper_figures/fig2_1step_metric_suite.png)
+**Reading.** Short horizons favor **TST**; DeepSequence leads at **long horizons** (\(h=28/60\)) on both the seed-42 full bake-off and the five-seed mean. DS beats TST IWMAE at \(h=28\) and \(h=60\) in **\(5/5\)** seeds. This is the opposite of a “DS wins 1-step IWMAE everywhere” claim.
 
-*Figure 3. One-step intermittent suite: IWMAE, all-day MAE, occurrence F1, and sale-day underforecast rate.*
+### 5.2 Decision economics with loyalty (daily; seed 42)
 
-### 5.2 Volume strata
+Without loyalty (\(C_{\mathrm{loyalty}}=0\)), **LightGBM** often wins **low-margin** π: under-forecasting reduces holding \(H\) and looks cheap when lost-sales are under-weighted. With the recommended scenario \(C_{\mathrm{loyalty}}=0.25\), that ranking flips.
 
-![Figure 3. IWMAE by volume tercile.](paper_figures/fig6_strata_iwmae.png)
+**π winners by lead time (proxy = forecast horizon) and loyalty** — from `pi_winner_matrix` (seed 42):
 
-*Figure 4. One-step IWMAE by train-volume tercile.*
+| Lead time | \(C_{\mathrm{loyalty}}=0\) (low / mid / high margin) | \(C_{\mathrm{loyalty}}=0.25\) |
+|-----------|------------------------------------------------------|-------------------------------|
+| 7 days | LGBM / TST / TST | **TST / TST / TST** |
+| 14 days | LGBM / DS / TST | DS / TST / TST |
+| 28 days | LGBM / DS / DS | **DS / DS / DS** |
+| 60 days | LGBM / DS / DS | **DS / DS / DS** |
 
-| Band | Best IWMAE | Notes (all-day MAE) |
-|------|------------|---------------------|
-| Low | TST 2.58 (DS 2.69) | **DS best all-day MAE** (0.235) |
-| Mid | **DS 3.40** | **DS best all-day MAE** (0.843) |
-| High | **DS 5.00** | LGBM best all-day MAE (2.74) via **negative bias** (−0.90) |
+**Multi-seed mid-π @ \(C_{\mathrm{loyalty}}=0.25\) (seeds \(42\)–\(46\); higher is better):**
 
-LightGBM’s high-band all-day MAE win coincides with systematic under-forecasting on sale days (nonzero MAE ≈ 8.98). Among neural models, DeepSequence has the lowest high-band over-forecast bias (+1.03 vs TFT +1.13, TST/DeepAR +1.37).
+| Horizon | DeepSequence | TST | LightGBM | Mid-π winner |
+|--------:|-------------:|----:|---------:|:-------------|
+| \(h=7\) | \(-0.243\pm0.022\) | \(\mathbf{-0.218\pm0.024}\) | \(-0.262\pm0.023\) | TST \(4/5\) |
+| \(h=14\) | \(-0.291\pm0.046\) | \(-0.291\pm0.040\) | \(-0.313\pm0.034\) | TST \(3/5\), DS \(2/5\) |
+| \(h=28\) | \(\mathbf{-0.273\pm0.045}\) | \(-0.353\pm0.068\) | \(-0.308\pm0.051\) | **DS \(5/5\)** |
+| \(h=60\) | \(\mathbf{-0.255\pm0.042}\) | \(-0.373\pm0.046\) | \(-0.301\pm0.031\) | **DS \(5/5\)** |
 
-### 5.3 Recursive multi-horizon (1-step models)
+Loyalty collapses LightGBM’s low-margin win-rate (\(h=7/14\): \(5/5\to0/5\); \(h=28\): \(5/5\to2/5\); \(h=60\): \(5/5\to1/5\)).
 
-Standing after day \(t\), we forecast \(y_{t+1},\ldots,y_{t+H}\) (\(H=14\)) by feeding predictions into causal lag/intermittent state while using known-future calendar and holiday distances. Same 1-step models; 6339 test origins.
+![Figure 4. Decision economics by lead time.](paper_figures/fig_decision_economics_by_lead_time.png)
 
-![Figure 4. Recursive IWMAE by horizon.](paper_figures/fig3_recursive_mh_iwmae.png)
+*Figure 4. Lead-time decision economics (illustrative). Locked loyalty tables above are authoritative for the Level-1 cross-off stack; older economics figures without loyalty should be read as prior / partial protocol.*
 
-*Figure 5. Recursive multi-horizon IWMAE for 1-step models.*
+![Figure 5. Cost vs critical ratio.](paper_figures/fig_decision_economics_cost_vs_r.png)
 
-| Horizon | DeepSequence | TST | TFT | DeepAR | LightGBM |
-|--------:|-------------:|----:|----:|-------:|---------:|
-| **h=1** | **4.128** | 4.251 | 4.190 | 4.615 | 4.797 |
-| **h=7** | 4.246 | **4.133** | 4.191 | 4.679 | 4.504 |
-| **h=14** | 4.340 | **4.263** | 4.396 | 4.672 | 4.637 |
-| **mean 1..14** | 4.352 | **4.267** | 4.319 | 4.737 | 4.672 |
+*Figure 5. Inventory-proxy cost vs effective critical ratio (scenario curves). Use with the loyalty caveats in §4.2.*
 
-| Horizon | Best Occ F1 | Best Under (nz) ↓ | Bias trend |
-|--------:|-------------|-------------------|------------|
-| h=1 | DS 0.425 | DeepAR 0.630 | All near 0–0.4 |
-| h=7 | TFT 0.338 | TFT 0.605 | DS bias → **+1.19** |
-| h=14 | TFT 0.337 | TFT 0.632 | DS bias → **+1.11** |
+**Portfolio takeaway.** Short replenishment → TST; long replenishment → DeepSequence—once loyalty / switching cost prevents “always under-forecast” from winning on paper. The multi-seed mid-π pattern matches the seed-42 matrix.
 
-![Figure 5. Recursive bias.](paper_figures/fig5_recursive_bias.png)
+### 5.3 Public Car Parts (monthly; domain mismatch)
 
-*Figure 6. Forecast bias under recursive rollout. DeepSequence accumulates positive bias at longer horizons—motivation for a direct multi-horizon head.*
+**All-model, seed 42 (locked Level-1, cross off) + per-series Prophet:**
 
-LightGBM never wins IWMAE despite leading all-day MAE at h≥7; it has the worst occurrence F1 (≈0.22) and highest underforecast rate on sale days.
+| Horizon | TSB | DeepSequence | Prophet | TST | LightGBM | Best |
+|--------:|----:|-------------:|--------:|----:|---------:|:-----|
+| \(h=1\) | **0.850** | 0.882 | 0.916 | 0.887 | 0.889 | TSB |
+| \(h=2\) | **0.767** | 0.778 | 0.836 | 0.789 | 0.832 | TSB |
+| \(h=6\) | 0.834 | 0.834 | **0.827** | 0.866 | 0.890 | Prophet (≈DS/TSB) |
 
-### 5.4 Direct multi-horizon DeepSequence
+Numbers from locked reclaim MH (`carparts_mh_1_2_6_level1_cross_off.json`) and Prophet (`prophet_carparts/carparts_mh_1_2_6.json`; 800/800 series ok)—**raw** `iwmae` in those artifacts. Prophet is competitive at \(h=6\) but loses short horizons to TSB and DS—as expected for a local additive model on short intermittent monthly history without shared pooling.
 
-We compare (i) classic 1-step DS evaluated recursively, (ii) direct Dense-\(H\) DS, and (iii) tuned DS-MH (\(\alpha=0.35\), \(w_m=1.25\), \(\gamma=0.95\)) with validation bias calibration.
+**Multi-seed IWMAE (seeds \(42\)–\(46\); DS / TSB / LGBM):**
 
-![Figure 6. DS-MH vs baselines.](paper_figures/fig4_ds_mh_vs_baselines.png)
+| Horizon | DeepSequence | TSB | LightGBM |
+|--------:|-------------:|----:|---------:|
+| \(h=1\) | \(0.842\pm0.012\) | \(\mathbf{0.815\pm0}\) | \(0.874\pm0.005\) |
+| \(h=2\) | \(0.733\pm0.009\) | \(\mathbf{0.703\pm0}\) | \(0.838\pm0.005\) |
+| \(h=6\) | \(\mathbf{0.769\pm0.004}\) | \(0.787\pm0\) | \(0.877\pm0.012\) |
 
-*Figure 7. Direct multi-horizon DeepSequence (tuned) versus recursive DS-H1, TST, and TFT. DS-MH leads at h=7 and h=14.*
+**Protocol note.** The seed-42 bake-off above (DS/TSB \(h=6\) ≈ 0.834) and this multi-seed table (DS \(0.769\pm0.004\) vs TSB 0.787) are **different reporting conventions / artifact fields** (raw `iwmae` vs primary `iwmae_rounded` in the multi-seed orchestrator)—not a single reconciled number. Rankings within each table are self-consistent; do not mix levels across tables.
 
-**Table. IWMAE — DS multi-horizon improvement vs recursive baselines.**
+TSB is seed-invariant (classical). DeepSequence’s **long-horizon (\(h=6\))** IWMAE edge over TSB is stable across seeds on the multi-seed (rounded) table, but mid-margin π with \(C_{\mathrm{loyalty}}=0.25\) still favors **TSB** on all horizons (\(0/5\) DS mid-π wins at \(h=6\))—reinforcing domain mismatch vs covariate-rich daily retail. Prefer TSB (then SBA/Croston) as the short-horizon monthly default; treat DS as a structural long-horizon IWMAE competitor when a neural panel model is required. Prophet confirms the structural baseline is present but does not overturn TSB on this panel.
 
-| Horizon | DS-H1 recursive | DS-MH | **DS-MH tuned** | TST (recursive) | TFT (recursive) |
-|--------:|----------------:|------:|----------------:|----------------:|----------------:|
-| h=1 | **4.132** | 4.341 | 4.386 | 4.251 | 4.190 |
-| h=7 | 4.254 | 4.113 | **4.082** | 4.133 | 4.191 |
-| h=14 | 4.370 | 4.256 | **4.223** | 4.263 | 4.396 |
-| mean | 4.362 | 4.247 | **4.234** | 4.267 | 4.319 |
+![Figure 6. Public Car Parts IWMAE (prior 1-step figure).](paper_figures/fig7_public_carparts_iwmae.png)
 
-**Table. Bias and occurrence (selected).**
+*Figure 6. Earlier 1-step Car Parts bake-off figure (prior protocol). Prefer the locked \(h=1/2/6\) Level-1 tables above for current claims.*
 
-| Model @ mean 1..14 | Bias | Occ F1 |
-|--------------------|-----:|-------:|
-| DS-H1 recursive | +1.12 | 0.291 |
-| **DS-MH tuned** | **+0.38** | 0.331 |
-| TST recursive | +0.84 | 0.332 |
-| TFT recursive | +0.85 | 0.353 |
+### 5.3b Daily Prophet subset (protocol note)
 
-**Reading.** Direct multi-horizon training closes **≈0.13–0.15 IWMAE** at h=7/14 versus recursive DS-H1 and **beats TST/TFT** at those horizons. Bias stays ≤+0.54 after a 0.78× validation scale (vs ≈+1.2 for recursive DS). The trade-off is slightly weaker h=1 IWMAE, because the head is trained jointly over \(H=14\).
+On a **150-SKU** evenly spaced subset of the locked daily list (≤4 origins/SKU), per-series Prophet reports IWMAE \(h=1/28/60\) = **2.68 / 4.90 / 3.34**. These are **not** comparable to the 800-SKU global DS table (different panel slice and origin density). The run documents that a tractable daily Prophet protocol is available; a full 800-SKU daily Prophet bake-off remains future work under quieter compute.
 
-### 5.5 Public validation: Monash Car Parts
+### 5.4 Novelty ablations (what each piece buys)
 
-To address reproducibility beyond the confidential daily panel, we evaluate the intermittent suite on the **Monash Car Parts** dataset (Zenodo 4656021): 2,674 intermittent *monthly* series (Jan 1998–Mar 2002; missing→0). We keep series with ≥2 train non-zeros, sample **800** (seed 42), split last 6 months test / prior 6 val / remainder train (train zero rate ≈ **0.74**). Baselines include classical **Croston, SBA, and TSB** (\(\alpha=0.1\)).
+**Daily H=1 (tabular DS-only; seed 42).** Gate is the dominant intermittent novelty; other factors sit inside single-seed noise at one step:
 
-**Monthly feature contract (v1.6-monthly)** — not the daily v1.6 matrix:
+| Arm | IWMAE | Δ vs Full |
+|-----|------:|----------:|
+| Full (Level-1 + mixer + mono + gate; cross off) | 4.156 | — |
+| −context mixer | 4.081 | −0.075 |
+| −Level-1 selection attn | 4.113 | −0.043 |
+| −mono | 4.191 | +0.036 |
+| −gate | **4.578** | **+0.422** |
+| +cross | 4.097 | −0.059 |
 
-| Block | Spec |
-|-------|------|
-| Trend | Month index (\(year\times 12 + month\)) |
-| Seasonal (Fourier) | Period **3** (quarter) + **calendar-month** phase (annual); duplicate `annual_*` from month_index removed (identical to calendar-month harmonics) |
-| Regressor | Lags **1, 3**; `months_since_last_sale`, last sale qty, lifetime cumsum |
-| Holiday | **`month_has_{Holiday}`** — 1 if that holiday falls in the observation month (which holidays belong to which month); not day-distance |
+**Reading (H=1).** Removing the occurrence gate hurts severely. Mixer / Level-1 / cross flips at H=1 are small and **not** directional claims under one seed (locked recursive \(h=1\) Full ≈ 4.088 is a better global reference).
 
-Annual shape is left to Fourier (no `lag_12`). Sequence lookback = 12 months; MASE season = 12.
+**Daily recursive MH (DS-only; \(h\in\{1,28,60\}\); seed 42).** Long horizons isolate the claimed novelties; Full wins \(h=28/60\):
 
-![Figure 7. Public Car Parts IWMAE.](paper_figures/fig7_public_carparts_iwmae.png)
+| Arm | \(h=1\) | \(h=28\) | \(h=60\) |
+|-----|--------:|---------:|---------:|
+| **Full** | 4.088 | **6.451** | **3.930** |
+| −context mixer | **4.012** | 6.556 | 4.014 |
+| −Level-1 selection attn | 4.142 | 6.657 | 4.113 |
+| −mono | 4.046 | 6.535 | 3.999 |
+| +cross | 4.049 | 6.642 | 4.137 |
 
-*Figure 8. Public Monash Car Parts 1-step IWMAE under the monthly feature contract (800 series).*
+**What each novelty buys (long \(h\))**
 
-| Rank | Model | IWMAE | MAE (all) | MAE (nz) | Occ F1 | Under (nz) | Bias |
-|-----:|-------|------:|----------:|---------:|-------:|-----------:|-----:|
-| 1 | **TSB** | **0.772** | 0.487 | **1.243** | **0.474** | 0.897 | +0.07 |
-| 2 | Temporal transformer | 0.790 | 0.526 | 1.299 | 0.453 | 0.982 | +0.05 |
-| 3 | DeepAR-lite | 0.810 | 0.531 | 1.364 | 0.440 | 0.995 | +0.02 |
-| 4 | TFT-lite | 0.834 | 0.611 | 1.278 | 0.410 | 0.958 | +0.12 |
-| 5 | LightGBM | 0.866 | **0.422** | 1.465 | 0.366 | 0.977 | −0.05 |
-| 6 | DeepSequence | 0.886 | 0.545 | 1.415 | 0.374 | 0.919 | +0.06 |
-| 7 | SBA | 0.958 | 0.627 | 1.461 | 0.303 | 0.933 | +0.11 |
-| 8 | Croston | 0.964 | 0.647 | 1.443 | 0.301 | 0.919 | +0.13 |
+| Novelty | Evidence |
+|---------|----------|
+| Level-1 selection attn | −attn raises \(h=28/60\) by ≈0.21 / 0.18 |
+| Context mixer | −mixer raises \(h=28/60\) by ≈0.11 / 0.08 (helps long; short \(h=1\) can look better without it) |
+| Softplus mono maps | −mono raises \(h=28/60\) by ≈0.08 / 0.07 |
+| Occurrence gate | H=1 Δ ≈ +0.42 IWMAE when removed |
+| Cross layers | +cross hurts long \(h\) (known); keep **off** |
 
-**Reading.** On this *short monthly spare-parts* benchmark, **TSB remains best**—as expected for Croston-family methods. With a proper monthly contract, DeepSequence **beats Croston/SBA**, improves occurrence F1 / underforecast vs a naive daily-feature transfer, and stays near LightGBM on IWMAE, but does not overtake TSB or the strongest sequence baselines. We treat this as a **domain mismatch** vs the proprietary *daily* covariate-rich panel (where DS leads), not a contradiction: Car Parts has ~39 train months and no retail calendar. The proprietary study remains primary evidence for daily intermittent retail; Car Parts is the public sanity check and classical baseline anchor.
+Artifacts: `ab_runs/reclaim/ablate_novelty/daily_h1_*.json`, `daily_mh60_*.json`.
 
 ---
 
 ## 6. Discussion
 
-**Why hierarchical gating helps (daily panels).** Extreme zero inflation rewards an explicit occurrence head. Coupling \(p\) with inverse-weighted all-day MAE keeps quiet-day timing, while masked magnitude loss prevents the base from collapsing.
+**Measured idea.** DeepSequence is a **multi-series extension of Prophet-style decomposition** for intermittent panels, with hierarchical attention, regime-aware mixing, gating, and monotone maps as the architectural payload—not a claim that DS is #1 IWMAE at every horizon. The per-series Prophet control (§5.3) makes that framing falsifiable.
 
-**Why trees look strong on all-day MAE.** L1 on sparse targets favors near-zero predictions. That reduces average absolute error when most days are zero, but harms service level when sales occur—undesirable for inventory. Under IWMAE, occurrence F1, and underforecast rate, LightGBM ranks last on the proprietary panel.
+**When to use what (portfolio).**
 
-**Classical vs deep on public monthly data.** TSB’s win on Car Parts underscores that intermittent papers must include Croston-family baselines. Deep models add value when series are longer and covariates are informative; they are not universal replacements for TSB on short spare-parts histories.
+| Setting | Prefer |
+|---------|--------|
+| Daily, short lead time / short \(h\) | TST (accuracy); check loyalty π |
+| Daily, long lead time (\(h\gtrsim 28\)) | **DeepSequence** (IWMAE + loyalty π) |
+| Monthly short spare-parts, weak covariates | **TSB** (then SBA/Croston); Prophet alone is not enough |
+| Monthly longer horizon (\(h=6\)) accuracy | DeepSequence competitive / best IWMAE; π may still favor TSB |
+| Ranking protocol | IWMAE + underforecast + loyalty-aware π; do not rank on all-day MAE alone |
 
-**TFT / TST vs DeepSequence.** Temporal attention is competitive for longer recursive horizons and on Car Parts; under the proprietary daily contract **component experts + gate** win 1-step IWMAE and h=1 recursive IWMAE. Adding a **direct multi-horizon head** restores DeepSequence leadership at h≥7 on the enterprise panel.
+**Why loyalty matters.** LGBM’s low \(H\) from under-forecasting wins low-margin π when \(C_{\mathrm{loyalty}}=0\). A modest switching cost restores the cost of missed demand; long-LT daily π then aligns with DS’s long-horizon accuracy—stable across five train seeds on the daily panel. On Car Parts, loyalty does not overturn TSB’s mid-π dominance.
 
-**Deployment recommendation.**
-
-| Use case | Recommended model |
-|----------|-------------------|
-| Next-day / daily intermittent with rich features | DeepSequence 1-step |
-| Multi-day planning (\(H\ge 7\)) on daily panels | DeepSequence multi-horizon (tuned) |
-| Short monthly spare-parts / no covariates | **TSB** (then SBA/Croston) |
-| Ranking protocol | Prefer IWMAE + Occ F1 + underforecast; do not rank on all-day MAE alone |
-
-**Limitations.** Proprietary results are panel-specific. Sequence baselines are lite adaptations with a shared gated head. Car Parts is monthly and short; a larger public *daily* intermittent suite (e.g. M5 intermittent subset) is natural future work. Known-future calendar beyond the origin day is not yet injected into the Dense-\(H\) head. Hierarchical reconciliation across product trees is out of scope for v1.6.
+**Limitations.** Enterprise results are panel-specific. Novelty ablations are single-seed. Daily Prophet is a 150-SKU subset (not locked-800). Sequence baselines are lite adaptations sharing the gated head where applicable. Car Parts is short monthly history without a rich retail calendar. Economics use error proxies, not full inventory simulation. Hierarchical product-tree reconciliation is out of scope. Prophet vs DS also differs in protocol (local fit vs global multi-series).
 
 ---
 
 ## 7. Conclusion
 
-DeepSequence combines hierarchical component experts, causal intermittent features, and a gated occurrence–magnitude head trained with a three-term loss. Under a locked v1.6 feature contract on a highly intermittent *daily* enterprise panel:
+We reframed intermittent neural forecasting as **Prophet-style structure at panel scale**. DeepSequence’s first-class architectural contributions are:
 
-1. **1-step DeepSequence is best on IWMAE** among LightGBM, TFT-lite, TST, and DeepAR-lite.
-2. A **direct multi-horizon hierarchical head** recovers long-horizon leadership (**best IWMAE at h=7 and h=14**).
-3. On public **Monash Car Parts**, **TSB** leads; DeepSequence beats Croston/SBA and stays competitive with trees—supporting a *conditional* recommendation: deep hierarchical gating for covariate-rich daily intermittency, classical intermittent methods for short monthly spare-parts.
+1. **Hierarchical attention** — Level-1 masked-entropy / selection attention inside seasonal, holiday, and regressor experts; Level-2 inter-expert mixing; monotone trend **without** Level-1 attention.  
+2. **Context-aware component mixer** — lag/intermittent regime reweights experts beyond SKU-only soft weights.  
+3. **Occurrence–magnitude gate** \(\hat{y}=p\cdot b\).  
+4. **Monotone softplus maps** as neuralized structural constraints.
 
-We recommend ranking intermittent models with IWMAE / occurrence / underforecast metrics rather than all-day MAE alone.
+Empirically, under locked Level-1 / cross-off defaults and five train seeds on a locked SKU panel, DeepSequence shows a **stable long-horizon** accuracy role (daily \(h=28/60\); Car Parts \(h=6\) IWMAE) and a **loyalty-aware** decision role at long daily lead times, while short horizons often favor TST or TSB—and Car Parts mid-π remains TSB. Softsign experts and cross-layers off are supporting defaults, not the headline claim. We recommend a **portfolio** deployment story—and intermittent metrics that do not let under-forecasting win by default.
 
 ---
 
@@ -357,20 +411,21 @@ We recommend ranking intermittent models with IWMAE / occurrence / underforecast
 
 | Artifact | Location |
 |----------|----------|
-| Package | `deepsequence_hierarchical_attention/` (`pip install -e .`) |
+| Package | `deepsequence_hierarchical_attention/` |
 | Feature SSOT | `feature_config.yaml` |
 | Synthetic demo | `examples/v16_deepsequence_example.ipynb` |
 | Training config | `examples/training_config.sample.json` |
-| 1-step bake-off | `examples/eval_same_features_compare.py` |
-| Recursive multi-horizon | `examples/eval_multihorizon_compare.py` |
-| Direct MH improvement | `examples/eval_ds_multihorizon_improve.py` |
-| Public Car Parts prep | `examples/public_data/prepare_carparts.py` |
-| Public bake-off (+ Croston/SBA/TSB) | `examples/eval_public_carparts.py` |
-| Classical baselines | `examples/classical_intermittent.py` |
+| Locked daily MH (all models) | `ab_runs/reclaim/daily_mh_1_60_level1_cross_off_all_models.json` |
+| Prophet Car Parts (monthly) | `ab_runs/reclaim/prophet_carparts/carparts_mh_1_2_6.json` |
+| Prophet daily subset | `ab_runs/reclaim/prophet_daily/daily_subset150_h1_28_60.json` |
+| Novelty ablations | `ab_runs/reclaim/ablate_novelty/` |
+| Daily loyalty economics | `ab_runs/reclaim/daily_decision_economics_level1_cross_off_loyalty.json` |
+| Car Parts MH (+ LGBM) | `ab_runs/reclaim/carparts_mh_1_2_6_level1_cross_off_lgbm.json` |
+| Car Parts loyalty economics | `ab_runs/reclaim/carparts_decision_economics_level1_cross_off_loyalty.json` |
+| Daily multi-seed summary | `ab_runs/reclaim/multiseed/daily_multiseed_long_loyalty_summary.json` |
+| Car Parts multi-seed summary | `ab_runs/reclaim/multiseed/carparts_multiseed_long_loyalty_summary.json` |
 | Figures | `paper_figures/` |
-| Proprietary metrics JSON | `eval_results_same_features_v16_distance_holidays.json` |
-| Public metrics JSON | `eval_results_public_carparts_v16.json` |
-| Engineering report | `REPORT_v1.6.md` |
+| Engineering notes | `REPORT_v1.6.md` |
 
 Repository: [https://github.com/mkuma93/DeepSequence](https://github.com/mkuma93/DeepSequence)
 
@@ -378,68 +433,63 @@ Repository: [https://github.com/mkuma93/DeepSequence](https://github.com/mkuma93
 
 ## References
 
-1. Croston, J. D. (1972). Forecasting and stock control for intermittent demands. *Operational Research Quarterly*.
-2. Syntetos, A. A., & Boylan, J. E. (2005). The accuracy of intermittent demand estimates. *International Journal of Forecasting*.
-3. Teunter, R. H., Syntetos, A. A., & Babai, M. Z. (2011). Intermittent demand: Linking forecasting to inventory obsolescence. *European Journal of Operational Research*.
-4. Salinas, D., et al. (2020). DeepAR: Probabilistic forecasting with autoregressive recurrent networks. *International Journal of Forecasting*.
-5. Lim, B., et al. (2021). Temporal Fusion Transformers for interpretable multi-horizon time series forecasting. *International Journal of Forecasting*.
-6. Ke, G., et al. (2017). LightGBM: A highly efficient gradient boosting decision tree. *NeurIPS*.
-7. Godahewa, R., et al. (2021). Monash Time Series Forecasting Archive. *NeurIPS Datasets and Benchmarks*. (Car Parts: Zenodo 4656021.)
-8. Nie, Y., et al. (2023). A time series is worth 64 words: Long-term forecasting with transformers (PatchTST). *ICLR*.
-9. Kendall, A., Gal, Y., & Cipolla, R. (2018). Multi-task learning using uncertainty to weigh losses. *CVPR*.
+1. Taylor, S. J., & Letham, B. (2018). Forecasting at scale. *The American Statistician*. (Prophet.)
+2. Croston, J. D. (1972). Forecasting and stock control for intermittent demands. *Operational Research Quarterly*.
+3. Syntetos, A. A., & Boylan, J. E. (2005). The accuracy of intermittent demand estimates. *International Journal of Forecasting*.
+4. Teunter, R. H., Syntetos, A. A., & Babai, M. Z. (2011). Intermittent demand: Linking forecasting to inventory obsolescence. *European Journal of Operational Research*.
+5. Salinas, D., et al. (2020). DeepAR: Probabilistic forecasting with autoregressive recurrent networks. *International Journal of Forecasting*.
+6. Lim, B., et al. (2021). Temporal Fusion Transformers for interpretable multi-horizon time series forecasting. *International Journal of Forecasting*.
+7. Ke, G., et al. (2017). LightGBM: A highly efficient gradient boosting decision tree. *NeurIPS*.
+8. Godahewa, R., et al. (2021). Monash Time Series Forecasting Archive. *NeurIPS Datasets and Benchmarks*. (Car Parts: Zenodo 4656021.)
+9. Nie, Y., et al. (2023). A time series is worth 64 words: Long-term forecasting with transformers (PatchTST). *ICLR*.
+10. Kendall, A., Gal, Y., & Cipolla, R. (2018). Multi-task learning using uncertainty to weigh losses. *CVPR*.
 
 ---
 
-## Appendix A. Notation summary
+## Appendix A. Notation
 
 | Symbol | Meaning |
 |--------|---------|
 | \(y\) | Demand |
 | \(z=\mathbf{1}[y>0]\) | Occurrence |
-| \(b\) | Base / magnitude (`base_forecast`) |
+| \(b\) | Magnitude (`base_forecast`, softplus) |
 | \(p\) | Occurrence probability (`non_zero_probability`) |
-| \(\hat{y}=p\cdot b\) | Final forecast (`final_forecast`) |
-| \(e_i\) | Series embedding |
-| \(H\) | Multi-horizon length (direct or recursive) |
-| \(\gamma\) | Horizon decay in multi-horizon loss |
+| \(\hat{y}=p\cdot b\) | Final forecast |
+| \(e_i\) | SKU embedding (optional) |
+| \(c_{i,t}\) | Lag / intermittent context for Level-2 mixer |
+| \(U, H\) | Underage / holding proxies in π |
+| \(C_{\mathrm{loyalty}}\) | Scenario switching / loyalty cost |
 
-## Appendix B. Bake-off commands (local panel)
+## Appendix B. Commands (sketch)
 
 ```bash
 pip install -e ".[dev]"
 export DEEPSEQUENCE_DATA_DIR=/path/to/local/panel
 
-# 1-step proprietary
-python examples/eval_same_features_compare.py \
-  --data_dir "$DEEPSEQUENCE_DATA_DIR" \
-  --max_skus 800 --epochs 10 --seed 42
-
-# Recursive multi-horizon
+# Locked daily recursive MH (Level-1, cross off)
 python examples/eval_multihorizon_compare.py \
   --data_dir "$DEEPSEQUENCE_DATA_DIR" \
-  --max_skus 800 --epochs 10 --seed 42 --horizon 14
+  --max_skus 800 --epochs 10 --seed 42 --horizon 60
 
-# Direct multi-horizon DeepSequence improvement
-python examples/eval_ds_multihorizon_improve.py \
-  --data_dir "$DEEPSEQUENCE_DATA_DIR" \
-  --max_skus 800 --epochs 10 --seed 42 --horizon 14
-
-# Public Monash Car Parts
+# Public Car Parts
 python examples/public_data/prepare_carparts.py
-python examples/eval_public_carparts.py --max_skus 800 --epochs 10 --seed 42
+python examples/eval_public_carparts_mh_all.py --max_skus 800 --epochs 10 --seed 42
 ```
 
-Models: `deepsequence`, `lightgbm`, `deepar_lite`, `temporal_transformer`, `tft_lite`, `croston`, `sba`, `tsb`.
+Exact reclaim flags (softsign, mono, mixer, `--use_cross_layers false`) match `ab_runs/reclaim/` logs and `ds_stack` fields in the JSON artifacts.
 
 ## Appendix C. Figure index
 
-| File | Caption |
-|------|---------|
-| `paper_figures/fig0_architecture.png` | Hierarchical architecture |
-| `paper_figures/fig1_1step_iwmae.png` | 1-step IWMAE ranking |
-| `paper_figures/fig2_1step_metric_suite.png` | Intermittent metric suite |
-| `paper_figures/fig3_recursive_mh_iwmae.png` | Recursive IWMAE by horizon |
-| `paper_figures/fig4_ds_mh_vs_baselines.png` | DS-MH vs TST/TFT |
-| `paper_figures/fig5_recursive_bias.png` | Recursive bias accumulation |
-| `paper_figures/fig6_strata_iwmae.png` | IWMAE by volume tercile |
-| `paper_figures/fig7_public_carparts_iwmae.png` | Public Car Parts IWMAE |
+| File | Status in this draft |
+|------|----------------------|
+| `paper_figures/fig_architecture_ds.png` | Primary architecture |
+| `paper_figures/fig_hierarchical_attention_internals.png` | Hierarchical attention |
+| `paper_figures/fig_changepoint_monotone.png` | Monotone trend |
+| `paper_figures/fig_decision_economics_by_lead_time.png` | Economics by LT (pair with §5.2 text) |
+| `paper_figures/fig_decision_economics_cost_vs_r.png` | Economics vs \(r\) (pair with §5.2 text) |
+| `paper_figures/fig7_public_carparts_iwmae.png` | Prior 1-step Car Parts figure |
+| `paper_figures/fig0_architecture.png` … `fig6_*.png` | **Prior-protocol** 1-step / recursive / DS-MH figures (Appendix D) |
+
+## Appendix D. Prior protocol (not primary claims)
+
+Earlier drafts emphasized **1-step DS IWMAE ≈ 4.004 (#1)** and **tuned DS-MH best at \(h=7/14\)** under a previous feature/model protocol. Those results remain in repository JSONs and older `paper_figures/fig1`–`fig6` plots but are **not** the primary claims of this rewrite. The locked Level-1 / cross-off recursive tables in §5 supersede them for the multi-series Prophet + portfolio narrative.

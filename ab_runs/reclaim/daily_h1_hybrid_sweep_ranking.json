@@ -1,0 +1,103 @@
+{
+  "panel": {
+    "sku_list": "ab_runs/recompare/sku_list_daily_data42.json",
+    "data_seed": 42,
+    "train_seed": 42,
+    "horizon": 1,
+    "epochs": 25,
+    "patience": 5,
+    "lookback": 14
+  },
+  "primary_metric": "iwmae_rounded",
+  "ranking": [
+    {
+      "rank": 1,
+      "name": "TST lite",
+      "iwmae": 3.990259473490895,
+      "mean_p": 0.2521022037264966,
+      "bias": 0.07003277144766895,
+      "occ_f1": 0.40166178831082994,
+      "source": "ab_runs/reclaim/daily_h1_hybrid_temporal.json",
+      "model_key": "temporal_transformer"
+    },
+    {
+      "rank": 2,
+      "name": "hybrid d=64 b=1 decouple",
+      "iwmae": 4.004227847494938,
+      "mean_p": 0.3012496466207267,
+      "bias": 0.2912096952148755,
+      "occ_f1": 0.37772921219689876,
+      "source": "ab_runs/reclaim/daily_h1_hybrid_d64_b1_decouple.json",
+      "model_key": "hybrid_d64_b1_decouple"
+    },
+    {
+      "rank": 3,
+      "name": "DS train-cal gate",
+      "iwmae": 4.018046651368226,
+      "mean_p": 0.32183174010514526,
+      "bias": 0.48904796899285685,
+      "occ_f1": 0.36384536269586787,
+      "source": "ab_runs/reclaim/daily_h1_train_gate_cal.json",
+      "model_key": "deepsequence_train_cal"
+    },
+    {
+      "rank": 4,
+      "name": "DS posthoc gate",
+      "iwmae": 4.02060683970347,
+      "mean_p": 0.309875360556346,
+      "bias": 0.1626746123973739,
+      "occ_f1": 0.4233515108406439,
+      "source": "ab_runs/reclaim/daily_h1_train_gate_cal.json",
+      "model_key": "deepsequence_posthoc"
+    },
+    {
+      "rank": 5,
+      "name": "hybrid d=64 b=1 coupled",
+      "iwmae": 4.034777131499383,
+      "mean_p": 0.2897377176877923,
+      "bias": 0.35398745698042045,
+      "occ_f1": 0.38803708325904795,
+      "source": "ab_runs/reclaim/daily_h1_hybrid_d64_b1_coupled.json",
+      "model_key": "hybrid_d64_b1_coupled"
+    },
+    {
+      "rank": 6,
+      "name": "plain DS",
+      "iwmae": 4.045039139061245,
+      "mean_p": 0.309875360556346,
+      "bias": 0.467200999872023,
+      "occ_f1": 0.38296853922805796,
+      "source": "ab_runs/reclaim/daily_h1_hybrid_temporal.json",
+      "model_key": "deepsequence"
+    },
+    {
+      "rank": 7,
+      "name": "hybrid d=64 b=2 decouple",
+      "iwmae": 4.050448629083154,
+      "mean_p": 0.279988818068676,
+      "bias": 0.4344591514164353,
+      "occ_f1": 0.39282000271284534,
+      "source": "ab_runs/reclaim/daily_h1_hybrid_d64_b2_decouple.json",
+      "model_key": "hybrid_d64_b2_decouple"
+    },
+    {
+      "rank": 8,
+      "name": "hybrid d=32 b=1 decouple",
+      "iwmae": 4.083220709311671,
+      "mean_p": 0.3065086285052836,
+      "bias": 0.5725239238066506,
+      "occ_f1": 0.37292846327753926,
+      "source": "ab_runs/reclaim/daily_h1_hybrid_temporal.json",
+      "model_key": "deepsequence_hybrid"
+    }
+  ],
+  "recommendation": {
+    "best_ds_family": "hybrid d=64 b=1 decouple",
+    "best_ds_iwmae": 4.004227847494938,
+    "tst_iwmae": 3.990259473490895,
+    "gap_to_tst": 0.014,
+    "beats_tst": false,
+    "paper_defaults": "OFF",
+    "notes": "Wider TST-matched hybrid (d=64, 1 block, decoupled gate) is the best DS-family config on locked daily H=1 and closes most of the gap to TST, but does not beat it. Extra block (b=2) and coupled gate both hurt vs d64_b1_decouple. Small hybrid (d=32) remains worst among hybrids."
+  }
+}

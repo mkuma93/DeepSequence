@@ -1,0 +1,642 @@
+{
+  "framing": "Decision economics, not universal IWMAE winner: models are risk profiles. r = C_lost/C_hold. cost(r)=r*U+H with U=mean underage, H=mean holding on no-sale days (per calendar day).",
+  "components": {
+    "TST lite": {
+      "U": 0.7575803932995355,
+      "H": 0.7589117880381281,
+      "sales_revenue_loss_units": 6.572151100977653,
+      "inventory_holding_cost_zero": 0.8577904017425546,
+      "iwmae_rounded": 3.990259473490895
+    },
+    "plain DS": {
+      "U": 0.7082830553647684,
+      "H": 1.0887087071326609,
+      "sales_revenue_loss_units": 6.144556079201356,
+      "inventory_holding_cost_zero": 1.2305547708069873,
+      "iwmae_rounded": 4.045039139061245
+    },
+    "hybrid d64_b1_decouple": {
+      "U": 0.7402691281263151,
+      "H": 0.9706916418578369,
+      "sales_revenue_loss_units": 6.421972649325839,
+      "inventory_holding_cost_zero": 1.0971630518348743,
+      "iwmae_rounded": 4.004227847494938
+    }
+  },
+  "curves": {
+    "TST lite": {
+      "r": [
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        1.25,
+        1.5,
+        1.75,
+        2.0,
+        2.5,
+        3.0,
+        3.5,
+        4.0,
+        4.5,
+        5.0,
+        5.5,
+        6.0,
+        6.5,
+        7.0,
+        7.5,
+        8.0,
+        8.5,
+        9.0,
+        9.5,
+        10.0,
+        10.5,
+        11.0,
+        11.5,
+        12.0,
+        14.0,
+        16.0,
+        18.0,
+        20.0,
+        22.0,
+        24.0,
+        26.0,
+        28.0,
+        30.0,
+        32.0,
+        34.0,
+        36.0,
+        38.0,
+        40.0
+      ],
+      "cost": [
+        0.948306886363012,
+        1.137701984687896,
+        1.3270970830127797,
+        1.5164921813376635,
+        1.7058872796625475,
+        1.8952823779874315,
+        2.084677476312315,
+        2.274072574637199,
+        2.652862771286967,
+        3.0316529679367346,
+        3.410443164586502,
+        3.78923336123627,
+        4.1680235578860385,
+        4.546813754535806,
+        4.925603951185574,
+        5.304394147835342,
+        5.68318434448511,
+        6.061974541134877,
+        6.440764737784645,
+        6.819554934434413,
+        7.198345131084181,
+        7.577135327733949,
+        7.955925524383716,
+        8.334715721033483,
+        8.713505917683252,
+        9.092296114333019,
+        9.471086310982788,
+        9.849876507632555,
+        11.365037294231625,
+        12.880198080830697,
+        14.395358867429769,
+        15.910519654028839,
+        17.425680440627907,
+        18.94084122722698,
+        20.45600201382605,
+        21.97116280042512,
+        23.48632358702419,
+        25.001484373623263,
+        26.516645160222335,
+        28.031805946821407,
+        29.546966733420476,
+        31.062127520019548
+      ]
+    },
+    "plain DS": {
+      "r": [
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        1.25,
+        1.5,
+        1.75,
+        2.0,
+        2.5,
+        3.0,
+        3.5,
+        4.0,
+        4.5,
+        5.0,
+        5.5,
+        6.0,
+        6.5,
+        7.0,
+        7.5,
+        8.0,
+        8.5,
+        9.0,
+        9.5,
+        10.0,
+        10.5,
+        11.0,
+        11.5,
+        12.0,
+        14.0,
+        16.0,
+        18.0,
+        20.0,
+        22.0,
+        24.0,
+        26.0,
+        28.0,
+        30.0,
+        32.0,
+        34.0,
+        36.0,
+        38.0,
+        40.0
+      ],
+      "cost": [
+        1.265779470973853,
+        1.4428502348150452,
+        1.6199209986562373,
+        1.7969917624974294,
+        1.9740625263386216,
+        2.1511332901798133,
+        2.328204054021006,
+        2.5052748178621975,
+        2.859416345544582,
+        3.213557873226966,
+        3.5676994009093503,
+        3.9218409285917346,
+        4.275982456274119,
+        4.630123983956503,
+        4.984265511638887,
+        5.338407039321272,
+        5.692548567003655,
+        6.04669009468604,
+        6.400831622368424,
+        6.754973150050809,
+        7.109114677733192,
+        7.463256205415577,
+        7.817397733097961,
+        8.171539260780346,
+        8.52568078846273,
+        8.879822316145114,
+        9.233963843827498,
+        9.588105371509881,
+        11.004671482239418,
+        12.421237592968955,
+        13.837803703698492,
+        15.25436981442803,
+        16.67093592515757,
+        18.087502035887102,
+        19.50406814661664,
+        20.920634257346176,
+        22.337200368075713,
+        23.75376647880525,
+        25.170332589534787,
+        26.586898700264324,
+        28.00346481099386,
+        29.4200309217234
+      ]
+    },
+    "hybrid d64_b1_decouple": {
+      "r": [
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        1.25,
+        1.5,
+        1.75,
+        2.0,
+        2.5,
+        3.0,
+        3.5,
+        4.0,
+        4.5,
+        5.0,
+        5.5,
+        6.0,
+        6.5,
+        7.0,
+        7.5,
+        8.0,
+        8.5,
+        9.0,
+        9.5,
+        10.0,
+        10.5,
+        11.0,
+        11.5,
+        12.0,
+        14.0,
+        16.0,
+        18.0,
+        20.0,
+        22.0,
+        24.0,
+        26.0,
+        28.0,
+        30.0,
+        32.0,
+        34.0,
+        36.0,
+        38.0,
+        40.0
+      ],
+      "cost": [
+        1.1557589238894157,
+        1.3408262059209943,
+        1.5258934879525732,
+        1.710960769984152,
+        1.8960280520157307,
+        2.0810953340473093,
+        2.266162616078888,
+        2.451229898110467,
+        2.8213644621736247,
+        3.191499026236782,
+        3.561633590299939,
+        3.9317681543630973,
+        4.301902718426255,
+        4.672037282489412,
+        5.042171846552569,
+        5.412306410615727,
+        5.7824409746788845,
+        6.152575538742042,
+        6.5227101028052,
+        6.892844666868357,
+        7.262979230931514,
+        7.633113794994673,
+        8.00324835905783,
+        8.373382923120987,
+        8.743517487184146,
+        9.113652051247302,
+        9.48378661531046,
+        9.853921179373618,
+        11.334459435626247,
+        12.814997691878878,
+        14.295535948131509,
+        15.776074204384138,
+        17.256612460636767,
+        18.7371507168894,
+        20.217688973142028,
+        21.698227229394657,
+        23.17876548564729,
+        24.65930374189992,
+        26.139841998152548,
+        27.62038025440518,
+        29.10091851065781,
+        30.58145676691044
+      ]
+    }
+  },
+  "crossover": {
+    "rule": "For r < r*: prefer lower-holding model (TST lite if it has lower H). For r > r*: prefer lower-stockout model (plain DS if it has lower U).",
+    "pair": [
+      "TST lite",
+      "plain DS"
+    ],
+    "r_star": 6.689953918626152,
+    "interpretation": {
+      "left_of_r_star": "Holding hurts relatively more \u2192 cooler / lower-overstock posture",
+      "right_of_r_star": "Lost sales hurt more \u2192 lower-stockout posture"
+    }
+  },
+  "margin_regimes": {
+    "low_margin": {
+      "label": "Low-margin / high-carry",
+      "unit_price": 1.0,
+      "margin": 0.08,
+      "holding_cost_per_unit": 0.2,
+      "note": "Lost sale hurts little vs carrying stock \u2192 prefer cooler/overstock-light model",
+      "cost_ratio_r": 0.39999999999999997,
+      "winner": "TST lite",
+      "ranking": [
+        {
+          "model": "TST lite",
+          "cost": 1.0619439453579422,
+          "U": 0.7575803932995355,
+          "H": 0.7589117880381281,
+          "r": 0.39999999999999997
+        },
+        {
+          "model": "hybrid d64_b1_decouple",
+          "cost": 1.266799293108363,
+          "U": 0.7402691281263151,
+          "H": 0.9706916418578369,
+          "r": 0.39999999999999997
+        },
+        {
+          "model": "plain DS",
+          "cost": 1.3720219292785683,
+          "U": 0.7082830553647684,
+          "H": 1.0887087071326609,
+          "r": 0.39999999999999997
+        }
+      ],
+      "profit_loss_by_model": {
+        "TST lite": {
+          "margin": 0.08,
+          "holding_cost_per_unit": 0.2,
+          "unit_price": 1.0,
+          "cost_ratio_r": 0.39999999999999997,
+          "contribution_loss_per_day": 0.06060643146396284,
+          "holding_loss_per_day": 0.15178235760762562,
+          "total_profit_loss_per_day": 0.21238878907158848,
+          "U": 0.7575803932995355,
+          "H": 0.7589117880381281
+        },
+        "plain DS": {
+          "margin": 0.08,
+          "holding_cost_per_unit": 0.2,
+          "unit_price": 1.0,
+          "cost_ratio_r": 0.39999999999999997,
+          "contribution_loss_per_day": 0.05666264442918147,
+          "holding_loss_per_day": 0.2177417414265322,
+          "total_profit_loss_per_day": 0.27440438585571364,
+          "U": 0.7082830553647684,
+          "H": 1.0887087071326609
+        },
+        "hybrid d64_b1_decouple": {
+          "margin": 0.08,
+          "holding_cost_per_unit": 0.2,
+          "unit_price": 1.0,
+          "cost_ratio_r": 0.39999999999999997,
+          "contribution_loss_per_day": 0.05922153025010521,
+          "holding_loss_per_day": 0.1941383283715674,
+          "total_profit_loss_per_day": 0.2533598586216726,
+          "U": 0.7402691281263151,
+          "H": 0.9706916418578369
+        }
+      }
+    },
+    "mid_margin": {
+      "label": "Mid-margin",
+      "unit_price": 1.0,
+      "margin": 0.25,
+      "holding_cost_per_unit": 0.1,
+      "note": "Balanced penalty",
+      "cost_ratio_r": 2.5,
+      "winner": "TST lite",
+      "ranking": [
+        {
+          "model": "TST lite",
+          "cost": 2.652862771286967,
+          "U": 0.7575803932995355,
+          "H": 0.7589117880381281,
+          "r": 2.5
+        },
+        {
+          "model": "hybrid d64_b1_decouple",
+          "cost": 2.8213644621736247,
+          "U": 0.7402691281263151,
+          "H": 0.9706916418578369,
+          "r": 2.5
+        },
+        {
+          "model": "plain DS",
+          "cost": 2.859416345544582,
+          "U": 0.7082830553647684,
+          "H": 1.0887087071326609,
+          "r": 2.5
+        }
+      ],
+      "profit_loss_by_model": {
+        "TST lite": {
+          "margin": 0.25,
+          "holding_cost_per_unit": 0.1,
+          "unit_price": 1.0,
+          "cost_ratio_r": 2.5,
+          "contribution_loss_per_day": 0.18939509832488388,
+          "holding_loss_per_day": 0.07589117880381281,
+          "total_profit_loss_per_day": 0.2652862771286967,
+          "U": 0.7575803932995355,
+          "H": 0.7589117880381281
+        },
+        "plain DS": {
+          "margin": 0.25,
+          "holding_cost_per_unit": 0.1,
+          "unit_price": 1.0,
+          "cost_ratio_r": 2.5,
+          "contribution_loss_per_day": 0.1770707638411921,
+          "holding_loss_per_day": 0.1088708707132661,
+          "total_profit_loss_per_day": 0.2859416345544582,
+          "U": 0.7082830553647684,
+          "H": 1.0887087071326609
+        },
+        "hybrid d64_b1_decouple": {
+          "margin": 0.25,
+          "holding_cost_per_unit": 0.1,
+          "unit_price": 1.0,
+          "cost_ratio_r": 2.5,
+          "contribution_loss_per_day": 0.18506728203157877,
+          "holding_loss_per_day": 0.0970691641857837,
+          "total_profit_loss_per_day": 0.28213644621736245,
+          "U": 0.7402691281263151,
+          "H": 0.9706916418578369
+        }
+      }
+    },
+    "high_margin": {
+      "label": "High-margin / high-penalty",
+      "unit_price": 1.0,
+      "margin": 0.55,
+      "holding_cost_per_unit": 0.05,
+      "note": "Lost sale dominates holding \u2192 prefer lower-stockout model",
+      "cost_ratio_r": 11.0,
+      "winner": "plain DS",
+      "ranking": [
+        {
+          "model": "plain DS",
+          "cost": 8.879822316145114,
+          "U": 0.7082830553647684,
+          "H": 1.0887087071326609,
+          "r": 11.0
+        },
+        {
+          "model": "TST lite",
+          "cost": 9.092296114333019,
+          "U": 0.7575803932995355,
+          "H": 0.7589117880381281,
+          "r": 11.0
+        },
+        {
+          "model": "hybrid d64_b1_decouple",
+          "cost": 9.113652051247302,
+          "U": 0.7402691281263151,
+          "H": 0.9706916418578369,
+          "r": 11.0
+        }
+      ],
+      "profit_loss_by_model": {
+        "TST lite": {
+          "margin": 0.55,
+          "holding_cost_per_unit": 0.05,
+          "unit_price": 1.0,
+          "cost_ratio_r": 11.0,
+          "contribution_loss_per_day": 0.4166692163147446,
+          "holding_loss_per_day": 0.037945589401906406,
+          "total_profit_loss_per_day": 0.45461480571665097,
+          "U": 0.7575803932995355,
+          "H": 0.7589117880381281
+        },
+        "plain DS": {
+          "margin": 0.55,
+          "holding_cost_per_unit": 0.05,
+          "unit_price": 1.0,
+          "cost_ratio_r": 11.0,
+          "contribution_loss_per_day": 0.38955568045062267,
+          "holding_loss_per_day": 0.05443543535663305,
+          "total_profit_loss_per_day": 0.4439911158072557,
+          "U": 0.7082830553647684,
+          "H": 1.0887087071326609
+        },
+        "hybrid d64_b1_decouple": {
+          "margin": 0.55,
+          "holding_cost_per_unit": 0.05,
+          "unit_price": 1.0,
+          "cost_ratio_r": 11.0,
+          "contribution_loss_per_day": 0.4071480204694733,
+          "holding_loss_per_day": 0.04853458209289185,
+          "total_profit_loss_per_day": 0.45568260256236515,
+          "U": 0.7402691281263151,
+          "H": 0.9706916418578369
+        }
+      }
+    }
+  },
+  "panel": {
+    "horizon": 1,
+    "sku_list": "ab_runs/recompare/sku_list_daily_data42.json",
+    "models": {
+      "TST lite": {
+        "model_key": "temporal_transformer",
+        "source": "ab_runs/reclaim/daily_h1_hybrid_temporal.json",
+        "profile": "lower-overstock"
+      },
+      "plain DS": {
+        "model_key": "deepsequence",
+        "source": "ab_runs/reclaim/daily_h1_hybrid_temporal.json",
+        "profile": "lower-stockout"
+      },
+      "hybrid d64_b1_decouple": {
+        "model_key": "hybrid_d64_b1_decouple",
+        "source": "ab_runs/reclaim/daily_h1_hybrid_d64_b1_decouple.json",
+        "profile": "hybrid"
+      }
+    }
+  },
+  "portfolio_selector": {
+    "high_margin_high_penalty_skus": "plain DS (or hybrid)",
+    "low_margin_high_carry_skus": "TST lite",
+    "rule": "Segment by category margin / carry; pick model by r vs r*"
+  },
+  "multihorizon_mean_1_to_14": {
+    "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+    "crossover": {
+      "rule": "For r < r*: prefer lower-holding model (TST lite if it has lower H). For r > r*: prefer lower-stockout model (plain DS if it has lower U).",
+      "pair": [
+        "TST lite",
+        "plain DS"
+      ],
+      "r_star": 6.208097998335662,
+      "interpretation": {
+        "left_of_r_star": "Holding hurts relatively more \u2192 cooler / lower-overstock posture",
+        "right_of_r_star": "Lost sales hurt more \u2192 lower-stockout posture"
+      }
+    },
+    "components": {
+      "TST lite": {
+        "U": 0.8350425870959224,
+        "H": 0.840910879900884,
+        "sales_revenue_loss_units": 6.856651502073902,
+        "inventory_holding_cost_zero": 0.9575236334994977,
+        "iwmae_rounded": 4.098630863218549
+      },
+      "plain DS": {
+        "U": 0.7632076859823629,
+        "H": 1.286868985714613,
+        "sales_revenue_loss_units": 6.266805079588339,
+        "inventory_holding_cost_zero": 1.46532468123674,
+        "iwmae_rounded": 4.232566461587858
+      },
+      "TFT lite": {
+        "U": 0.7182991625779652,
+        "H": 1.774607709616931,
+        "sales_revenue_loss_units": 5.8980549113752865,
+        "inventory_holding_cost_zero": 2.020700246319692,
+        "iwmae_rounded": 4.438498686511201
+      }
+    },
+    "margin_regimes": {
+      "low_margin": {
+        "cost_ratio_r": 0.39999999999999997,
+        "winner": "TST lite",
+        "profit_loss_by_model": {
+          "TST lite": {
+            "total_profit_loss_per_day": 0.2349855829478506,
+            "contribution_loss_per_day": 0.0668034069676738,
+            "holding_loss_per_day": 0.16818217598017682
+          },
+          "plain DS": {
+            "total_profit_loss_per_day": 0.3184304120215116,
+            "contribution_loss_per_day": 0.06105661487858903,
+            "holding_loss_per_day": 0.2573737971429226
+          },
+          "TFT lite": {
+            "total_profit_loss_per_day": 0.4123854749296234,
+            "contribution_loss_per_day": 0.05746393300623722,
+            "holding_loss_per_day": 0.3549215419233862
+          }
+        }
+      },
+      "mid_margin": {
+        "cost_ratio_r": 2.5,
+        "winner": "TST lite",
+        "profit_loss_by_model": {
+          "TST lite": {
+            "total_profit_loss_per_day": 0.292851734764069,
+            "contribution_loss_per_day": 0.2087606467739806,
+            "holding_loss_per_day": 0.08409108799008841
+          },
+          "plain DS": {
+            "total_profit_loss_per_day": 0.31948882006705204,
+            "contribution_loss_per_day": 0.19080192149559072,
+            "holding_loss_per_day": 0.1286868985714613
+          },
+          "TFT lite": {
+            "total_profit_loss_per_day": 0.35703556160618444,
+            "contribution_loss_per_day": 0.1795747906444913,
+            "holding_loss_per_day": 0.1774607709616931
+          }
+        }
+      },
+      "high_margin": {
+        "cost_ratio_r": 11.0,
+        "winner": "TFT lite",
+        "profit_loss_by_model": {
+          "TST lite": {
+            "total_profit_loss_per_day": 0.5013189668978015,
+            "contribution_loss_per_day": 0.45927342290275736,
+            "holding_loss_per_day": 0.042045543995044204
+          },
+          "plain DS": {
+            "total_profit_loss_per_day": 0.48410767657603027,
+            "contribution_loss_per_day": 0.4197642272902996,
+            "holding_loss_per_day": 0.06434344928573064
+          },
+          "TFT lite": {
+            "total_profit_loss_per_day": 0.48379492489872744,
+            "contribution_loss_per_day": 0.3950645394178809,
+            "holding_loss_per_day": 0.08873038548084655
+          }
+        }
+      }
+    }
+  }
+}

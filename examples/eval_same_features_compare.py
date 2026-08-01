@@ -43,9 +43,11 @@ from eval_helpers import (
     build_tft,
     build_transformer,
     filter_aligned,
+    fit_bce_sample_weight_dict,
     kpi_block,
     predict_seq,
     resolve_eval_seeds,
+    resolve_sku_zero_rates,
     select_eval_skus,
     split_components,
     strata_report,
@@ -169,7 +171,10 @@ def build_full_feature_sequences(
     )
 
 
-def train_seq_three_term(model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, args, label):
+def train_seq_three_term(
+    model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, args, label, sku_zero_rates=None
+):
+    # Panel pos_weight in the loss; per-SKU via relative sample weights when rates given.
     cfg = three_term_loss_config(zero_rate, alpha_bce=0.2, w_gated=1.0, w_mag=1.0)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(0.0025),
@@ -186,12 +191,20 @@ def train_seq_three_term(model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, arg
         "base_forecast": yva.reshape(-1, 1),
         "non_zero_probability": (yva > 0).astype(np.float32).reshape(-1, 1),
     }
+    sw_tr = sw_va = None
+    if sku_zero_rates is not None:
+        sw_tr = fit_bce_sample_weight_dict(
+            ytr, skutr, sku_zero_rates, panel_zero_rate=zero_rate
+        )
+        sw_va = fit_bce_sample_weight_dict(
+            yva, skuva, sku_zero_rates, panel_zero_rate=zero_rate
+        )
     print(f"\n=== {label} (same features, three_term) ===")
     t0 = time.time()
-    model.fit(
-        [Xtr, skutr],
-        ytr_d,
-        validation_data=([Xva, skuva], yva_d),
+    fit_kw = dict(
+        x=[Xtr, skutr],
+        y=ytr_d,
+        validation_data=([Xva, skuva], yva_d, sw_va) if sw_va is not None else ([Xva, skuva], yva_d),
         epochs=args.epochs,
         batch_size=args.batch_size,
         callbacks=[
@@ -204,6 +217,9 @@ def train_seq_three_term(model, Xtr, ytr, skutr, Xva, yva, skuva, zero_rate, arg
         ],
         verbose=2,
     )
+    if sw_tr is not None:
+        fit_kw["sample_weight"] = sw_tr
+    model.fit(**fit_kw)
     return time.time() - t0
 
 
@@ -336,6 +352,7 @@ def main():
     if "deepsequence" in selected:
         print("\n=== DeepSequence (same features) ===")
         train_cal = bool(args.ds_train_gate_calibrate)
+        _, sku_rates = resolve_sku_zero_rates(y_train, sku_train, n_skus=n_skus)
         nz_target = max(1e-6, 1.0 - float(zero_rate))
         if train_cal:
             print(
@@ -343,6 +360,10 @@ def main():
                 f"(prior={zero_rate:.3f}, p_scale_init={args.ds_gate_prob_scale_init}, "
                 f"rate_match_w={args.ds_gate_rate_match_weight})"
             )
+        print(
+            f"  per-SKU BCE imbalance ON "
+            f"(panel_zr={zero_rate:.3f}, n_skus={n_skus})"
+        )
         base = build_hierarchical_model_lightweight(
             n_temporal_features=len(cfg.trend_indices),
             n_fourier_features=len(cfg.seasonal_indices),
@@ -357,6 +378,7 @@ def main():
             n_changepoints=15,
             gate_use_raw_regressors=train_cal,
             intermittent_prior_zero_rate=zero_rate if train_cal else None,
+            intermittent_prior_zero_rates=sku_rates if train_cal else None,
             intermittent_learnable_logit_scale=train_cal,
             intermittent_logit_scale_init=1.0,
             gate_prob_scale=train_cal,
@@ -379,6 +401,7 @@ def main():
             zero_rate=zero_rate,
             avg_nonzero_demand=float(y_train[y_train > 0].mean()),
             pos_weight=pos_weight,
+            sku_zero_rates=sku_rates,
             loss_recipe="three_term",
             alpha_bce=0.2,
             w_gated=1.0,
@@ -460,6 +483,8 @@ def main():
         m_va = split_seq == "val"
         m_te = split_seq == "test"
         print(f"windows train/val/test={m_tr.sum()}/{m_va.sum()}/{m_te.sum()}")
+        # Rates from tabular train targets (same SKU index space).
+        _, seq_sku_rates = resolve_sku_zero_rates(y_train, sku_train, n_skus=n_skus)
 
         seq_builders = [
             ("deepar_lite", build_deepar),
@@ -481,6 +506,7 @@ def main():
                 zero_rate,
                 args,
                 name,
+                sku_zero_rates=seq_sku_rates,
             )
             yhat, p = predict_seq(model, Xseq[m_te], sku_seq[m_te])
             results["models"][name] = {

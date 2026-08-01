@@ -1,0 +1,49 @@
+{
+  "definition": {
+    "sales_revenue_loss_units": "mean unmet demand on sale days (revenue loss, price=1)",
+    "inventory_holding_cost_zero": "mean forecast stock on no-sale days (carrying cost; no revenue loss)",
+    "combined_ops_cost_h": "rev_per_day + h * hold_per_day"
+  },
+  "primary_combined": "combined_ops_cost_h0p1",
+  "rows": [
+    {
+      "name": "TST lite",
+      "iwmae": 3.990259473490895,
+      "rev_loss_units": 6.572151100977653,
+      "rev_per_day": 0.7575803932995355,
+      "hold_zero": 0.8577904017425546,
+      "hold_per_day": 0.7589117880381281,
+      "ops_h0p05": 0.7955259827014419,
+      "ops_h0p1": 0.8334715721033483,
+      "ops_h0p25": 0.9473083403090675,
+      "ops_h0p5": 1.1370362873185995,
+      "ops_h1": 1.5164921813376635
+    },
+    {
+      "name": "hybrid d64_b1_decouple",
+      "iwmae": 4.004227847494938,
+      "rev_loss_units": 6.421972649325839,
+      "rev_per_day": 0.7402691281263151,
+      "hold_zero": 1.0971630518348743,
+      "hold_per_day": 0.9706916418578369,
+      "ops_h0p05": 0.7888037102192069,
+      "ops_h0p1": 0.8373382923120988,
+      "ops_h0p25": 0.9829420385907743,
+      "ops_h0p5": 1.2256149490552335,
+      "ops_h1": 1.710960769984152
+    },
+    {
+      "name": "plain DS",
+      "iwmae": 4.045039139061245,
+      "rev_loss_units": 6.144556079201356,
+      "rev_per_day": 0.7082830553647684,
+      "hold_zero": 1.2305547708069873,
+      "hold_per_day": 1.0887087071326609,
+      "ops_h0p05": 0.7627184907214015,
+      "ops_h0p1": 0.8171539260780345,
+      "ops_h0p25": 0.9804602321479337,
+      "ops_h0p5": 1.2526374089310988,
+      "ops_h1": 1.7969917624974294
+    }
+  ]
+}

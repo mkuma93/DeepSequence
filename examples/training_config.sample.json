@@ -10,7 +10,7 @@
   "hidden_dim": 48,
   "sku_embedding_dim": 8,
   "use_intermittent": true,
-  "use_cross_layers": true,
+  "use_cross_layers": false,
   "ds_preferred_stack": {
     "output_activation": "softsign",
     "trend_monotonic": true,
@@ -19,5 +19,5 @@
     "context_aware_component_mixer": true,
     "context_film_seasonal_holiday": false
   },
-  "notes": "Sample training configuration for DeepSequence v1.6. Preferred builder stack is softsign + mono trend/holiday/regressor + context mixer (FiLM off). Point --data_dir / DEEPSEQUENCE_DATA_DIR at your local panel; synthetic demo uses the notebook defaults."
+  "notes": "Sample training configuration for DeepSequence v1.6. Preferred builder stack is softsign + mono trend/holiday/regressor + context mixer (FiLM off, cross off; use_cross_layers opt-in for ablation). Point --data_dir / DEEPSEQUENCE_DATA_DIR at your local panel; synthetic demo uses the notebook defaults."
 }

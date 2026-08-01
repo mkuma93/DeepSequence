@@ -135,14 +135,18 @@ model = build_hierarchical_model_lightweight(
     n_skus=100,
     hidden_dim=48,
     use_intermittent=True,
-    use_cross_layers=True,
+    use_cross_layers=False,  # opt-in True for DCN ablation
     horizon=1,       # set H > 1 for direct multi-horizon outputs
     use_sku=False,   # disable ID personalization for no-SKU pooling
 )
 
 # Compile directly with the gated DeepSequence loss. For adaptive multi-term
 # weighting, use examples/AdaptiveWeightedModel as the sole weighting layer.
-zero_rate = 0.9
+# zero_rate must come from data (or an explicit override) — there is no silent 0.9.
+zero_rate = float((y_train == 0).mean())
+# Optional: per-SKU rates for gate prior (panel mean fills sparse/unseen SKUs)
+# from deepsequence_hierarchical_attention import estimate_zero_rate_by_sku
+# sku_zr = estimate_zero_rate_by_sku(y_train, sku_train, n_skus=n_skus)
 cfg = three_term_loss_config(zero_rate, alpha_bce=0.2, w_gated=1.0, w_mag=1.0)
 model.compile(
     optimizer=tf.keras.optimizers.Adam(0.0025),
@@ -150,6 +154,8 @@ model.compile(
     loss_weights=cfg["weights"],
 )
 ```
+
+`create_model_from_features` requires `zero_rate` or `y_train` (raises if both missing). With `y_train` + `sku_train` it estimates per-SKU rates, wires a non-trainable SKU gate prior, and attaches `model.make_fit_sample_weights(y, sku)` for per-SKU BCE imbalance (relative to the compiled panel `pos_weight`). Pass that dict as `sample_weight` on `fit`. `AdaptiveWeightedModel(..., sku_zero_rates=rates)` does the same in-graph for the adaptive train path.
 
 Causal panel features (lags + intermittent) via:
 

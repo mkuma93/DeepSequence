@@ -74,6 +74,7 @@ def test_lightweight_builder_removed_dead_api_and_uncertainty_path():
         "orthogonality_weight",
         "context_aware_component_mixer",
         "context_film_seasonal_holiday",
+        "level1_selection_attention",
     } <= builder_args
 
     # Expert output_activation default is softsign (signed, milder than tanh).
@@ -87,6 +88,7 @@ def test_lightweight_builder_removed_dead_api_and_uncertainty_path():
     }
     assert named_defaults.get("output_activation") == "softsign"
     assert named_defaults.get("context_film_seasonal_holiday") is False
+    assert named_defaults.get("use_cross_layers") is False
     assert named_defaults.get("context_aware_component_mixer") is True
     assert named_defaults.get("trend_monotonic") is True
     assert named_defaults.get("holiday_monotonic") is True
@@ -95,6 +97,35 @@ def test_lightweight_builder_removed_dead_api_and_uncertainty_path():
     source = (SRC_ROOT / "components_lightweight.py").read_text(encoding="utf-8")
     assert "forecast_uncertainty" not in source
     assert "classification_uncertainty" not in source
+
+
+def test_cross_layers_default_off_and_opt_in_builds():
+    """Default builder omits DCN; use_cross_layers=True remains a valid opt-in."""
+    pytest.importorskip("tensorflow")
+    from deepsequence_hierarchical_attention import build_hierarchical_model_lightweight
+
+    kwargs = dict(
+        n_temporal_features=1,
+        n_fourier_features=4,
+        n_holiday_features=2,
+        n_lag_features=3,
+        n_skus=4,
+        hidden_dim=8,
+        sku_embedding_dim=2,
+        dropout_rate=0.0,
+        use_intermittent=False,
+        use_sku=False,
+        n_changepoints=4,
+        # Avoid OrthogonalityPenalty graph path (sparse KerasTensor concat under TF 2.21).
+        orthogonality_weight=0.0,
+    )
+    off = build_hierarchical_model_lightweight(**kwargs)
+    on = build_hierarchical_model_lightweight(**kwargs, use_cross_layers=True)
+    off_names = {layer.name for layer in off.layers}
+    on_names = {layer.name for layer in on.layers}
+    assert not any("cross" in n.lower() for n in off_names)
+    assert any("cross" in n.lower() for n in on_names)
+    assert on.count_params() > off.count_params()
 
 
 def test_graph_helper_layers_are_keras_serializable():

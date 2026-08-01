@@ -14,6 +14,7 @@ Origin: last month of val (stand before test). Forecast next H test months.
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import sys
 import time
@@ -79,7 +80,51 @@ def parse_args():
         "--out_json",
         default=str(ROOT / "eval_results_public_carparts_mh_all.json"),
     )
+    # DeepSequence builder overrides (None = preferred builder default:
+    # softsign + mono + mixer, FiLM off, cross off).
+    p.add_argument("--output_activation", default=None)
+    p.add_argument("--trend_monotonic", type=int, default=None)
+    p.add_argument("--holiday_monotonic", type=int, default=None)
+    p.add_argument("--regressor_monotonic", type=int, default=None)
+    p.add_argument("--context_aware_component_mixer", type=int, default=None)
+    p.add_argument("--context_film_seasonal_holiday", type=int, default=None)
+    p.add_argument(
+        "--use_cross_layers",
+        type=int,
+        default=None,
+        help="DCN cross on component outputs (1/0). None = builder default (False).",
+    )
     return p.parse_args()
+
+
+def _ds_builder_kwargs(args) -> dict:
+    """Resolve DeepSequence stack kwargs from CLI (explicit overrides only).
+
+    Unset CLI flags keep preferred builder defaults: softsign experts,
+    monotone trend/holiday/regressor, context-aware mixer on, calendar FiLM off,
+    cross layers off.
+    """
+    sig = inspect.signature(build_hierarchical_model_lightweight)
+    keys = (
+        "output_activation",
+        "trend_monotonic",
+        "holiday_monotonic",
+        "regressor_monotonic",
+        "context_aware_component_mixer",
+        "context_film_seasonal_holiday",
+        "use_cross_layers",
+    )
+    defaults = {k: sig.parameters[k].default for k in keys}
+    out = dict(defaults)
+    if args.output_activation is not None:
+        out["output_activation"] = args.output_activation
+    for flag in keys:
+        if flag == "output_activation":
+            continue
+        val = getattr(args, flag)
+        if val is not None:
+            out[flag] = bool(val)
+    return out
 
 
 def build_mh_xy(X, y, skus, horizon: int):
@@ -331,6 +376,8 @@ def main():
         )
         test_dates.append(pd.to_datetime(te["ds"]).to_numpy()[:H])
 
+    ds_stack = _ds_builder_kwargs(args)
+    report_horizons = [h for h in (1, 2, 6) if h <= H]
     results = {
         "config": {
             "dataset": "Monash Car Parts",
@@ -345,6 +392,12 @@ def main():
             "feature_version": cfg.config["metadata"].get("version"),
             "volume_stats": volume_stats,
             "models": sorted(selected),
+            "report_horizons": report_horizons,
+            "ds_stack": {
+                **ds_stack,
+                "use_sku": False,
+                "note": "softsign + mono + mixer + Level-1 attention; FiLM off",
+            },
         },
         "models": {},
     }
@@ -361,7 +414,9 @@ def main():
                 continue
             yhat = preds[name]
             p = np.clip(1.0 - np.exp(-yhat), 0, 1)
-            metrics = mh_metrics(y_true_mh, yhat, p, mase_scale=mase_scale)
+            metrics = mh_metrics(
+                y_true_mh, yhat, p, report_horizons=report_horizons, mase_scale=mase_scale
+            )
             results["models"][name] = {
                 "method": "recursive",
                 "train_seconds": dt / max(len(classical), 1),
@@ -371,6 +426,14 @@ def main():
     # -------- DeepSequence direct MH --------
     if "deepsequence" in selected:
         print("\n=== DeepSequence direct MH ===")
+        print(
+            f"DS stack: softsign={ds_stack['output_activation']!r} "
+            f"mono(t/h/r)={ds_stack['trend_monotonic']}/"
+            f"{ds_stack['holiday_monotonic']}/{ds_stack['regressor_monotonic']} "
+            f"mixer={ds_stack['context_aware_component_mixer']} "
+            f"film={ds_stack['context_film_seasonal_holiday']} "
+            f"cross={ds_stack['use_cross_layers']}"
+        )
         sk_tr = train_df["id_var"].astype(str).to_numpy()
         sk_va = val_df["id_var"].astype(str).to_numpy()
         Xtr_mh, ytr_mh, sktr_mh = build_mh_xy(X_train, y_train, sk_tr, H)
@@ -393,11 +456,11 @@ def main():
             hidden_dim=48,
             sku_embedding_dim=4,
             dropout_rate=0.23,
-            use_cross_layers=True,
             use_intermittent=True,
             n_changepoints=15,
             use_sku=False,
             horizon=H,
+            **ds_stack,
         )
         t0 = time.time()
         model = train_gated(
@@ -422,10 +485,13 @@ def main():
             yhat = yhat.reshape(-1, H)
         if p.ndim == 1:
             p = p.reshape(-1, H)
-        metrics = mh_metrics(y_true_mh, yhat, p, mase_scale=mase_scale)
+        metrics = mh_metrics(
+            y_true_mh, yhat, p, report_horizons=report_horizons, mase_scale=mase_scale
+        )
         results["models"]["deepsequence"] = {
             "method": "direct_mh",
             "use_sku": False,
+            "ds_stack": ds_stack,
             "train_seconds": time.time() - t0,
             **metrics,
         }
@@ -458,7 +524,9 @@ def main():
         model.fit(Xtr, ytr_mh)
         yhat = np.maximum(model.predict(Xte), 0.0).astype(np.float32)
         p = np.clip(1.0 - np.exp(-yhat), 0, 1)
-        metrics = mh_metrics(y_true_mh, yhat, p, mase_scale=mase_scale)
+        metrics = mh_metrics(
+            y_true_mh, yhat, p, report_horizons=report_horizons, mase_scale=mase_scale
+        )
         results["models"]["lightgbm"] = {
             "method": "multi_output",
             "train_seconds": time.time() - t0,
@@ -603,7 +671,13 @@ def main():
                     states[i].update(date, q)
                     qty_bufs[i] = qty_bufs[i][1:] + [q]
 
-            metrics = mh_metrics(y_true_mh, yhat, p_mat, mase_scale=mase_scale)
+            metrics = mh_metrics(
+                y_true_mh,
+                yhat,
+                p_mat,
+                report_horizons=report_horizons,
+                mase_scale=mase_scale,
+            )
             results["models"][name] = {
                 "method": "recursive_1step",
                 "train_seconds": train_s,

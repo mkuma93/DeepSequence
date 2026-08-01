@@ -1,0 +1,1742 @@
+{
+  "framing": "Decision economics by replenishment lead time. Models are risk profiles; lead time selects the horizon. C_hold is fixed from policy; margin regimes only change C_lost (and thus r). Hybrid is not in the selector.",
+  "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+  "sku_list": "ab_runs/recompare/sku_list_daily_data42.json",
+  "policy": {
+    "holding_cost_per_unit": 0.1,
+    "margins": [
+      0.08,
+      0.25,
+      0.55
+    ],
+    "unit_price": 1.0,
+    "note": "C_hold from inventory/finance policy (shared across regimes). Only margin varies \u2192 r = margin*price / C_hold.",
+    "regimes": {
+      "low_margin": {
+        "margin": 0.08,
+        "holding_cost_per_unit": 0.1,
+        "cost_ratio_r": 0.7999999999999999
+      },
+      "mid_margin": {
+        "margin": 0.25,
+        "holding_cost_per_unit": 0.1,
+        "cost_ratio_r": 2.5
+      },
+      "high_margin": {
+        "margin": 0.55,
+        "holding_cost_per_unit": 0.1,
+        "cost_ratio_r": 5.5
+      }
+    }
+  },
+  "lead_times": [
+    {
+      "key": "lt_1_day",
+      "label": "Lead time 1 day",
+      "lead_time_days": 1,
+      "horizon": "1"
+    },
+    {
+      "key": "lt_1_week",
+      "label": "Lead time 1 week",
+      "lead_time_days": 7,
+      "horizon": "7"
+    },
+    {
+      "key": "lt_2_weeks",
+      "label": "Lead time 2 weeks",
+      "lead_time_days": 14,
+      "horizon": "14"
+    }
+  ],
+  "by_lead_time": {
+    "lt_1_day": {
+      "lead_time_days": 1,
+      "label": "Lead time 1 day",
+      "horizon": "1",
+      "policy_note": "Replenishment ordered today arrives after the lead time; evaluate forecast errors at horizon h=1.",
+      "models": {
+        "TST lite": {
+          "model_key": "temporal_transformer",
+          "profile": "lower-overstock",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "1"
+        },
+        "plain DS": {
+          "model_key": "deepsequence",
+          "profile": "lower-stockout",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "1"
+        },
+        "TFT lite": {
+          "model_key": "tft_lite",
+          "profile": "sequence",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "1"
+        },
+        "DeepAR lite": {
+          "model_key": "deepar_lite",
+          "profile": "sequence",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "1"
+        }
+      },
+      "components": {
+        "TST lite": {
+          "U": 0.8843095947543607,
+          "H": 0.6659267001777552,
+          "sales_revenue_loss_units": 7.159180742206759,
+          "inventory_holding_cost_zero": 0.7597749014447067,
+          "iwmae_rounded": 4.117946120648757
+        },
+        "plain DS": {
+          "U": 0.806150828980278,
+          "H": 1.0241528556034378,
+          "sales_revenue_loss_units": 6.526424144196657,
+          "inventory_holding_cost_zero": 1.1684854124676372,
+          "iwmae_rounded": 4.185385276722728
+        },
+        "TFT lite": {
+          "U": 0.7853471466677598,
+          "H": 1.1387872572049806,
+          "sales_revenue_loss_units": 6.3580019958198335,
+          "inventory_holding_cost_zero": 1.2992750942084903,
+          "iwmae_rounded": 4.193675280107919
+        },
+        "DeepAR lite": {
+          "U": 0.7768952630819923,
+          "H": 1.5529013734263026,
+          "sales_revenue_loss_units": 6.28957735974042,
+          "inventory_holding_cost_zero": 1.7717497851240698,
+          "iwmae_rounded": 4.596135366474275
+        }
+      },
+      "crossover": {
+        "rule": "For r < r*: prefer lower-holding model (TST lite if it has lower H). For r > r*: prefer lower-stockout model (plain DS if it has lower U).",
+        "pair": [
+          "TST lite",
+          "plain DS"
+        ],
+        "r_star": 4.5833138724469205,
+        "interpretation": {
+          "left_of_r_star": "Holding hurts relatively more \u2192 cooler / lower-overstock posture",
+          "right_of_r_star": "Lost sales hurt more \u2192 lower-stockout posture"
+        }
+      },
+      "margin_regimes": {
+        "low_margin": {
+          "label": "Low Margin",
+          "margin": 0.08,
+          "holding_cost_per_unit": 0.1,
+          "cost_ratio_r": 0.7999999999999999,
+          "winner": "TST lite",
+          "profit_loss_by_model": {
+            "TST lite": {
+              "total_profit_loss_per_day": 0.1373374375981244,
+              "contribution_loss_per_day": 0.07074476758034885,
+              "holding_loss_per_day": 0.06659267001777552
+            },
+            "plain DS": {
+              "total_profit_loss_per_day": 0.16690735187876604,
+              "contribution_loss_per_day": 0.06449206631842225,
+              "holding_loss_per_day": 0.1024152855603438
+            },
+            "TFT lite": {
+              "total_profit_loss_per_day": 0.17670649745391886,
+              "contribution_loss_per_day": 0.06282777173342079,
+              "holding_loss_per_day": 0.11387872572049806
+            },
+            "DeepAR lite": {
+              "total_profit_loss_per_day": 0.21744175838918967,
+              "contribution_loss_per_day": 0.062151621046559385,
+              "holding_loss_per_day": 0.15529013734263028
+            }
+          }
+        },
+        "mid_margin": {
+          "label": "Mid Margin",
+          "margin": 0.25,
+          "holding_cost_per_unit": 0.1,
+          "cost_ratio_r": 2.5,
+          "winner": "TST lite",
+          "profit_loss_by_model": {
+            "TST lite": {
+              "total_profit_loss_per_day": 0.2876700687063657,
+              "contribution_loss_per_day": 0.22107739868859017,
+              "holding_loss_per_day": 0.06659267001777552
+            },
+            "plain DS": {
+              "total_profit_loss_per_day": 0.3039529928054133,
+              "contribution_loss_per_day": 0.2015377072450695,
+              "holding_loss_per_day": 0.1024152855603438
+            },
+            "TFT lite": {
+              "total_profit_loss_per_day": 0.31021551238743805,
+              "contribution_loss_per_day": 0.19633678666693996,
+              "holding_loss_per_day": 0.11387872572049806
+            },
+            "DeepAR lite": {
+              "total_profit_loss_per_day": 0.3495139531131284,
+              "contribution_loss_per_day": 0.19422381577049808,
+              "holding_loss_per_day": 0.15529013734263028
+            }
+          }
+        },
+        "high_margin": {
+          "label": "High Margin",
+          "margin": 0.55,
+          "holding_cost_per_unit": 0.1,
+          "cost_ratio_r": 5.5,
+          "winner": "plain DS",
+          "profit_loss_by_model": {
+            "TST lite": {
+              "total_profit_loss_per_day": 0.5529629471326739,
+              "contribution_loss_per_day": 0.4863702771148984,
+              "holding_loss_per_day": 0.06659267001777552
+            },
+            "plain DS": {
+              "total_profit_loss_per_day": 0.5457982414994967,
+              "contribution_loss_per_day": 0.44338295593915295,
+              "holding_loss_per_day": 0.1024152855603438
+            },
+            "TFT lite": {
+              "total_profit_loss_per_day": 0.545819656387766,
+              "contribution_loss_per_day": 0.43194093066726796,
+              "holding_loss_per_day": 0.11387872572049806
+            },
+            "DeepAR lite": {
+              "total_profit_loss_per_day": 0.582582532037726,
+              "contribution_loss_per_day": 0.4272923946950958,
+              "holding_loss_per_day": 0.15529013734263028
+            }
+          }
+        }
+      },
+      "curves": {
+        "TST lite": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            0.8870040988663455,
+            1.1080814975549356,
+            1.3291588962435257,
+            1.550236294932116,
+            1.771313693620706,
+            1.9923910923092962,
+            2.2134684909978866,
+            2.4345458896864764,
+            2.8767006870636567,
+            3.3188554844408373,
+            3.7610102818180176,
+            4.203165079195198,
+            4.645319876572378,
+            5.087474673949559,
+            5.529629471326739,
+            5.97178426870392,
+            6.4139390660811,
+            6.85609386345828,
+            7.29824866083546,
+            7.740403458212641,
+            8.182558255589822,
+            8.624713052967001,
+            9.066867850344181,
+            9.50902264772136,
+            9.951177445098542,
+            10.393332242475722,
+            10.835487039852902,
+            11.277641837230084,
+            13.046261026738804,
+            14.814880216247525,
+            16.583499405756246,
+            18.35211859526497,
+            20.12073778477369,
+            21.889356974282414,
+            23.657976163791133,
+            25.426595353299856,
+            27.195214542808575,
+            28.963833732317298,
+            30.73245292182602,
+            32.501072111334736,
+            34.26969130084346,
+            36.03831049035218
+          ]
+        },
+        "plain DS": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            1.2256905628485073,
+            1.4272282700935768,
+            1.6287659773386465,
+            1.8303036845837157,
+            2.0318413918287854,
+            2.233379099073855,
+            2.4349168063189244,
+            2.6364545135639936,
+            3.039529928054133,
+            3.442605342544272,
+            3.845680757034411,
+            4.248756171524549,
+            4.651831586014689,
+            5.054907000504828,
+            5.457982414994967,
+            5.861057829485106,
+            6.264133243975245,
+            6.667208658465384,
+            7.0702840729555225,
+            7.473359487445662,
+            7.876434901935801,
+            8.27951031642594,
+            8.68258573091608,
+            9.085661145406219,
+            9.488736559896356,
+            9.891811974386496,
+            10.294887388876635,
+            10.697962803366774,
+            12.31026446132733,
+            13.922566119287886,
+            15.534867777248442,
+            17.147169435209,
+            18.75947109316955,
+            20.37177275113011,
+            21.984074409090667,
+            23.596376067051224,
+            25.208677725011775,
+            26.820979382972332,
+            28.43328104093289,
+            30.045582698893448,
+            31.657884356854005,
+            33.27018601481456
+          ]
+        },
+        "TFT lite": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            1.3351240438719205,
+            1.5314608305388606,
+            1.7277976172058005,
+            1.9241344038727406,
+            2.1204711905396803,
+            2.3168079772066204,
+            2.5131447638735604,
+            2.7094815505405005,
+            3.1021551238743803,
+            3.49482869720826,
+            3.8875022705421403,
+            4.28017584387602,
+            4.6728494172099,
+            5.06552299054378,
+            5.45819656387766,
+            5.8508701372115395,
+            6.24354371054542,
+            6.6362172838793,
+            7.028890857213179,
+            7.421564430547059,
+            7.81423800388094,
+            8.206911577214818,
+            8.599585150548698,
+            8.992258723882578,
+            9.384932297216459,
+            9.777605870550339,
+            10.170279443884219,
+            10.5629530172181,
+            12.13364731055362,
+            13.704341603889137,
+            15.275035897224658,
+            16.84573019056018,
+            18.4164244838957,
+            19.987118777231217,
+            21.557813070566738,
+            23.12850736390226,
+            24.699201657237776,
+            26.269895950573297,
+            27.840590243908817,
+            29.411284537244335,
+            30.981978830579855,
+            32.552673123915376
+          ]
+        },
+        "DeepAR lite": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            1.7471251891968007,
+            1.9413490049672988,
+            2.1355728207377966,
+            2.329796636508295,
+            2.5240204522787932,
+            2.718244268049291,
+            2.912468083819789,
+            3.1066918995902872,
+            3.4951395311312834,
+            3.8835871626722795,
+            4.272034794213276,
+            4.660482425754272,
+            5.048930057295268,
+            5.437377688836264,
+            5.82582532037726,
+            6.2142729519182565,
+            6.602720583459253,
+            6.991168215000249,
+            7.3796158465412445,
+            7.768063478082241,
+            8.156511109623239,
+            8.544958741164233,
+            8.933406372705228,
+            9.321854004246227,
+            9.710301635787221,
+            10.098749267328216,
+            10.487196898869215,
+            10.87564453041021,
+            12.429435056574196,
+            13.983225582738179,
+            15.537016108902165,
+            17.090806635066148,
+            18.64459716123013,
+            20.198387687394117,
+            21.752178213558103,
+            23.305968739722086,
+            24.85975926588607,
+            26.413549792050055,
+            27.967340318214042,
+            29.521130844378025,
+            31.074921370542008,
+            32.628711896705994
+          ]
+        }
+      }
+    },
+    "lt_1_week": {
+      "lead_time_days": 7,
+      "label": "Lead time 1 week",
+      "horizon": "7",
+      "policy_note": "Replenishment ordered today arrives after the lead time; evaluate forecast errors at horizon h=7.",
+      "models": {
+        "TST lite": {
+          "model_key": "temporal_transformer",
+          "profile": "lower-overstock",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "7"
+        },
+        "plain DS": {
+          "model_key": "deepsequence",
+          "profile": "lower-stockout",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "7"
+        },
+        "TFT lite": {
+          "model_key": "tft_lite",
+          "profile": "sequence",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "7"
+        },
+        "DeepAR lite": {
+          "model_key": "deepar_lite",
+          "profile": "sequence",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "7"
+        }
+      },
+      "components": {
+        "TST lite": {
+          "U": 0.777698587615053,
+          "H": 0.8721494313375298,
+          "sales_revenue_loss_units": 6.599506488476332,
+          "inventory_holding_cost_zero": 0.9886543714679186,
+          "iwmae_rounded": 3.9770417604837816
+        },
+        "plain DS": {
+          "U": 0.710964548143948,
+          "H": 1.3428185597630393,
+          "sales_revenue_loss_units": 6.033205181639206,
+          "inventory_holding_cost_zero": 1.5221972193022006,
+          "iwmae_rounded": 4.113323997028863
+        },
+        "TFT lite": {
+          "U": 0.6593407380196223,
+          "H": 1.8617488392912376,
+          "sales_revenue_loss_units": 5.595128431467718,
+          "inventory_holding_cost_zero": 2.110448120934756,
+          "iwmae_rounded": 4.309595372043071
+        },
+        "DeepAR lite": {
+          "U": 0.6351531612909984,
+          "H": 2.706551505479122,
+          "sales_revenue_loss_units": 5.389874015292689,
+          "inventory_holding_cost_zero": 3.068102645427781,
+          "iwmae_rounded": 5.086921124645044
+        }
+      },
+      "crossover": {
+        "rule": "For r < r*: prefer lower-holding model (TST lite if it has lower H). For r > r*: prefer lower-stockout model (plain DS if it has lower U).",
+        "pair": [
+          "TST lite",
+          "plain DS"
+        ],
+        "r_star": 7.052909312185486,
+        "interpretation": {
+          "left_of_r_star": "Holding hurts relatively more \u2192 cooler / lower-overstock posture",
+          "right_of_r_star": "Lost sales hurt more \u2192 lower-stockout posture"
+        }
+      },
+      "margin_regimes": {
+        "low_margin": {
+          "label": "Low Margin",
+          "margin": 0.08,
+          "holding_cost_per_unit": 0.1,
+          "cost_ratio_r": 0.7999999999999999,
+          "winner": "TST lite",
+          "profit_loss_by_model": {
+            "TST lite": {
+              "total_profit_loss_per_day": 0.14943083014295722,
+              "contribution_loss_per_day": 0.06221588700920424,
+              "holding_loss_per_day": 0.08721494313375298
+            },
+            "plain DS": {
+              "total_profit_loss_per_day": 0.19115901982781977,
+              "contribution_loss_per_day": 0.056877163851515845,
+              "holding_loss_per_day": 0.13428185597630393
+            },
+            "TFT lite": {
+              "total_profit_loss_per_day": 0.23892214297069356,
+              "contribution_loss_per_day": 0.05274725904156979,
+              "holding_loss_per_day": 0.18617488392912376
+            },
+            "DeepAR lite": {
+              "total_profit_loss_per_day": 0.32146740345119207,
+              "contribution_loss_per_day": 0.05081225290327988,
+              "holding_loss_per_day": 0.27065515054791217
+            }
+          }
+        },
+        "mid_margin": {
+          "label": "Mid Margin",
+          "margin": 0.25,
+          "holding_cost_per_unit": 0.1,
+          "cost_ratio_r": 2.5,
+          "winner": "TST lite",
+          "profit_loss_by_model": {
+            "TST lite": {
+              "total_profit_loss_per_day": 0.2816395900375162,
+              "contribution_loss_per_day": 0.19442464690376324,
+              "holding_loss_per_day": 0.08721494313375298
+            },
+            "plain DS": {
+              "total_profit_loss_per_day": 0.312022993012291,
+              "contribution_loss_per_day": 0.177741137035987,
+              "holding_loss_per_day": 0.13428185597630393
+            },
+            "TFT lite": {
+              "total_profit_loss_per_day": 0.3510100684340294,
+              "contribution_loss_per_day": 0.16483518450490559,
+              "holding_loss_per_day": 0.18617488392912376
+            },
+            "DeepAR lite": {
+              "total_profit_loss_per_day": 0.4294434408706618,
+              "contribution_loss_per_day": 0.1587882903227496,
+              "holding_loss_per_day": 0.27065515054791217
+            }
+          }
+        },
+        "high_margin": {
+          "label": "High Margin",
+          "margin": 0.55,
+          "holding_cost_per_unit": 0.1,
+          "cost_ratio_r": 5.5,
+          "winner": "TST lite",
+          "profit_loss_by_model": {
+            "TST lite": {
+              "total_profit_loss_per_day": 0.5149491663220321,
+              "contribution_loss_per_day": 0.42773422318827914,
+              "holding_loss_per_day": 0.08721494313375298
+            },
+            "plain DS": {
+              "total_profit_loss_per_day": 0.5253123574554754,
+              "contribution_loss_per_day": 0.39103050147917146,
+              "holding_loss_per_day": 0.13428185597630393
+            },
+            "TFT lite": {
+              "total_profit_loss_per_day": 0.548812289839916,
+              "contribution_loss_per_day": 0.3626374059107923,
+              "holding_loss_per_day": 0.18617488392912376
+            },
+            "DeepAR lite": {
+              "total_profit_loss_per_day": 0.6199893892579613,
+              "contribution_loss_per_day": 0.34933423871004915,
+              "holding_loss_per_day": 0.27065515054791217
+            }
+          }
+        }
+      },
+      "curves": {
+        "TST lite": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            1.066574078241293,
+            1.2609987251450563,
+            1.4554233720488194,
+            1.6498480189525826,
+            1.844272665856346,
+            2.0386973127601093,
+            2.2331219596638725,
+            2.4275466065676357,
+            2.816395900375162,
+            3.2052451941826883,
+            3.5940944879902155,
+            3.9829437817977418,
+            4.371793075605268,
+            4.760642369412794,
+            5.149491663220321,
+            5.538340957027847,
+            5.927190250835373,
+            6.3160395446429005,
+            6.704888838450427,
+            7.093738132257953,
+            7.482587426065479,
+            7.871436719873006,
+            8.260286013680533,
+            8.64913530748806,
+            9.037984601295586,
+            9.426833895103112,
+            9.815683188910638,
+            10.204532482718164,
+            11.759929657948271,
+            13.315326833178377,
+            14.870724008408482,
+            16.42612118363859,
+            17.981518358868694,
+            19.5369155340988,
+            21.092312709328905,
+            22.647709884559013,
+            24.20310705978912,
+            25.758504235019224,
+            27.31390141024933,
+            28.869298585479434,
+            30.424695760709543,
+            31.98009293593965
+          ]
+        },
+        "plain DS": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            1.5205596967990263,
+            1.6983008338350134,
+            1.8760419708710003,
+            2.0537831079069875,
+            2.2315242449429746,
+            2.4092653819789613,
+            2.5870065190149485,
+            2.764747656050935,
+            3.1202299301229095,
+            3.4757122041948834,
+            3.8311944782668577,
+            4.1866767523388315,
+            4.542159026410806,
+            4.89764130048278,
+            5.2531235745547535,
+            5.608605848626727,
+            5.964088122698701,
+            6.319570396770676,
+            6.67505267084265,
+            7.030534944914624,
+            7.3860172189865985,
+            7.741499493058571,
+            8.096981767130545,
+            8.45246404120252,
+            8.807946315274494,
+            9.163428589346468,
+            9.51891086341844,
+            9.874393137490415,
+            11.296322233778312,
+            12.718251330066208,
+            14.140180426354103,
+            15.562109522642,
+            16.984038618929898,
+            18.40596771521779,
+            19.82789681150569,
+            21.249825907793586,
+            22.67175500408148,
+            24.093684100369376,
+            25.515613196657274,
+            26.937542292945167,
+            28.359471389233065,
+            29.78140048552096
+          ]
+        },
+        "TFT lite": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            2.026584023796143,
+            2.1914192083010486,
+            2.3562543928059543,
+            2.52108957731086,
+            2.6859247618157656,
+            2.850759946320671,
+            3.0155951308255764,
+            3.180430315330482,
+            3.5101006843402933,
+            3.8397710533501046,
+            4.169441422359916,
+            4.499111791369727,
+            4.8287821603795384,
+            5.15845252938935,
+            5.48812289839916,
+            5.817793267408971,
+            6.147463636418783,
+            6.477134005428594,
+            6.806804374438405,
+            7.1364747434482165,
+            7.466145112458028,
+            7.795815481467839,
+            8.12548585047765,
+            8.455156219487462,
+            8.784826588497271,
+            9.114496957507082,
+            9.444167326516894,
+            9.773837695526705,
+            11.09251917156595,
+            12.411200647605195,
+            13.72988212364444,
+            15.048563599683686,
+            16.367245075722927,
+            17.685926551762172,
+            19.004608027801417,
+            20.323289503840662,
+            21.641970979879908,
+            22.960652455919153,
+            24.279333931958398,
+            25.598015407997643,
+            26.916696884036888,
+            28.235378360076133
+          ]
+        },
+        "DeepAR lite": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            2.8653397958018716,
+            3.024128086124621,
+            3.1829163764473707,
+            3.34170466677012,
+            3.50049295709287,
+            3.6592812474156196,
+            3.818069537738369,
+            3.9768578280611186,
+            4.294434408706618,
+            4.612010989352117,
+            4.929587569997617,
+            5.2471641506431155,
+            5.564740731288614,
+            5.882317311934114,
+            6.199893892579613,
+            6.517470473225112,
+            6.835047053870611,
+            7.152623634516111,
+            7.47020021516161,
+            7.787776795807109,
+            8.105353376452609,
+            8.422929957098107,
+            8.740506537743606,
+            9.058083118389106,
+            9.375659699034605,
+            9.693236279680104,
+            10.010812860325604,
+            10.328389440971103,
+            11.5986957635531,
+            12.869002086135097,
+            14.139308408717092,
+            15.40961473129909,
+            16.67992105388109,
+            17.950227376463083,
+            19.22053369904508,
+            20.49084002162708,
+            21.761146344209074,
+            23.031452666791072,
+            24.30175898937307,
+            25.572065311955065,
+            26.842371634537063,
+            28.112677957119057
+          ]
+        }
+      }
+    },
+    "lt_2_weeks": {
+      "lead_time_days": 14,
+      "label": "Lead time 2 weeks",
+      "horizon": "14",
+      "policy_note": "Replenishment ordered today arrives after the lead time; evaluate forecast errors at horizon h=14.",
+      "models": {
+        "TST lite": {
+          "model_key": "temporal_transformer",
+          "profile": "lower-overstock",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "14"
+        },
+        "plain DS": {
+          "model_key": "deepsequence",
+          "profile": "lower-stockout",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "14"
+        },
+        "TFT lite": {
+          "model_key": "tft_lite",
+          "profile": "sequence",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "14"
+        },
+        "DeepAR lite": {
+          "model_key": "deepar_lite",
+          "profile": "sequence",
+          "source": "ab_runs/recompare_retuned/daily_mh14_locked_all.json",
+          "horizon": "14"
+        }
+      },
+      "components": {
+        "TST lite": {
+          "U": 0.8138159554417032,
+          "H": 0.9327069172557219,
+          "sales_revenue_loss_units": 6.596904528829867,
+          "inventory_holding_cost_zero": 1.0639606169667124,
+          "iwmae_rounded": 4.096189152632133
+        },
+        "plain DS": {
+          "U": 0.7621429785485181,
+          "H": 1.3090657810607031,
+          "sales_revenue_loss_units": 6.178036241712348,
+          "inventory_holding_cost_zero": 1.493281984189994,
+          "iwmae_rounded": 4.227378301905775
+        },
+        "TFT lite": {
+          "U": 0.7250153315690274,
+          "H": 1.9760418441852192,
+          "sales_revenue_loss_units": 5.877074407693177,
+          "inventory_holding_cost_zero": 2.2541171945816276,
+          "iwmae_rounded": 4.537745194413558
+        },
+        "DeepAR lite": {
+          "U": 0.6680990879693218,
+          "H": 2.850835563933045,
+          "sales_revenue_loss_units": 5.4157034765185825,
+          "inventory_holding_cost_zero": 3.252014871292347,
+          "iwmae_rounded": 5.151640468679002
+        }
+      },
+      "crossover": {
+        "rule": "For r < r*: prefer lower-holding model (TST lite if it has lower H). For r > r*: prefer lower-stockout model (plain DS if it has lower U).",
+        "pair": [
+          "TST lite",
+          "plain DS"
+        ],
+        "r_star": 7.283475550150039,
+        "interpretation": {
+          "left_of_r_star": "Holding hurts relatively more \u2192 cooler / lower-overstock posture",
+          "right_of_r_star": "Lost sales hurt more \u2192 lower-stockout posture"
+        }
+      },
+      "margin_regimes": {
+        "low_margin": {
+          "label": "Low Margin",
+          "margin": 0.08,
+          "holding_cost_per_unit": 0.1,
+          "cost_ratio_r": 0.7999999999999999,
+          "winner": "TST lite",
+          "profit_loss_by_model": {
+            "TST lite": {
+              "total_profit_loss_per_day": 0.15837596816090843,
+              "contribution_loss_per_day": 0.06510527643533626,
+              "holding_loss_per_day": 0.09327069172557219
+            },
+            "plain DS": {
+              "total_profit_loss_per_day": 0.19187801638995178,
+              "contribution_loss_per_day": 0.06097143828388145,
+              "holding_loss_per_day": 0.13090657810607031
+            },
+            "TFT lite": {
+              "total_profit_loss_per_day": 0.2556054109440441,
+              "contribution_loss_per_day": 0.0580012265255222,
+              "holding_loss_per_day": 0.19760418441852193
+            },
+            "DeepAR lite": {
+              "total_profit_loss_per_day": 0.33853148343085027,
+              "contribution_loss_per_day": 0.05344792703754575,
+              "holding_loss_per_day": 0.2850835563933045
+            }
+          }
+        },
+        "mid_margin": {
+          "label": "Mid Margin",
+          "margin": 0.25,
+          "holding_cost_per_unit": 0.1,
+          "cost_ratio_r": 2.5,
+          "winner": "TST lite",
+          "profit_loss_by_model": {
+            "TST lite": {
+              "total_profit_loss_per_day": 0.296724680585998,
+              "contribution_loss_per_day": 0.2034539888604258,
+              "holding_loss_per_day": 0.09327069172557219
+            },
+            "plain DS": {
+              "total_profit_loss_per_day": 0.32144232274319984,
+              "contribution_loss_per_day": 0.19053574463712952,
+              "holding_loss_per_day": 0.13090657810607031
+            },
+            "TFT lite": {
+              "total_profit_loss_per_day": 0.3788580173107788,
+              "contribution_loss_per_day": 0.18125383289225686,
+              "holding_loss_per_day": 0.19760418441852193
+            },
+            "DeepAR lite": {
+              "total_profit_loss_per_day": 0.45210832838563497,
+              "contribution_loss_per_day": 0.16702477199233046,
+              "holding_loss_per_day": 0.2850835563933045
+            }
+          }
+        },
+        "high_margin": {
+          "label": "High Margin",
+          "margin": 0.55,
+          "holding_cost_per_unit": 0.1,
+          "cost_ratio_r": 5.5,
+          "winner": "TST lite",
+          "profit_loss_by_model": {
+            "TST lite": {
+              "total_profit_loss_per_day": 0.5408694672185089,
+              "contribution_loss_per_day": 0.44759877549293675,
+              "holding_loss_per_day": 0.09327069172557219
+            },
+            "plain DS": {
+              "total_profit_loss_per_day": 0.5500852163077553,
+              "contribution_loss_per_day": 0.419178638201685,
+              "holding_loss_per_day": 0.13090657810607031
+            },
+            "TFT lite": {
+              "total_profit_loss_per_day": 0.596362616781487,
+              "contribution_loss_per_day": 0.3987584323629651,
+              "holding_loss_per_day": 0.19760418441852193
+            },
+            "DeepAR lite": {
+              "total_profit_loss_per_day": 0.6525380547764316,
+              "contribution_loss_per_day": 0.36745449838312705,
+              "holding_loss_per_day": 0.2850835563933045
+            }
+          }
+        }
+      },
+      "curves": {
+        "TST lite": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            1.1361609061161477,
+            1.3396148949765734,
+            1.5430688838369992,
+            1.7465228726974251,
+            1.9499768615578508,
+            2.1534308504182764,
+            2.3568848392787025,
+            2.560338828139128,
+            2.96724680585998,
+            3.374154783580831,
+            3.7810627613016825,
+            4.187970739022535,
+            4.594878716743386,
+            5.001786694464237,
+            5.408694672185089,
+            5.815602649905941,
+            6.222510627626792,
+            6.629418605347643,
+            7.036326583068496,
+            7.443234560789347,
+            7.850142538510198,
+            8.25705051623105,
+            8.663958493951903,
+            9.070866471672753,
+            9.477774449393605,
+            9.884682427114456,
+            10.291590404835308,
+            10.69849838255616,
+            12.326130293439565,
+            13.953762204322972,
+            15.581394115206379,
+            17.209026026089784,
+            18.83665793697319,
+            20.464289847856598,
+            22.091921758740003,
+            23.71955366962341,
+            25.347185580506817,
+            26.974817491390223,
+            28.602449402273628,
+            30.230081313157037,
+            31.85771322404044,
+            33.48534513492385
+          ]
+        },
+        "plain DS": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            1.4996015256978326,
+            1.6901372703349622,
+            1.8806730149720918,
+            2.0712087596092212,
+            2.2617445042463507,
+            2.45228024888348,
+            2.64281599352061,
+            2.8333517381577393,
+            3.2144232274319986,
+            3.5954947167062574,
+            3.9765662059805167,
+            4.357637695254775,
+            4.738709184529034,
+            5.119780673803294,
+            5.500852163077553,
+            5.881923652351812,
+            6.262995141626071,
+            6.64406663090033,
+            7.025138120174589,
+            7.406209609448847,
+            7.787281098723106,
+            8.168352587997365,
+            8.549424077271626,
+            8.930495566545885,
+            9.311567055820143,
+            9.692638545094402,
+            10.073710034368661,
+            10.45478152364292,
+            11.979067480739957,
+            13.503353437836992,
+            15.027639394934027,
+            16.551925352031066,
+            18.0762113091281,
+            19.600497266225137,
+            21.124783223322172,
+            22.64906918041921,
+            24.173355137516246,
+            25.69764109461328,
+            27.221927051710317,
+            28.746213008807352,
+            30.27049896590439,
+            31.794784923001426
+          ]
+        },
+        "TFT lite": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            2.1572956770774763,
+            2.338549509969733,
+            2.51980334286199,
+            2.7010571757542468,
+            2.8823110086465036,
+            3.0635648415387604,
+            3.2448186744310172,
+            3.426072507323274,
+            3.7885801731077877,
+            4.151087838892302,
+            4.5135955046768155,
+            4.876103170461329,
+            5.238610836245843,
+            5.601118502030356,
+            5.96362616781487,
+            6.326133833599384,
+            6.688641499383897,
+            7.051149165168411,
+            7.413656830952925,
+            7.776164496737438,
+            8.138672162521953,
+            8.501179828306466,
+            8.86368749409098,
+            9.226195159875493,
+            9.588702825660008,
+            9.95121049144452,
+            10.313718157229035,
+            10.67622582301355,
+            12.126256486151604,
+            13.576287149289659,
+            15.026317812427713,
+            16.476348475565768,
+            17.926379138703822,
+            19.376409801841877,
+            20.82644046497993,
+            22.276471128117986,
+            23.72650179125604,
+            25.176532454394096,
+            26.62656311753215,
+            28.076593780670205,
+            29.52662444380826,
+            30.976655106946314
+          ]
+        },
+        "DeepAR lite": {
+          "r": [
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            1.25,
+            1.5,
+            1.75,
+            2.0,
+            2.5,
+            3.0,
+            3.5,
+            4.0,
+            4.5,
+            5.0,
+            5.5,
+            6.0,
+            6.5,
+            7.0,
+            7.5,
+            8.0,
+            8.5,
+            9.0,
+            9.5,
+            10.0,
+            10.5,
+            11.0,
+            11.5,
+            12.0,
+            14.0,
+            16.0,
+            18.0,
+            20.0,
+            22.0,
+            24.0,
+            26.0,
+            28.0,
+            30.0,
+            32.0,
+            34.0,
+            36.0,
+            38.0,
+            40.0
+          ],
+          "cost": [
+            3.0178603359253757,
+            3.1848851079177063,
+            3.3519098799100364,
+            3.518934651902367,
+            3.6859594238946976,
+            3.8529841958870277,
+            4.020008967879358,
+            4.187033739871689,
+            4.52108328385635,
+            4.855132827841011,
+            5.189182371825671,
+            5.5232319158103325,
+            5.857281459794994,
+            6.191331003779654,
+            6.525380547764315,
+            6.859430091748976,
+            7.193479635733637,
+            7.5275291797182975,
+            7.861578723702959,
+            8.19562826768762,
+            8.529677811672281,
+            8.863727355656941,
+            9.197776899641603,
+            9.531826443626263,
+            9.865875987610924,
+            10.199925531595586,
+            10.533975075580246,
+            10.868024619564906,
+            12.20422279550355,
+            13.540420971442195,
+            14.87661914738084,
+            16.21281732331948,
+            17.549015499258125,
+            18.88521367519677,
+            20.221411851135414,
+            21.557610027074055,
+            22.8938082030127,
+            24.230006378951344,
+            25.56620455488999,
+            26.902402730828634,
+            28.238600906767275,
+            29.57479908270592
+          ]
+        }
+      }
+    }
+  },
+  "portfolio_selector": {
+    "rule": "Pick model by business r=C_lost/C_hold vs lead-time-specific r*. High-margin / high-penalty \u2192 DS when r>r*; low-margin / high-carry \u2192 TST when r<r*.",
+    "by_lead_time": {
+      "lt_1_day": {
+        "r_star": 4.5833138724469205,
+        "low_margin_winner": "TST lite",
+        "mid_margin_winner": "TST lite",
+        "high_margin_winner": "plain DS"
+      },
+      "lt_1_week": {
+        "r_star": 7.052909312185486,
+        "low_margin_winner": "TST lite",
+        "mid_margin_winner": "TST lite",
+        "high_margin_winner": "TST lite"
+      },
+      "lt_2_weeks": {
+        "r_star": 7.283475550150039,
+        "low_margin_winner": "TST lite",
+        "mid_margin_winner": "TST lite",
+        "high_margin_winner": "TST lite"
+      }
+    }
+  },
+  "h1_reclaim_reference": {
+    "note": "Separate H=1 reclaim panel (TST vs plain DS only); not MH-locked.",
+    "crossover": {
+      "rule": "For r < r*: prefer lower-holding model (TST lite if it has lower H). For r > r*: prefer lower-stockout model (plain DS if it has lower U).",
+      "pair": [
+        "TST lite",
+        "plain DS"
+      ],
+      "r_star": 6.689953918626152,
+      "interpretation": {
+        "left_of_r_star": "Holding hurts relatively more \u2192 cooler / lower-overstock posture",
+        "right_of_r_star": "Lost sales hurt more \u2192 lower-stockout posture"
+      }
+    },
+    "components": {
+      "TST lite": {
+        "U": 0.7575803932995355,
+        "H": 0.7589117880381281,
+        "sales_revenue_loss_units": 6.572151100977653,
+        "inventory_holding_cost_zero": 0.8577904017425546,
+        "iwmae_rounded": 3.990259473490895
+      },
+      "plain DS": {
+        "U": 0.7082830553647684,
+        "H": 1.0887087071326609,
+        "sales_revenue_loss_units": 6.144556079201356,
+        "inventory_holding_cost_zero": 1.2305547708069873,
+        "iwmae_rounded": 4.045039139061245
+      }
+    },
+    "margin_regimes": {
+      "low_margin": {
+        "label": "Low Margin",
+        "margin": 0.08,
+        "holding_cost_per_unit": 0.1,
+        "cost_ratio_r": 0.7999999999999999,
+        "winner": "TST lite",
+        "profit_loss_by_model": {
+          "TST lite": {
+            "total_profit_loss_per_day": 0.13649761026777565,
+            "contribution_loss_per_day": 0.06060643146396284,
+            "holding_loss_per_day": 0.07589117880381281
+          },
+          "plain DS": {
+            "total_profit_loss_per_day": 0.16553351514244757,
+            "contribution_loss_per_day": 0.05666264442918147,
+            "holding_loss_per_day": 0.1088708707132661
+          }
+        }
+      },
+      "mid_margin": {
+        "label": "Mid Margin",
+        "margin": 0.25,
+        "holding_cost_per_unit": 0.1,
+        "cost_ratio_r": 2.5,
+        "winner": "TST lite",
+        "profit_loss_by_model": {
+          "TST lite": {
+            "total_profit_loss_per_day": 0.2652862771286967,
+            "contribution_loss_per_day": 0.18939509832488388,
+            "holding_loss_per_day": 0.07589117880381281
+          },
+          "plain DS": {
+            "total_profit_loss_per_day": 0.2859416345544582,
+            "contribution_loss_per_day": 0.1770707638411921,
+            "holding_loss_per_day": 0.1088708707132661
+          }
+        }
+      },
+      "high_margin": {
+        "label": "High Margin",
+        "margin": 0.55,
+        "holding_cost_per_unit": 0.1,
+        "cost_ratio_r": 5.5,
+        "winner": "TST lite",
+        "profit_loss_by_model": {
+          "TST lite": {
+            "total_profit_loss_per_day": 0.49256039511855737,
+            "contribution_loss_per_day": 0.4166692163147446,
+            "holding_loss_per_day": 0.07589117880381281
+          },
+          "plain DS": {
+            "total_profit_loss_per_day": 0.4984265511638888,
+            "contribution_loss_per_day": 0.38955568045062267,
+            "holding_loss_per_day": 0.1088708707132661
+          }
+        }
+      }
+    }
+  }
+}

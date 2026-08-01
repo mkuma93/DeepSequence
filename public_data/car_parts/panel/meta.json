@@ -1,0 +1,8 @@
+{
+  "source": "Monash Car Parts (Zenodo 4656021)",
+  "frequency": "monthly",
+  "n_series_kept": 2565,
+  "val_months": 6,
+  "test_months": 6,
+  "zero_rate_all": 0.759088975904498
+}

@@ -30,7 +30,11 @@ import traceback
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from deepsequence_hierarchical_attention.components_lightweight import build_hierarchical_model_lightweight
+from deepsequence_hierarchical_attention.components_lightweight import (
+    build_hierarchical_model_lightweight,
+    estimate_zero_rate_by_sku,
+    multioutput_bce_sample_weight_dict,
+)
 from deepsequence_hierarchical_attention.losses import (
     composite_loss,
     three_term_loss_config,
@@ -135,6 +139,12 @@ class AdaptiveWeightedModel(keras.Model):
       - "bce_mae": BCE + MAE(final) on all days (shape-safe)
       - "three_term": inverse-weighted gated MAE + nonzero mag MAE + light BCE
         (recommended)
+
+    When ``sku_zero_rates`` is provided (length ``n_skus``), the BCE / occurrence
+    term uses per-SKU ``pos_weight`` looked up from the last model input (SKU
+    ids). Multi-horizon targets broadcast the same SKU weight across the
+    horizon after flatten. Panel ``pos_weight`` remains the fallback when rates
+    are omitted.
     """
     
     def __init__(self, base_model, bce_loss_fn, mae_loss_fn, 
@@ -143,6 +153,8 @@ class AdaptiveWeightedModel(keras.Model):
                  loss_recipe="legacy",
                  alpha_bce=0.2, w_gated=1.0, w_mag=1.0,
                  horizon_decay=1.0,
+                 sku_zero_rates=None,
+                 pos_weight_cap=20.0,
                  **kwargs):
         super().__init__(**kwargs)
         self.base_model = base_model
@@ -160,10 +172,29 @@ class AdaptiveWeightedModel(keras.Model):
         self.zero_rate = zero_rate
         self.avg_nonzero_demand = avg_nonzero_demand
         self.pos_weight = float(pos_weight)
+        self.pos_weight_cap = float(pos_weight_cap)
         zr = float(zero_rate)
         nz = max(1.0 - zr, 1e-6)
         self.w_zero = 1.0 / (2.0 * max(zr, 1e-6))
         self.w_nonzero = 1.0 / (2.0 * nz)
+        self.sku_zero_rates = None
+        self._sku_pos_weight_table = None
+        if sku_zero_rates is not None:
+            rates = np.asarray(sku_zero_rates, dtype=np.float32).reshape(-1)
+            if rates.size == 0:
+                raise ValueError("sku_zero_rates must be non-empty when provided")
+            self.sku_zero_rates = rates
+            pos_ws = np.array(
+                [
+                    min(
+                        self.pos_weight_cap,
+                        float(r) / max(1.0 - float(r), 1e-6),
+                    )
+                    for r in rates
+                ],
+                dtype=np.float32,
+            )
+            self._sku_pos_weight_table = tf.constant(pos_ws, dtype=tf.float32)
         
         # Calculate optimal threshold for highly imbalanced data
         # For 90% zeros: threshold should match the non-zero rate (0.1) for balanced predictions
@@ -197,11 +228,46 @@ class AdaptiveWeightedModel(keras.Model):
             out.append(tf.reshape(t, [-1, 1]))
         return out
 
-    def _compute_task_losses(self, y_true, final_forecast, non_zero_probability, base_forecast):
+    def _sku_ids_from_inputs(self, x):
+        """Last list/tuple input is SKU; dict may use 'sku' / 'sku_input'."""
+        if isinstance(x, (list, tuple)) and len(x) > 0:
+            return x[-1]
+        if isinstance(x, dict):
+            for key in ("sku", "sku_input", "sku_ids"):
+                if key in x:
+                    return x[key]
+        return None
+
+    def _bce_pos_weight_for_batch(self, y_true, sku_ids):
+        """Scalar panel pos_weight or per-row SKU weights aligned to flattened y."""
+        if self._sku_pos_weight_table is None or sku_ids is None:
+            return tf.constant(self.pos_weight, dtype=tf.float32)
+        sku = tf.reshape(tf.cast(sku_ids, tf.int32), [-1])
+        pw = tf.gather(self._sku_pos_weight_table, sku)  # [B]
+        # Multi-horizon: y is [B, H] before align → flat length B*H
+        y_rank = y_true.shape.rank
+        if y_rank is not None and y_rank >= 2:
+            h = tf.shape(y_true)[-1]
+            pw = tf.reshape(
+                tf.tile(pw[:, tf.newaxis], [1, h]),
+                [-1, 1],
+            )
+        else:
+            # Dynamic rank or [B]/[B,1] after we'll align to [-1,1]
+            flat_n = tf.reduce_prod(tf.shape(y_true))
+            b = tf.shape(sku)[0]
+            h = flat_n // b
+            pw = tf.reshape(tf.tile(pw[:, tf.newaxis], [1, h]), [-1, 1])
+        return pw
+
+    def _compute_task_losses(
+        self, y_true, final_forecast, non_zero_probability, base_forecast, sku_ids=None
+    ):
         y_true = tf.cast(y_true, tf.float32)
         final_forecast = tf.cast(final_forecast, tf.float32)
         non_zero_probability = tf.cast(non_zero_probability, tf.float32)
         base_forecast = tf.cast(base_forecast, tf.float32)
+        bce_pos_w = self._bce_pos_weight_for_batch(y_true, sku_ids)
 
         # Optional down-weight of farther horizons when rank > 1
         if self.horizon_decay < 1.0:
@@ -231,6 +297,10 @@ class AdaptiveWeightedModel(keras.Model):
         y_true, final_forecast, non_zero_probability, base_forecast = self._align(
             y_true, final_forecast, non_zero_probability, base_forecast
         )
+        if bce_pos_w.shape.rank is not None and bce_pos_w.shape.rank == 0:
+            pass  # scalar panel weight
+        else:
+            bce_pos_w = tf.reshape(bce_pos_w, [-1, 1])
         # If horizon weights were applied pre-align we'd need different path.
         # Equal-weight flatten is default; horizon_decay handled below when shapes match.
         y_nonzero = tf.cast(y_true > 0, tf.float32)
@@ -243,7 +313,7 @@ class AdaptiveWeightedModel(keras.Model):
             )
             p_clip = tf.clip_by_value(non_zero_probability, 1e-7, 1.0 - 1e-7)
             bce_loss = tf.reduce_mean(
-                -self.pos_weight * y_nonzero * tf.math.log(p_clip)
+                -bce_pos_w * y_nonzero * tf.math.log(p_clip)
                 - (1.0 - y_nonzero) * tf.math.log(1.0 - p_clip)
             )
             total = (
@@ -253,8 +323,15 @@ class AdaptiveWeightedModel(keras.Model):
             )
             return total, bce_loss, gated_mae, mag_mae, y_nonzero
 
-        # BCE via provided loss fn (shape-aligned)
-        bce_loss = self.bce_loss_fn(y_nonzero, non_zero_probability)
+        # BCE: per-SKU when table is set; else provided loss fn (panel scalar)
+        if self._sku_pos_weight_table is not None and sku_ids is not None:
+            p_clip = tf.clip_by_value(non_zero_probability, 1e-7, 1.0 - 1e-7)
+            bce_loss = tf.reduce_mean(
+                -bce_pos_w * y_nonzero * tf.math.log(p_clip)
+                - (1.0 - y_nonzero) * tf.math.log(1.0 - p_clip)
+            )
+        else:
+            bce_loss = self.bce_loss_fn(y_nonzero, non_zero_probability)
 
         if self.loss_recipe == "bce_mae":
             mae_loss = tf.reduce_mean(tf.abs(y_true - final_forecast))
@@ -282,6 +359,7 @@ class AdaptiveWeightedModel(keras.Model):
         else:
             x, y = data
         y_true = y.get('base_forecast', y.get('final_forecast'))
+        sku_ids = self._sku_ids_from_inputs(x)
         
         with tf.GradientTape() as tape:
             outputs = self.base_model(x, training=True)
@@ -290,7 +368,7 @@ class AdaptiveWeightedModel(keras.Model):
             base_forecast = outputs.get('base_forecast', final_forecast)
 
             total_loss, bce_loss, mae_loss, mag_mae, y_nonzero = self._compute_task_losses(
-                y_true, final_forecast, non_zero_probability, base_forecast
+                y_true, final_forecast, non_zero_probability, base_forecast, sku_ids=sku_ids
             )
             
             if self.base_model.losses:
@@ -345,6 +423,7 @@ class AdaptiveWeightedModel(keras.Model):
         else:
             x, y = data
         y_true = y.get('base_forecast', y.get('final_forecast'))
+        sku_ids = self._sku_ids_from_inputs(x)
         
         outputs = self.base_model(x, training=False)
         final_forecast = outputs['final_forecast']
@@ -352,7 +431,7 @@ class AdaptiveWeightedModel(keras.Model):
         base_forecast = outputs.get('base_forecast', final_forecast)
 
         total_loss, bce_loss, mae_loss, mag_mae, y_nonzero = self._compute_task_losses(
-            y_true, final_forecast, non_zero_probability, base_forecast
+            y_true, final_forecast, non_zero_probability, base_forecast, sku_ids=sku_ids
         )
         
         if self.base_model.losses:
@@ -708,11 +787,11 @@ def main():
             'learning_rate': float(cfg_val('learning_rate', 0.0025)),
             'loss_type': cfg_val('loss_type', 'sku_aware'),
             'alpha': float(cfg_val('alpha', 0.10)),
-            'use_cross_layers': bool(cfg_val('use_cross_layers', True)),
+            'use_cross_layers': bool(cfg_val('use_cross_layers', False)),
             'use_intermittent': bool(cfg_val('use_intermittent', True)),
         }
     else:
-        best_params['use_cross_layers'] = True
+        best_params['use_cross_layers'] = bool(cfg_val('use_cross_layers', False))
         best_params['use_intermittent'] = True
     
     print("\nUsing base hyperparameters from Trial 18 (with architecture overrides):")
@@ -1136,20 +1215,52 @@ def main():
     batch_size = int(cfg_val('batch_size', best_params['batch_size']))
     epochs = int(cfg_val('epochs', 100))
 
-    # three_term / bce_mae already balance classes inside the loss; skip extra SKU weights
-    # on final_forecast to avoid double-counting. legacy keeps per-SKU forecast weights.
-    if loss_recipe in ('three_term', 'bce_mae'):
-        fit_sample_weight = {
-            'non_zero_probability': None,
-            'final_forecast': None,
-            'base_forecast': None,
-        }
+    # three_term / bce_mae: per-SKU BCE imbalance via relative sample weights.
+    # legacy keeps per-SKU forecast magnitude weights (log1p mean demand).
+    n_skus_fit = int(max(int(sku_train.max()), int(sku_val.max())) + 1)
+    sku_zr_info = estimate_zero_rate_by_sku(y_train, sku_train, n_skus=n_skus_fit)
+    if loss_recipe in ("three_term", "bce_mae"):
+        fit_sample_weight = multioutput_bce_sample_weight_dict(
+            y_train,
+            sku_train,
+            sku_zr_info["rates"],
+            reference_zero_rate=float(zero_rate),
+            other_keys=("final_forecast", "base_forecast"),
+        )
+        val_sample_weight = multioutput_bce_sample_weight_dict(
+            y_val,
+            sku_val,
+            sku_zr_info["rates"],
+            reference_zero_rate=float(zero_rate),
+            other_keys=("final_forecast", "base_forecast"),
+        )
+        print(
+            f"  Per-SKU BCE sample weights ON "
+            f"(panel_zr={float(zero_rate):.3f}, n_skus={n_skus_fit})"
+        )
+        validation_data = (
+            [X_val_trend, X_val_seasonal, X_val_holiday, X_val_regressor, sku_val],
+            {
+                "non_zero_probability": y_val_binary,
+                "final_forecast": y_val,
+                "base_forecast": y_val,
+            },
+            val_sample_weight,
+        )
     else:
         fit_sample_weight = {
-            'non_zero_probability': None,
-            'final_forecast': sample_weights_train,
-            'base_forecast': None,
+            "non_zero_probability": None,
+            "final_forecast": sample_weights_train,
+            "base_forecast": None,
         }
+        validation_data = (
+            [X_val_trend, X_val_seasonal, X_val_holiday, X_val_regressor, sku_val],
+            {
+                "non_zero_probability": y_val_binary,
+                "final_forecast": y_val,
+                "base_forecast": y_val,
+            },
+        )
 
     history = model.fit(
         [X_train_trend, X_train_seasonal, X_train_holiday,
@@ -1160,15 +1271,7 @@ def main():
             'base_forecast': y_train  # Base forecast target (mag term when three_term)
         },
         sample_weight=fit_sample_weight,
-        validation_data=(
-            [X_val_trend, X_val_seasonal, X_val_holiday,
-             X_val_regressor, sku_val],
-            {
-                'non_zero_probability': y_val_binary,  # Binary classification target (for metrics only)
-                'final_forecast': y_val,  # Final forecast target
-                'base_forecast': y_val  # Base forecast target (no loss)
-            }
-        ),
+        validation_data=validation_data,
         epochs=epochs,
         batch_size=batch_size,
         callbacks=callbacks,

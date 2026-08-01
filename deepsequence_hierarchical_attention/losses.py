@@ -31,6 +31,10 @@ def weighted_bce_loss(pos_weight=9.0):
     - Non-zero class weight: pos_weight (default 9.0)
     
     This gives 9x penalty for false negatives (predicting zero when demand is non-zero).
+
+    Returns **per-sample** losses so Keras ``sample_weight`` (e.g. per-SKU
+    relative weights from ``bce_sample_weights_from_sku_zero_rates``) applies
+    correctly before the framework reduces.
     
     Args:
         pos_weight: Positive class weight (default 9.0)
@@ -63,7 +67,7 @@ def weighted_bce_loss(pos_weight=9.0):
             (1 - y_binary) * tf.math.log(1 - y_pred_safe)
         )
         
-        return tf.reduce_mean(bce)
+        return bce
     
     return loss_fn
 

@@ -23,6 +23,10 @@ from .losses import (
 
 from .components_lightweight import (
     build_hierarchical_model_lightweight,
+    estimate_zero_rate_by_sku,
+    pos_weight_from_zero_rate,
+    bce_sample_weights_from_sku_zero_rates,
+    multioutput_bce_sample_weight_dict,
     FOURIER_PERIODS_BY_FREQUENCY,
     fourier_periods_for_frequency,
     default_fourier_periods_for_frequency,
@@ -85,6 +89,10 @@ __all__ = [
     # Model
     "build_hierarchical_model_lightweight",
     "build_hierarchical_model_hybrid",
+    "estimate_zero_rate_by_sku",
+    "pos_weight_from_zero_rate",
+    "bce_sample_weights_from_sku_zero_rates",
+    "multioutput_bce_sample_weight_dict",
     "FOURIER_PERIODS_BY_FREQUENCY",
     "fourier_periods_for_frequency",
     "default_fourier_periods_for_frequency",
