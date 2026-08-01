@@ -83,7 +83,7 @@ ax.text(50, 98, "DeepSequence — Hierarchical Attention Forecaster",
         ha="center", va="center", fontsize=18, fontweight="bold", color=INK,
         family=FONT)
 ax.text(50, 94.7,
-        "Default:  DS + softsign + monotone experts + context-aware mixer",
+        "Default:  DS + softsign + experts + context-aware mixer",
         ha="center", va="center", fontsize=11.5, color="#ef6c00", family=FONT,
         fontweight="bold")
 
@@ -97,8 +97,8 @@ for yy, lab in [(88.5, "INPUTS"), (72.0, "EXPERTS"),
 
 # ---- INPUTS --------------------------------------------------------------
 iy, ih, iw, gap, x0 = 87.0, 6.4, 16.5, 2.0, 6.5
-inputs = [("Temporal", "date / calendar"), ("Fourier", "learnable \u03c9"),
-          ("Holiday", "days-from-event"), ("Lag", "1, 2, 7\u2020")]
+inputs = [("Trend time", "time index"), ("Fourier", "fixed (\u03c9 opt.)"),
+          ("Holiday", "days-from-event"), ("Lags / state", "lags + intermitt.\u2020")]
 in_boxes = [box(x0 + i * (iw + gap), iy, iw, ih, t, C_INPUT, C_INPUT_E, sub=s)
             for i, (t, s) in enumerate(inputs)]
 sku_in = box(x0 + 4 * (iw + gap), iy, 12.5, ih, "SKU id", C_INPUT, C_INPUT_E,
@@ -110,9 +110,9 @@ arrow(sku_in["bot"], sku_emb["top"], color=C_SKU_E)
 # ---- EXPERTS (row) -------------------------------------------------------
 ey, eh, ew = 68.5, 8.2, 16.5
 experts = [("Trend", "monotone trend"),
-           ("Seasonal", "learnable Fourier"),
+           ("Seasonal", "fixed Fourier"),
            ("Holiday", "monotone |distance|"),
-           ("Regressor", "monotone lag AR")]
+           ("Regressor", "lags + intermittent")]
 ex_boxes = []
 for i, (t, s) in enumerate(experts):
     x = x0 + i * (iw + gap)
@@ -136,7 +136,7 @@ ly, lh = 56.5, 6.6
 local_labels = [("softplus monotone", "single basis"),
                 ("freq attention", "masked-entropy"),
                 ("monotone attention", "over distances"),
-                ("lag attention", "over lag features")]
+                ("regressor attention", "over lags / state")]
 l_boxes = []
 for i, (t, s) in enumerate(local_labels):
     x = x0 + i * (iw + gap)
@@ -228,7 +228,8 @@ for i, (t, s) in enumerate(outs):
 ax.text(50, -1.6,
         "solid = default path   \u00b7   dashed = optional / conditioning / "
         "ablation   \u00b7   \u2020 lags are frequency-aware "
-        "(daily 1,2,7 \u00b7 monthly 1,2,12 \u00b7 quarterly 1,4)",
+        "(daily 1,2,7 \u00b7 monthly 1,2,12 preset \u00b7 quarterly 1,4)   \u00b7   "
+        "monotone maps: trend/holiday/regressor only",
         ha="center", va="center", fontsize=8.6, color="#9aa5b1", family=FONT)
 
 out = Path(__file__).resolve().parent / "fig_architecture_ds.png"

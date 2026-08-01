@@ -34,7 +34,7 @@ If images do not render in Cursor’s markdown preview (common with Google Drive
 
 ## Figure 5. End-to-end architecture
 
-From `paper_figures/deepsequence.pptx` slide 3 (shared SKU embedding \(e_i\) → FiLM / mixer / gate).
+Code-faithful labels on slide art: trend time index · fixed Fourier (ω optional) · Regressor (lags + intermittent state) · monotone maps only on trend/holiday/regressor · mixer query = SKU ⊕ lag/state · shared \(e_i\).
 
 ![End-to-end architecture](paper_figures/fig_m5_architecture.png)
 

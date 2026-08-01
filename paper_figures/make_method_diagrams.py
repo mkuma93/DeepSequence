@@ -10,8 +10,9 @@ Matches ``components_lightweight.py``:
   - Gate: ŷ = p · b
 
 Primary end-to-end architecture (Figure 5) is the user PowerPoint slide
-(``deepsequence.pptx`` slide 3 → ``fig_m5_architecture.png``), not the
-matplotlib schematic. ``fig_architecture_schematic`` is optional only.
+(``deepsequence.pptx`` slide 3) with code-faithful label overlays from
+``annotate_architecture_labels.py`` → ``fig_m5_architecture.png``.
+The matplotlib schematic is optional only.
 
 Writes PNG+PDF under paper_figures/ for figs M1–M4 (+ optional schematic).
 """
@@ -645,26 +646,34 @@ def fig_architecture_schematic():
 
 
 def export_architecture_from_pptx(pptx_name: str = "deepsequence.pptx", slide_media: str = "ppt/media/image3.png"):
-    """Copy the overall-architecture PNG embedded in the user PPT into fig_m5_*."""
+    """Deprecated raw export — use annotate_architecture_labels (code-faithful).
+
+    Kept for debugging only; ``main()`` runs the annotate pipeline so regen
+    does not overwrite Figure 5 with uncorrected PPT labels.
+    """
+    import io
     import shutil
     import zipfile
+
+    from PIL import Image
 
     pptx = OUT / pptx_name
     if not pptx.is_file():
         raise FileNotFoundError(pptx)
     with zipfile.ZipFile(pptx) as zf:
         data = zf.read(slide_media)
-    png = OUT / "fig_m5_architecture.png"
+    png = OUT / "fig_m5_architecture_raw_from_pptx.png"
     png.write_bytes(data)
-    # PDF companion
-    from PIL import Image
-    import io
-
     im = Image.open(io.BytesIO(data)).convert("RGB")
-    im.save(OUT / "fig_m5_architecture.pdf", "PDF", resolution=300.0)
-    shutil.copyfile(png, OUT / "fig_architecture_ds.png")
-    shutil.copyfile(OUT / "fig_m5_architecture.pdf", OUT / "fig_architecture_ds.pdf")
-    print(f"exported {pptx.name}:{slide_media} → {png.name} (+ pdf, fig_architecture_ds.*)")
+    im.save(OUT / "fig_m5_architecture_raw_from_pptx.pdf", "PDF", resolution=300.0)
+    print(f"raw export {pptx.name}:{slide_media} → {png.name} (not primary fig_m5)")
+
+
+def export_architecture_code_faithful():
+    """Apply code-faithful label overlays and write primary fig_m5_* (+ patch PPT)."""
+    import annotate_architecture_labels as aal
+
+    aal.main()
 
 
 def main():
@@ -672,8 +681,8 @@ def main():
     fig_monotone()
     fig_level1_attention()
     fig_context_mixer()
-    # Primary overall architecture is the user PPT (slide 3 / image3.png).
-    export_architecture_from_pptx()
+    # Primary overall architecture: pristine slide art + code-faithful labels.
+    export_architecture_code_faithful()
 
 
 if __name__ == "__main__":
