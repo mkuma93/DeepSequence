@@ -466,6 +466,11 @@ class FeatureConfig:
         meta = self.config.get("metadata", {}) or {}
         holiday_encoding = str(meta.get("holiday_encoding", "days_from"))
         holiday_calendar_mode = str(meta.get("holiday_calendar", "static")).lower()
+        # year = within-year reset (default for rebuilt paths); nearest = legacy
+        # cross-year. Locked bake-off CSVs are nearest-style until regenerated.
+        holiday_distance_scope = str(
+            meta.get("holiday_distance_scope", meta.get("distance_scope", "year"))
+        ).lower()
         if expected_holidays:
             if holiday_encoding in ("month_has", "months_from"):
                 try:
@@ -509,12 +514,16 @@ class FeatureConfig:
                                 meta.get("holiday_country", "US"),
                             )
                         ),
+                        distance_scope=holiday_distance_scope,
                     )
                 else:
                     country = str(meta.get("holiday_country", "US"))
                     if holiday_encoding == "months_from":
                         built = months_from_holiday_features(
-                            df_sorted["ds"], holiday_keys=keys, country=country
+                            df_sorted["ds"],
+                            holiday_keys=keys,
+                            country=country,
+                            distance_scope=holiday_distance_scope,
                         )
                     else:
                         built = month_has_holiday_features(
@@ -546,6 +555,7 @@ class FeatureConfig:
                         date_col="ds",
                         country_col=country_col if country_col in df_sorted.columns else None,
                         default_country=str(meta.get("holiday_country_default", "US")),
+                        distance_scope=holiday_distance_scope,
                     )
                     holiday_subset = built[expected_holidays].reset_index(drop=True)
                     # Keep holiday_sorted in sync for binary derivation below.

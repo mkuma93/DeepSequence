@@ -7,11 +7,10 @@
 #
 # Same 15 shared holiday keys + 16 is_* binaries as
 # feature_config_daily_binary_holiday.yaml, but distances are rebuilt from
-# **per-country calendars** (sku_id prefix before `_`). UK SKUs get UK bank
-# holidays, AU get AU public holidays, etc. N/A keys use a large sentinel
-# distance so binaries stay off. Production daily bake-off can adopt later by
-# regenerating holiday_features_*.csv with build_country_holiday_distances
-# (or setting metadata.holiday_calendar: country) without changing n_features.
+# **per-country calendars** (sku_id prefix before `_`) with **year-scoped**
+# distances (holiday_distance_scope: year). UK SKUs get UK bank holidays, etc.
+# N/A keys use a large sentinel so binaries stay off. Locked holiday_features_*.csv
+# remain nearest-across-years until regenerated.
 
 # Total aligned features: 44
 # Breakdown: 1 trend + 6 cyclical + 3 lags + 3 intermittent
@@ -295,6 +294,9 @@ metadata:
   frequency: daily
   holiday_encoding: days_from
   holiday_calendar: country
+  # Within-year signed distance (obs - holiday_in_Y). Locked bake-off CSVs
+  # remain nearest-across-years until regenerated with distance_scope=nearest.
+  holiday_distance_scope: year
   holiday_country_default: US
   # Optional explicit column; otherwise parsed from id_var prefix before `_`.
   # holiday_country_column: country
@@ -316,12 +318,14 @@ metadata:
     - NL
     - EU
   dataset_context: "Forecast-only qualitative config with country calendars; does not alter locked IWMAE bake-off"
-  rationale: "Shared holiday key schema with country-local dates so UK/AU/EU SKUs are not scored against a US-only calendar; binaries ±1 day on retail keys."
+  rationale: "Shared holiday key schema with country-local dates so UK/AU/EU SKUs are not scored against a US-only calendar; binaries ±1 day on retail keys. Distances reset each calendar year."
   production_adoption: >
-    Locked bake-off keeps precomputed US holiday CSVs. To adopt in production:
+    Locked bake-off keeps precomputed US holiday CSVs (nearest-across-years
+    distances). To adopt year-scoped country calendars in production:
     (1) rebuild holiday_features_{train,val,test}.csv via
-    holiday_calendar.build_country_holiday_distances on each split, or
-    (2) set metadata.holiday_calendar: country in the daily feature YAML
+    holiday_calendar.build_country_holiday_distances(..., distance_scope='year')
+    on each split, or (2) set metadata.holiday_calendar: country and
+    metadata.holiday_distance_scope: year in the daily feature YAML
     (n_features unchanged). Re-run bake-off only after gating that change.
   intermittent_features:
     causal: true

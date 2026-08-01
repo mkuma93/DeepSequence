@@ -118,6 +118,9 @@ def _rebuild_holidays_for_split(df: pd.DataFrame, cfg) -> pd.DataFrame:
     keys = [n.replace("days_from_", "", 1) for n in cfg.holiday_names]
     meta = cfg.config.get("metadata", {}) or {}
     country_col = meta.get("holiday_country_column")
+    distance_scope = str(
+        meta.get("holiday_distance_scope", meta.get("distance_scope", "year"))
+    )
     hol = build_country_holiday_distances(
         df,
         holiday_keys=keys or None,
@@ -125,6 +128,7 @@ def _rebuild_holidays_for_split(df: pd.DataFrame, cfg) -> pd.DataFrame:
         date_col="ds",
         country_col=country_col if country_col in df.columns else None,
         default_country=str(meta.get("holiday_country_default", "US")),
+        distance_scope=distance_scope,
     )
     return _attach_binary_holidays(hol, cfg)
 
@@ -1014,7 +1018,15 @@ def _monthly_holiday_vector_for_date(date, cfg, sku_id):
     country = country_from_sku_id(sku_id, default=default_country)
     dates = pd.Series([pd.Timestamp(date)])
     if encoding == "months_from":
-        built = months_from_holiday_features(dates, holiday_keys=keys, country=country)
+        distance_scope = str(
+            meta.get("holiday_distance_scope", meta.get("distance_scope", "year"))
+        )
+        built = months_from_holiday_features(
+            dates,
+            holiday_keys=keys,
+            country=country,
+            distance_scope=distance_scope,
+        )
     else:
         built = month_has_holiday_features(dates, holiday_keys=keys, country=country)
     return built[[f"{prefix}{k}" for k in keys]].to_numpy(np.float32).reshape(-1)

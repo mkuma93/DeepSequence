@@ -156,6 +156,7 @@ metadata:
     carparts YAML stays holiday_encoding: none
   holiday_encoding: month_has
   holiday_calendar: country
+  holiday_distance_scope: year
   holiday_country_default: US
   # Optional explicit column; otherwise parsed from id_var prefix before `_`.
   # holiday_country_column: country

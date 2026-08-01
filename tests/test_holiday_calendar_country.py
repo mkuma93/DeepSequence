@@ -21,6 +21,7 @@ from holiday_calendar import (  # noqa: E402
     days_from_holiday_features,
     holiday_dates_for_year,
     month_has_holiday_features,
+    months_from_holiday_features,
     normalize_country,
 )
 
@@ -207,3 +208,89 @@ def test_months_from_country_sentinel_for_na():
         df, encoding="months_from", default_country="US"
     )
     assert hol.loc[0, "months_from_July4"] == NA_DISTANCE_DAYS
+
+
+def test_year_scope_christmas_resets_at_year_boundary():
+    """
+    Year-scoped convention: days_from = obs - holiday_date(Y).
+
+    Early in the year, Christmas is still ahead → large **negative** distance
+    to this year's Dec 25 (not a small positive to last year's Christmas).
+    After Christmas in the same year → small positive. At the next Jan 1,
+    Christmas of the new year applies immediately (again large negative).
+
+    Contrast with distance_scope='nearest' (legacy / locked CSV style).
+    """
+    dates = pd.Series(
+        [
+            pd.Timestamp(2011, 1, 7),
+            pd.Timestamp(2011, 12, 1),
+            pd.Timestamp(2011, 12, 26),
+            pd.Timestamp(2012, 1, 1),
+        ]
+    )
+    year = days_from_holiday_features(dates, country="US", distance_scope="year")
+    nearest = days_from_holiday_features(
+        dates, country="US", distance_scope="nearest"
+    )
+
+    # 2011-01-07: year → −352 to 2011-12-25; nearest → +13 after 2010-12-25
+    assert year.loc[0, "days_from_Christmas"] == -352.0
+    assert nearest.loc[0, "days_from_Christmas"] == 13.0
+
+    # Mid-December: both scopes agree (nearest event is this year's Christmas)
+    assert year.loc[1, "days_from_Christmas"] == -24.0
+    assert nearest.loc[1, "days_from_Christmas"] == -24.0
+
+    # Day after Christmas: +1 under both
+    assert year.loc[2, "days_from_Christmas"] == 1.0
+    assert nearest.loc[2, "days_from_Christmas"] == 1.0
+
+    # New Year's Day 2012: year resets to 2012-12-25 (−359), nearest still
+    # counts days after 2011-12-25 (+7)
+    assert year.loc[3, "days_from_Christmas"] == -359.0
+    assert nearest.loc[3, "days_from_Christmas"] == 7.0
+
+
+def test_year_scope_newyear_and_newyeareve_anchors():
+    """NewYear = Jan 1 of Y; NewYearEve = Dec 31 of Y (not next year's Jan 1)."""
+    dates = pd.Series(
+        [pd.Timestamp(2011, 1, 1), pd.Timestamp(2011, 1, 7), pd.Timestamp(2011, 12, 31)]
+    )
+    dist = days_from_holiday_features(dates, country="US", distance_scope="year")
+    assert dist.loc[0, "days_from_NewYear"] == 0.0
+    assert dist.loc[0, "days_from_NewYearEve"] == -364.0
+    assert dist.loc[1, "days_from_NewYear"] == 6.0
+    assert dist.loc[2, "days_from_NewYearEve"] == 0.0
+    # Dec 31 is far from this year's Jan 1 NewYear (not −1 to next NewYear)
+    assert dist.loc[2, "days_from_NewYear"] == 364.0
+
+
+def test_year_scope_months_from_christmas():
+    """Jan vs Christmas is −11 months (this year), not +1 to prior December."""
+    dates = pd.Series(
+        [pd.Timestamp(2011, 1, 1), pd.Timestamp(2011, 6, 1), pd.Timestamp(2011, 12, 1)]
+    )
+    year = months_from_holiday_features(dates, country="US", distance_scope="year")
+    nearest = months_from_holiday_features(
+        dates, country="US", distance_scope="nearest"
+    )
+    assert year.loc[0, "months_from_Christmas"] == -11.0
+    assert nearest.loc[0, "months_from_Christmas"] == 1.0
+    assert year.loc[1, "months_from_Christmas"] == -6.0
+    assert year.loc[2, "months_from_Christmas"] == 0.0
+
+
+def test_default_distance_scope_is_year():
+    dates = pd.Series([pd.Timestamp(2011, 1, 7)])
+    dist = days_from_holiday_features(dates, country="US")
+    assert dist.loc[0, "days_from_Christmas"] == -352.0
+
+
+def test_year_scope_binaries_still_on_day():
+    """is_* from |days_from| still fire on this year's holiday date."""
+    dates = pd.Series([pd.Timestamp(2011, 12, 25), pd.Timestamp(2011, 1, 7)])
+    dist = days_from_holiday_features(dates, country="UK", distance_scope="year")
+    binaries = binary_holiday_features(dist, window_days=0)
+    assert binaries.loc[0, "is_Christmas"] == 1.0
+    assert binaries.loc[1, "is_Christmas"] == 0.0

@@ -108,6 +108,9 @@ def _rebuild_holidays_for_split(df: pd.DataFrame, cfg) -> pd.DataFrame:
     keys = [n.replace("days_from_", "", 1) for n in cfg.holiday_names]
     meta = cfg.config.get("metadata", {}) or {}
     country_col = meta.get("holiday_country_column")
+    distance_scope = str(
+        meta.get("holiday_distance_scope", meta.get("distance_scope", "year"))
+    )
     hol = build_country_holiday_distances(
         df,
         holiday_keys=keys or None,
@@ -115,6 +118,7 @@ def _rebuild_holidays_for_split(df: pd.DataFrame, cfg) -> pd.DataFrame:
         date_col="ds",
         country_col=country_col if country_col in df.columns else None,
         default_country=str(meta.get("holiday_country_default", "US")),
+        distance_scope=distance_scope,
     )
     return _attach_binary_holidays(hol, cfg)
 

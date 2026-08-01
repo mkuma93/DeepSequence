@@ -7,10 +7,18 @@ local analogue get a large sentinel distance so ``is_*`` binaries stay off.
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional, Sequence, Union
+from typing import Dict, Iterable, List, Literal, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
+
+# Distance scope for days_from_* / months_from_*:
+#   "year"    — signed distance to this calendar year's occurrence only
+#               (Prophet-like within-year; resets at year boundary).
+#   "nearest" — signed distance to nearest occurrence across years
+#               (legacy; matches locked holiday_features_*.csv until regenerated).
+DistanceScope = Literal["year", "nearest"]
+DEFAULT_DISTANCE_SCOPE: DistanceScope = "year"
 
 # Keys used in feature names: month_has_{Key} / days_from_{Key} / is_{Key}
 HOLIDAY_KEYS: Sequence[str] = (
@@ -406,18 +414,64 @@ def _month_index_arr(years: np.ndarray, months: np.ndarray) -> np.ndarray:
     return years.astype(np.int32) * 12 + months.astype(np.int32)
 
 
+def _normalize_distance_scope(distance_scope: str) -> DistanceScope:
+    scope = str(distance_scope).strip().lower()
+    if scope in ("year", "within_year", "year_reset", "calendar_year"):
+        return "year"
+    if scope in ("nearest", "cross_year", "legacy"):
+        return "nearest"
+    raise ValueError(
+        f"Unsupported distance_scope={distance_scope!r}; expected 'year' or 'nearest'"
+    )
+
+
 def months_from_holiday_features(
     dates: pd.Series,
     holiday_keys: Sequence[str] = HOLIDAY_KEYS,
     country: str = "US",
+    distance_scope: str = DEFAULT_DISTANCE_SCOPE,
 ) -> pd.DataFrame:
     """
-    Signed months from the observation month to the nearest holiday month.
+    Signed months from the observation month to the holiday month.
 
     Analogous to days_from_* on daily panels, but distance is in calendar
     months (holiday month membership), not days.
+
+    Sign convention (same as days_from_*): ``obs_month_index - holiday_month_index``.
+    Negative = holiday month later in the year; positive = holiday month already
+    passed.
+
+    ``distance_scope``:
+      - ``year`` (default): distance to this calendar year's holiday month only.
+        E.g. Jan vs Christmas → −11 (not +1 to prior December).
+      - ``nearest``: nearest holiday month across years (legacy bake-off CSVs).
     """
+    scope = _normalize_distance_scope(distance_scope)
     ds = pd.to_datetime(dates)
+    obs_years = ds.dt.year.to_numpy()
+    obs = _month_index_arr(obs_years, ds.dt.month.to_numpy())
+    out = {}
+
+    if scope == "year":
+        # Build per-year holiday month index; vectorize via year→row lookup.
+        y_min, y_max = int(obs_years.min()), int(obs_years.max())
+        year_to_mi: Dict[str, Dict[int, int]] = {k: {} for k in holiday_keys}
+        for y in range(y_min, y_max + 1):
+            for k, d in holiday_dates_for_year(y, country=country).items():
+                if k in year_to_mi and d is not None:
+                    year_to_mi[k][y] = int(d.year) * 12 + int(d.month)
+        for k in holiday_keys:
+            mi_map = year_to_mi[k]
+            vals = np.full(len(obs), NA_DISTANCE_DAYS, dtype=np.float32)
+            if mi_map:
+                hol_mi = np.asarray(
+                    [mi_map.get(int(y), -1) for y in obs_years], dtype=np.int32
+                )
+                ok = hol_mi >= 0
+                vals[ok] = (obs[ok] - hol_mi[ok]).astype(np.float32)
+            out[f"months_from_{k}"] = vals
+        return pd.DataFrame(out)
+
     years = range(int(ds.dt.year.min()) - 1, int(ds.dt.year.max()) + 2)
     event_mi = {k: [] for k in holiday_keys}
     for y in years:
@@ -427,8 +481,6 @@ def months_from_holiday_features(
     for k in event_mi:
         event_mi[k] = np.asarray(event_mi[k], dtype=np.int32)
 
-    obs = _month_index_arr(ds.dt.year.to_numpy(), ds.dt.month.to_numpy())
-    out = {}
     for k in holiday_keys:
         ev = event_mi[k]
         if len(ev) == 0:
@@ -483,6 +535,7 @@ def months_from_holiday_features_by_country(
     countries: Sequence[str],
     holiday_keys: Sequence[str] = HOLIDAY_KEYS,
     default_country: str = "US",
+    distance_scope: str = DEFAULT_DISTANCE_SCOPE,
 ) -> pd.DataFrame:
     """Row-wise country calendars with a unified ``months_from_*`` schema."""
     ds = pd.to_datetime(dates).reset_index(drop=True)
@@ -506,6 +559,7 @@ def months_from_holiday_features_by_country(
             ds.loc[mask],
             holiday_keys=holiday_keys,
             country=code,
+            distance_scope=distance_scope,
         )
         for k in holiday_keys:
             col = f"months_from_{k}"
@@ -521,6 +575,7 @@ def build_country_month_holiday_features(
     date_col: str = "ds",
     country_col: Optional[str] = None,
     default_country: str = "US",
+    distance_scope: str = DEFAULT_DISTANCE_SCOPE,
 ) -> pd.DataFrame:
     """
     Build aligned monthly holiday frame for a panel.
@@ -529,6 +584,10 @@ def build_country_month_holiday_features(
     ``country_col`` if present, else parsed from ``{Country}_{code}`` in
     ``sku_col`` (falls back to ``default_country`` when the prefix is not a
     known calendar — e.g. Monash Car Parts ``T####`` ids).
+
+    ``distance_scope`` applies only to ``months_from`` (``month_has`` is
+    already same-year membership). Default ``year``; use ``nearest`` to match
+    legacy cross-year month distances.
     """
     enc = str(encoding).lower()
     if country_col is not None and country_col in df.columns:
@@ -541,6 +600,7 @@ def build_country_month_holiday_features(
             countries,
             holiday_keys=holiday_keys,
             default_country=default_country,
+            distance_scope=distance_scope,
         )
     if enc == "month_has":
         return month_has_holiday_features_by_country(
@@ -556,13 +616,60 @@ def days_from_holiday_features(
     dates: pd.Series,
     holiday_keys: Sequence[str] = HOLIDAY_KEYS,
     country: str = "US",
+    distance_scope: str = DEFAULT_DISTANCE_SCOPE,
 ) -> pd.DataFrame:
-    """Signed days to nearest occurrence of each holiday (single-country)."""
+    """
+    Signed days from each observation to each holiday (single-country).
+
+    Sign convention: ``days_from = observation_date - holiday_date``.
+    Negative ⇒ holiday still ahead this year; positive ⇒ holiday already passed;
+    zero ⇒ on the holiday.
+
+    ``distance_scope``:
+      - ``year`` (default): distance only to that holiday's occurrence in the
+        observation's calendar year. Resets at year boundary — e.g. 2011-01-07
+        vs Christmas is −352 (to 2011-12-25), not +13 (to 2010-12-25).
+        Anchors: NewYear = Jan 1 of year Y; NewYearEve = Dec 31 of Y;
+        Christmas = Dec 25 of Y.
+      - ``nearest``: nearest occurrence across years (legacy; matches locked
+        ``holiday_features_*.csv`` until those CSVs are regenerated).
+
+    Binary ``is_*`` derived via ``|days_from|`` are unchanged in meaning for
+    on-day / short windows under either scope.
+    """
+    scope = _normalize_distance_scope(distance_scope)
     ds = pd.to_datetime(dates)
-    years = range(int(ds.dt.year.min()) - 1, int(ds.dt.year.max()) + 2)
-    cal = holiday_calendar(years, country=country)
     d = ds.to_numpy(dtype="datetime64[ns]")
     out = {}
+
+    if scope == "year":
+        obs_years = ds.dt.year.to_numpy()
+        y_min, y_max = int(obs_years.min()), int(obs_years.max())
+        # year → holiday datetime64 for each key
+        year_events: Dict[str, Dict[int, np.datetime64]] = {k: {} for k in holiday_keys}
+        for y in range(y_min, y_max + 1):
+            for k, hd in holiday_dates_for_year(y, country=country).items():
+                if k in year_events and hd is not None:
+                    year_events[k][y] = np.datetime64(hd.to_datetime64())
+        for k in holiday_keys:
+            ev_map = year_events[k]
+            vals = np.full(len(d), NA_DISTANCE_DAYS, dtype=np.float32)
+            if ev_map:
+                hol = np.empty(len(d), dtype="datetime64[ns]")
+                ok = np.zeros(len(d), dtype=bool)
+                for i, y in enumerate(obs_years):
+                    hd = ev_map.get(int(y))
+                    if hd is not None:
+                        hol[i] = hd
+                        ok[i] = True
+                if ok.any():
+                    delta = (d[ok] - hol[ok]).astype("timedelta64[D]").astype(np.int32)
+                    vals[ok] = delta.astype(np.float32)
+            out[f"days_from_{k}"] = vals
+        return pd.DataFrame(out)
+
+    years = range(int(ds.dt.year.min()) - 1, int(ds.dt.year.max()) + 2)
+    cal = holiday_calendar(years, country=country)
     for k in holiday_keys:
         events = cal[k]
         if len(events) == 0:
@@ -579,6 +686,7 @@ def days_from_holiday_features_by_country(
     countries: Sequence[str],
     holiday_keys: Sequence[str] = HOLIDAY_KEYS,
     default_country: str = "US",
+    distance_scope: str = DEFAULT_DISTANCE_SCOPE,
 ) -> pd.DataFrame:
     """
     Row-wise country calendars with a **unified** ``days_from_*`` schema.
@@ -607,6 +715,7 @@ def days_from_holiday_features_by_country(
             ds.loc[mask],
             holiday_keys=holiday_keys,
             country=code,
+            distance_scope=distance_scope,
         )
         for k in holiday_keys:
             col = f"days_from_{k}"
@@ -621,12 +730,17 @@ def build_country_holiday_distances(
     date_col: str = "ds",
     country_col: Optional[str] = None,
     default_country: str = "US",
+    distance_scope: str = DEFAULT_DISTANCE_SCOPE,
 ) -> pd.DataFrame:
     """
     Build aligned ``days_from_*`` frame for a panel.
 
     Country is taken from ``country_col`` if present, else parsed from
     ``{Country}_{code}`` in ``sku_col``.
+
+    Default ``distance_scope='year'`` (within-year reset). Locked bake-off
+    ``holiday_features_*.csv`` files remain nearest-style until regenerated;
+    pass ``distance_scope='nearest'`` only when reproducing those CSVs.
     """
     if country_col is not None and country_col in df.columns:
         countries = df[country_col].tolist()
@@ -637,6 +751,7 @@ def build_country_holiday_distances(
         countries,
         holiday_keys=holiday_keys,
         default_country=default_country,
+        distance_scope=distance_scope,
     )
 
 

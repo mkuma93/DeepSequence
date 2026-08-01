@@ -290,6 +290,10 @@ metadata:
   last_updated: "2026-08-01"
   frequency: daily
   holiday_encoding: days_from
+  # When distances are rebuilt (country calendar or offline CSV regen), use
+  # year-scoped signed days. Locked precomputed holiday_features_*.csv used by
+  # this binary-hol config path (static CSV) remain nearest-style until rebuilt.
+  holiday_distance_scope: year
   binary_holiday_window_days: 1
   binary_holiday_window_keys:
     - Valentine
