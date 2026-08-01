@@ -184,7 +184,7 @@ Interpretation: \(p\) is the predicted probability that demand occurs; \(b\) is 
 
 [Open PNG](paper_figures/fig_m5_architecture.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_m5_architecture.png)
 
-*Figure 5. Experts → Level-1 → context mixer → gate \(\hat{y}=p\cdot b\).*
+*Figure 5. End-to-end stack (from `paper_figures/deepsequence.pptx`, slide 3): experts → Level-1 → hierarchical mixer → gate \(\hat{y}=p\cdot b\). The SKU embedding \(e_i\) is shared across FiLM, mixer, and gate (one table; purple conditioning path).*
 
 ### 3.9 Training objective
 
@@ -609,7 +609,7 @@ For reliable local viewing when markdown preview fails: open [`paper_figures/VIE
 | `paper_figures/fig_m2_monotone_softplus.png` | Figure 2 — softplus-PWL monotone maps |
 | `paper_figures/fig_m3_level1_attention.png` | Figure 3 — Level-1 selection attention |
 | `paper_figures/fig_m4_context_mixer.png` | Figure 4 — context-aware Level-2 mixer |
-| `paper_figures/fig_m5_architecture.png` | Figure 5 — end-to-end architecture (\(\hat{y}=p\cdot b\)) |
+| `paper_figures/fig_m5_architecture.png` | Figure 5 — end-to-end architecture from `deepsequence.pptx` slide 3 (shared \(e_i\); \(\hat{y}=p\cdot b\)) |
 | `paper_figures/fig1_daily_iwmae_horizon.png` | Figure 6 — daily multi-seed IWMAE vs horizon |
 | `paper_figures/fig3_daily_decision_pi_horizon.png` | Figure 7 — daily multi-seed mid-\(\pi\) vs horizon |
 | `paper_figures/fig2_carparts_iwmae_horizon.png` | Figure 8 — Car Parts IWMAE (+ Prophet bake-off panel) |

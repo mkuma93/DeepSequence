@@ -34,6 +34,8 @@ If images do not render in Cursor’s markdown preview (common with Google Drive
 
 ## Figure 5. End-to-end architecture
 
+From `paper_figures/deepsequence.pptx` slide 3 (shared SKU embedding \(e_i\) → FiLM / mixer / gate).
+
 ![End-to-end architecture](paper_figures/fig_m5_architecture.png)
 
 [Open PNG](paper_figures/fig_m5_architecture.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_m5_architecture.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_m5_architecture.png)

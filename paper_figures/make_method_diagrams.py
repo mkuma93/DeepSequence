@@ -9,7 +9,11 @@ Matches ``components_lightweight.py``:
   - Context mixer: q = [sku_emb ; Dense(lag/intermittent context)] → temp-softmax over experts
   - Gate: ŷ = p · b
 
-Writes PNG+PDF under paper_figures/.
+Primary end-to-end architecture (Figure 5) is the user PowerPoint slide
+(``deepsequence.pptx`` slide 3 → ``fig_m5_architecture.png``), not the
+matplotlib schematic. ``fig_architecture_schematic`` is optional only.
+
+Writes PNG+PDF under paper_figures/ for figs M1–M4 (+ optional schematic).
 """
 
 from __future__ import annotations
@@ -422,7 +426,17 @@ def fig_context_mixer():
     )
 
     box(ax, 4, 70, 18, 14, "Expert scalars", *C_GREEN, bold=True, sub="e_trend … e_reg\n[batch, 4]")
-    box(ax, 4, 46, 18, 14, "SKU embedding", *C_PURPLE, bold=True, sub="eᵢ (optional)")
+    box(
+        ax,
+        4,
+        46,
+        18,
+        14,
+        "Shared SKU emb. eᵢ",
+        *C_PURPLE,
+        bold=True,
+        sub="one table (optional)\nsame eᵢ as FiLM / gate",
+    )
     box(
         ax,
         4,
@@ -472,7 +486,7 @@ def fig_context_mixer():
     ax.text(
         50,
         2.5,
-        "Calendar / Fourier / holiday distances stay inside their experts; mixer sees lag-regime context only.",
+        "eᵢ is the shared SKU embedding (one table), not a mixer-only lookup; calendar stays inside experts.",
         ha="center",
         fontsize=8.5,
         color=LIGHT,
@@ -482,32 +496,48 @@ def fig_context_mixer():
 
 
 # ---------------------------------------------------------------------------
-# Fig M5 — End-to-end architecture
+# Optional schematic (NOT primary Figure 5 — primary is deepsequence.pptx slide 3)
 # ---------------------------------------------------------------------------
-def fig_architecture():
-    fig, ax = _fig(14.5, 9.2)
+def fig_architecture_schematic():
+    """Secondary matplotlib schematic; does not overwrite fig_m5_architecture.*."""
+    fig, ax = _fig(14.5, 9.4)
     title(
         ax,
-        "DeepSequence end-to-end architecture",
-        "Experts → Level-1 → context mixer → gate ŷ = p · b",
+        "DeepSequence architecture (schematic)",
+        "Secondary sketch only — paper Figure 5 uses deepsequence.pptx slide 3",
         y=96.5,
     )
 
-    # inputs
-    iw, gap, x0 = 14, 1.8, 5
+    # structural inputs (SKU is NOT a fifth parallel feature stream)
+    iw, gap, x0 = 15.5, 2.2, 4
     labels = [
         ("Time", "trend index"),
         ("Fourier", "seasonality"),
         ("Holiday |d|", "distances"),
         ("Lags / state", "regime"),
-        ("SKU id", "embedding"),
     ]
     inb = []
     for i, (t, s) in enumerate(labels):
-        b = box(ax, x0 + i * (iw + gap), 82, iw, 8, t, *C_BLUE, sub=s, fs=9.5, bold=True)
+        b = box(ax, x0 + i * (iw + gap), 84, iw, 8, t, *C_BLUE, sub=s, fs=9.5, bold=True)
         inb.append(b)
 
-    # experts
+    # single shared SKU embedding path (right rail)
+    sku_id = box(ax, 78, 84, 18, 8, "sku_id", *C_PURPLE, bold=True, sub="integer index", fs=10)
+    sku_emb = box(
+        ax,
+        78,
+        70,
+        18,
+        9,
+        "Embedding → eᵢ",
+        *C_PURPLE,
+        bold=True,
+        sub="shared SKU embedding\n(one table)",
+        fs=10,
+    )
+    arrow(ax, (sku_id["cx"], sku_id["y"]), (sku_emb["cx"], sku_emb["y"] + sku_emb["h"]), color=C_PURPLE[1])
+
+    # experts (+ FiLM note)
     experts = ["Trend", "Seasonal", "Holiday", "Regressor"]
     exb = []
     for i, name in enumerate(experts):
@@ -520,12 +550,21 @@ def fig_architecture():
             name,
             *C_GREEN,
             bold=True,
-            sub="softsign",
+            sub="softsign + FiLM(eᵢ)",
             fs=10.5,
         )
         exb.append(b)
         arrow(ax, (inb[i]["cx"], inb[i]["y"]), (b["cx"], b["y"] + b["h"]), color=C_BLUE[1])
-    arrow(ax, (inb[4]["cx"], inb[4]["y"]), (exb[0]["cx"] + 6, 75), color=C_PURPLE[1], dashed=True, rad=0.2)
+        # dashed shared eᵢ → each expert FiLM
+        arrow(
+            ax,
+            (sku_emb["x"], sku_emb["cy"]),
+            (b["x"] + b["w"], b["cy"] + 1.5),
+            color=C_PURPLE[1],
+            dashed=True,
+            lw=1.1,
+            rad=-0.12 + 0.04 * i,
+        )
 
     # L1
     l1 = [
@@ -543,46 +582,89 @@ def fig_architecture():
     # mixer
     mixer = box(
         ax,
-        18,
+        10,
         34,
-        48,
+        52,
         10,
         "Level-2 context-aware mixer",
         *C_ORANGE,
         bold=True,
-        sub="q = [SKU ; Dense(lag context)]  →  w = softmax(z/T)  →  base = Σ w·e",
+        sub="q = [eᵢ ; Dense(lag context)]  →  w = softmax(z/T)  →  base = Σ w·e",
         fs=11,
     )
     for b in l1b:
         arrow(ax, (b["cx"], b["y"]), (b["cx"], mixer["y"] + mixer["h"]), color=C_ORANGE[1])
-    arrow(ax, (inb[3]["cx"], 66), (mixer["x"] + mixer["w"], mixer["cy"]), color=C_BLUE[1], dashed=True, rad=0.25)
-    arrow(ax, (inb[4]["cx"], 82), (mixer["x"] + mixer["w"], mixer["cy"] + 2), color=C_PURPLE[1], dashed=True, rad=-0.2)
+    # lag context dashed into mixer
+    arrow(
+        ax,
+        (inb[3]["cx"], inb[3]["y"]),
+        (mixer["x"] + mixer["w"] - 4, mixer["y"] + mixer["h"]),
+        color=C_BLUE[1],
+        dashed=True,
+        rad=0.28,
+    )
+    # shared eᵢ → mixer
+    arrow(
+        ax,
+        (sku_emb["cx"], sku_emb["y"]),
+        (mixer["x"] + mixer["w"], mixer["cy"] + 2),
+        color=C_PURPLE[1],
+        dashed=True,
+        rad=-0.18,
+    )
 
     # heads
-    mag = box(ax, 18, 16, 22, 10, "Magnitude b", *C_PINK, bold=True, sub="softplus(base)")
-    gate = box(ax, 48, 16, 22, 10, "Occurrence p", *C_PINK, bold=True, sub="σ(gate logits)")
-    out = box(ax, 78, 16, 16, 10, "ŷ = p · b", *C_GRAY, bold=True, sub="final forecast")
-    arrow(ax, (mixer["cx"] - 8, mixer["y"]), (mag["cx"], mag["y"] + mag["h"]), color=C_PINK[1])
-    arrow(ax, (mixer["cx"] + 8, mixer["y"]), (gate["cx"], gate["y"] + gate["h"]), color=C_PINK[1])
+    mag = box(ax, 10, 16, 22, 10, "Magnitude b", *C_PINK, bold=True, sub="softplus(base)")
+    gate = box(ax, 40, 16, 24, 10, "Occurrence p", *C_PINK, bold=True, sub="σ(g(·, eᵢ))")
+    out = box(ax, 72, 16, 18, 10, "ŷ = p · b", *C_GRAY, bold=True, sub="final forecast")
+    arrow(ax, (mixer["cx"] - 10, mixer["y"]), (mag["cx"], mag["y"] + mag["h"]), color=C_PINK[1])
+    arrow(ax, (mixer["cx"] + 6, mixer["y"]), (gate["cx"], gate["y"] + gate["h"]), color=C_PINK[1])
+    # shared eᵢ → intermittent gate
+    arrow(
+        ax,
+        (sku_emb["cx"], sku_emb["y"]),
+        (gate["x"] + gate["w"], gate["cy"] + 3),
+        color=C_PURPLE[1],
+        dashed=True,
+        rad=-0.35,
+    )
     arrow(ax, (mag["x"] + mag["w"], mag["cy"]), (out["x"], out["cy"]), color=C_GRAY[1])
     arrow(ax, (gate["x"] + gate["w"], gate["cy"]), (out["x"], out["cy"]), color=C_GRAY[1])
 
     ax.text(
         50,
-        5,
-        "Cross-network layers default off. Optional calendar FiLM on seasonal/holiday defaults off.",
+        5.5,
+        "Dashed purple: shared eᵢ → expert FiLM, Level-2 mixer, intermittent gate  ·  "
+        "not per-expert Embedding tables  ·  calendar FiLM / cross-net default off",
         ha="center",
-        fontsize=8.5,
+        fontsize=8.2,
         color=LIGHT,
         family=FONT,
     )
-    save(fig, "fig_m5_architecture")
-    # also refresh the legacy architecture filename used elsewhere
-    import shutil
+    save(fig, "fig_m5_architecture_schematic")
 
-    shutil.copyfile(OUT / "fig_m5_architecture.png", OUT / "fig_architecture_ds.png")
+
+def export_architecture_from_pptx(pptx_name: str = "deepsequence.pptx", slide_media: str = "ppt/media/image3.png"):
+    """Copy the overall-architecture PNG embedded in the user PPT into fig_m5_*."""
+    import shutil
+    import zipfile
+
+    pptx = OUT / pptx_name
+    if not pptx.is_file():
+        raise FileNotFoundError(pptx)
+    with zipfile.ZipFile(pptx) as zf:
+        data = zf.read(slide_media)
+    png = OUT / "fig_m5_architecture.png"
+    png.write_bytes(data)
+    # PDF companion
+    from PIL import Image
+    import io
+
+    im = Image.open(io.BytesIO(data)).convert("RGB")
+    im.save(OUT / "fig_m5_architecture.pdf", "PDF", resolution=300.0)
+    shutil.copyfile(png, OUT / "fig_architecture_ds.png")
     shutil.copyfile(OUT / "fig_m5_architecture.pdf", OUT / "fig_architecture_ds.pdf")
-    print("also refreshed fig_architecture_ds.png/.pdf")
+    print(f"exported {pptx.name}:{slide_media} → {png.name} (+ pdf, fig_architecture_ds.*)")
 
 
 def main():
@@ -590,7 +672,8 @@ def main():
     fig_monotone()
     fig_level1_attention()
     fig_context_mixer()
-    fig_architecture()
+    # Primary overall architecture is the user PPT (slide 3 / image3.png).
+    export_architecture_from_pptx()
 
 
 if __name__ == "__main__":
