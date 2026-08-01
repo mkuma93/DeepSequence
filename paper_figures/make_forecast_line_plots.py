@@ -12,6 +12,11 @@ Binary-holiday qualitative (forecast-only; does not touch locked v1.6):
   python paper_figures/make_forecast_line_plots.py --only daily --epochs 30 \\
     --feature_config_daily feature_config_daily_binary_holiday.yaml \\
     --fig_prefix_daily fig_forecast_daily_binary_hol --holiday_markers 1
+
+Country-calendar + binary qualitative (rebuilds days_from_* per sku prefix):
+  python paper_figures/make_forecast_line_plots.py --only daily --epochs 30 \\
+    --feature_config_daily feature_config_daily_country_holiday.yaml \\
+    --fig_prefix_daily fig_forecast_daily_country_hol --holiday_markers 1
 """
 
 from __future__ import annotations
@@ -47,7 +52,11 @@ from eval_helpers import (
     split_components,
 )
 from feature_config_loader import load_feature_config
-from holiday_calendar import RETAIL_WINDOW_KEYS, binary_holiday_features
+from holiday_calendar import (
+    RETAIL_WINDOW_KEYS,
+    binary_holiday_features,
+    build_country_holiday_distances,
+)
 from multihorizon_rollout import (
     build_sku_timelines,
     collect_origins,
@@ -84,6 +93,28 @@ def _save_fig(fig, stem: str):
     print(f"wrote {png.name} + {pdf.name}")
 
 
+def _country_calendar_enabled(cfg) -> bool:
+    meta = cfg.config.get("metadata", {}) or {}
+    mode = str(meta.get("holiday_calendar", "static")).lower()
+    return mode in ("country", "per_country", "country_aware")
+
+
+def _rebuild_holidays_for_split(df: pd.DataFrame, cfg) -> pd.DataFrame:
+    """Build days_from_* (+ optional is_*) from country calendars for one split."""
+    keys = [n.replace("days_from_", "", 1) for n in cfg.holiday_names]
+    meta = cfg.config.get("metadata", {}) or {}
+    country_col = meta.get("holiday_country_column")
+    hol = build_country_holiday_distances(
+        df,
+        holiday_keys=keys or None,
+        sku_col="id_var",
+        date_col="ds",
+        country_col=country_col if country_col in df.columns else None,
+        default_country=str(meta.get("holiday_country_default", "US")),
+    )
+    return _attach_binary_holidays(hol, cfg)
+
+
 def _attach_binary_holidays(hol_df: pd.DataFrame, cfg) -> pd.DataFrame:
     """Ensure binary is_* columns exist on a days_from_* holiday frame."""
     names = cfg.binary_holiday_names
@@ -114,6 +145,17 @@ def _attach_binary_holidays(hol_df: pd.DataFrame, cfg) -> pd.DataFrame:
     for col in built.columns:
         out[col] = built[col].to_numpy()
     return out
+
+
+def _corr_yhat_holiday(yhat, dates, hol_dates) -> float:
+    if not hol_dates:
+        return float("nan")
+    dset = set(hol_dates)
+    flag = np.asarray([1.0 if d in dset else 0.0 for d in dates], dtype=np.float64)
+    y = np.asarray(yhat, dtype=np.float64)
+    if flag.std() < 1e-12 or y.std() < 1e-12:
+        return float("nan")
+    return float(np.corrcoef(y, flag)[0, 1])
 
 
 def _mark_holidays(ax, dates, mark_dates):
@@ -359,15 +401,23 @@ def run_daily(args):
     print(
         f"feature_config={cfg_path or 'default'} "
         f"n_feat={cfg.total_features} n_holiday={len(cfg.holiday_indices)} "
-        f"binary={cfg.binary_holiday_names}"
+        f"binary={cfg.binary_holiday_names} "
+        f"holiday_calendar={cfg.config.get('metadata', {}).get('holiday_calendar', 'static')}"
     )
     stem_os = args.fig_prefix_daily + "_onestep"
     stem_rec = args.fig_prefix_daily + "_recursive"
     use_hol_marks = bool(cfg.binary_holiday_names) or bool(args.holiday_markers)
+    use_country = _country_calendar_enabled(cfg)
 
-    h_tr = _attach_binary_holidays(h_tr, cfg)
-    h_va = _attach_binary_holidays(h_va, cfg)
-    h_te = _attach_binary_holidays(h_te, cfg)
+    if use_country:
+        print("rebuilding holiday distances from per-country calendars (sku_id prefix)")
+        h_tr = _rebuild_holidays_for_split(train_df, cfg)
+        h_va = _rebuild_holidays_for_split(val_df, cfg)
+        h_te = _rebuild_holidays_for_split(test_df, cfg)
+    else:
+        h_tr = _attach_binary_holidays(h_tr, cfg)
+        h_va = _attach_binary_holidays(h_va, cfg)
+        h_te = _attach_binary_holidays(h_te, cfg)
 
     Xtr_df, states = cfg.create_features(train_df, h_tr, return_states=True)
     Xva_df, states = cfg.create_features(val_df, h_va, prior_states=states, return_states=True)
@@ -458,7 +508,9 @@ def run_daily(args):
         "epochs": args.epochs,
         "feature_config": str(cfg_path or "default"),
         "binary_holiday_features": cfg.binary_holiday_names,
+        "holiday_calendar": cfg.config.get("metadata", {}).get("holiday_calendar", "static"),
         "skus": {},
+        "corr_yhat_vs_holiday_flag": {},
     }
     for sku in plot_skus:
         m = test_df["id_var"].astype(str).to_numpy() == sku
@@ -476,17 +528,24 @@ def run_daily(args):
             ]
         else:
             hol_dates = []
+        yhat_sku = yhat_ds[m].astype(np.float64)
+        corr = _corr_yhat_holiday(yhat_sku, dates, hol_dates)
         d = {
             "dates": dates,
             "y": test_df.loc[m, "Quantity"].to_numpy(np.float64).tolist(),
-            "ds": yhat_ds[m].astype(np.float64).tolist(),
+            "ds": yhat_sku.tolist(),
             "baseline": np.nan_to_num(yhat_tst[m], nan=0.0).astype(np.float64).tolist(),
             "holiday_dates": hol_dates,
+            "corr_yhat_vs_holiday_flag": corr,
         }
         onestep[sku] = d
         dump_onestep["skus"][sku] = d
+        dump_onestep["corr_yhat_vs_holiday_flag"][sku] = corr
+        print(f"  {sku}: corr(yhat, holiday_flag)={corr:.4f} n_hol_days={len(hol_dates)}")
     title_os = "Daily intermittent demand — one-step forecasts (test window)"
-    if cfg.binary_holiday_names:
+    if use_country:
+        title_os = "Daily one-step forecasts — country calendars + binary holidays"
+    elif cfg.binary_holiday_names:
         title_os = "Daily one-step forecasts — binary holidays ON (test window)"
     _plot_onestep_panel(
         onestep,
@@ -553,6 +612,7 @@ def run_daily(args):
         "epochs": args.epochs,
         "feature_config": str(cfg_path or "default"),
         "binary_holiday_features": cfg.binary_holiday_names,
+        "holiday_calendar": cfg.config.get("metadata", {}).get("holiday_calendar", "static"),
         "horizon": H,
         "h_short": h_short,
         "h_long": h_long,
@@ -569,7 +629,9 @@ def run_daily(args):
         horiz[sku] = d
         dump_h["skus"][sku] = d
     title_rec = "Daily recursive forecasts from a locked test origin (DS vs TST)"
-    if cfg.binary_holiday_names:
+    if use_country:
+        title_rec = "Daily recursive forecasts — country calendars + binary holidays"
+    elif cfg.binary_holiday_names:
         title_rec = "Daily recursive forecasts — binary holidays ON (DS vs TST)"
     _plot_horizon_panel(
         horiz,
@@ -787,7 +849,7 @@ def parse_args():
     p.add_argument(
         "--feature_config_daily",
         default=None,
-        help="Override daily feature YAML (e.g. feature_config_daily_binary_holiday.yaml).",
+        help="Override daily feature YAML (e.g. feature_config_daily_country_holiday.yaml).",
     )
     p.add_argument(
         "--fig_prefix_daily",

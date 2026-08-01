@@ -453,7 +453,7 @@ Locked bake-off features remain **distance-only** (`days_from_*`; v1.6). Separat
 
 [Open PNG](paper_figures/fig_forecast_daily_binary_hol_onestep.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_binary_hol_onestep.png)
 
-*Figure 14. Same intermittent SKUs as Figure 10, with binary holiday features on and holiday markers. DeepSequence shows a weekly-scale oscillation (not a pure flat mean), but **no clear holiday bumps** at marker dates; correlation of \(\hat{y}\) with the binary holiday flag is near zero on these UK series under a US calendar. TST remains near mean-rate.*
+*Figure 14. Same intermittent SKUs as Figure 10, with binary holiday features on and holiday markers. DeepSequence shows a weekly-scale oscillation (not a pure flat mean), but **no clear holiday bumps** at marker dates; correlation of \(\hat{y}\) with the binary holiday flag is near zero on these UK series under a **US** calendar (\(\mathrm{corr}\approx -0.08\) to \(0.00\)). TST remains near mean-rate.*
 
 ![Figure 15. Daily recursive forecasts with binary holidays.](paper_figures/fig_forecast_daily_binary_hol_recursive.png)
 
@@ -461,7 +461,21 @@ Locked bake-off features remain **distance-only** (`days_from_*`; v1.6). Separat
 
 *Figure 15. Recursive \(h{=}1..7\) / \(h{=}1..28\) under the binary-holiday config. Forecasts stay near a constant mean rate and do not track sparse sale spikes or calendar events.*
 
-**Takeaway.** Enabling binary holiday indicators does **not**, on this qualitative panel, produce visible holiday-driven forecast spikes. Likely limits: (i) UK demand vs US holiday encoding; (ii) intermittency dominated by lag/gate rather than calendar; (iii) HolidayComponent still maps channels through absolute-distance-style monotone hinges, so \(0/1\) binaries are a weak inductive fit. Locked IWMAE tables are unchanged. A gated monthly `month_has` forecast config exists (`feature_config_monthly_month_has.yaml`) but was not used to regenerate Car Parts plots (locked monthly assemble path has no holiday block).
+**Country calendars.** The locked panel’s `id_var` prefixes are multi-country (locked 800: UK 563, EIRE 73, France 59, Germany 49, Netherlands 25; full panel also has Australia 20 and a single USA SKU). Precomputed `holiday_features_*.csv` files are US-only. A gated forecast-only config (`feature_config_daily_country_holiday.yaml`) keeps the **same 15 shared holiday keys** (and binaries) but rebuilds `days_from_*` from per-country calendars parsed from the SKU prefix (UK bank holidays, AU public holidays, IE/FR/DE/NL, plus an EU retail fallback). N/A keys (e.g. US Thanksgiving on UK rows) use a large sentinel distance so `is_*` stays off. Locked IWMAE bake-off is unchanged; production can adopt later by regenerating holiday CSVs or setting `metadata.holiday_calendar: country` without changing `n_features`.
+
+![Figure 16. Daily one-step forecasts with country calendars + binary holidays.](paper_figures/fig_forecast_daily_country_hol_onestep.png)
+
+[Open PNG](paper_figures/fig_forecast_daily_country_hol_onestep.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_country_hol_onestep.png)
+
+*Figure 16. Same protocol as Figure 14 with country-local calendars. Markers shift off US-only dates (e.g. Independence Day / Labor Day) onto UK events (e.g. Summer bank holiday 2011-08-29). Correlation of \(\hat{y}\) with the binary holiday flag rises only slightly (\(\mathrm{corr}\approx 0.01\)–\(0.06\)) and remains near zero—still **no clear holiday-driven spikes** on these intermittent UK series.*
+
+![Figure 17. Daily recursive forecasts with country calendars + binary holidays.](paper_figures/fig_forecast_daily_country_hol_recursive.png)
+
+[Open PNG](paper_figures/fig_forecast_daily_country_hol_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_country_hol_recursive.png)
+
+*Figure 17. Recursive rollouts under country calendars; qualitative conclusion unchanged vs Figure 15.*
+
+**Takeaway.** Enabling binary holiday indicators—even with **country-correct** calendars—does **not**, on this qualitative panel, produce visible holiday-driven forecast spikes. Remaining limits: (i) intermittency dominated by lag/gate rather than calendar; (ii) HolidayComponent still maps channels through absolute-distance-style monotone hinges, so \(0/1\) binaries are a weak inductive fit; (iii) small qualitative SKU pool. Locked IWMAE tables are unchanged. A gated monthly `month_has` forecast config exists (`feature_config_monthly_month_has.yaml`) but was not used to regenerate Car Parts plots (locked monthly assemble path has no holiday block).
 
 ---
 

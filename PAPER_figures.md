@@ -100,3 +100,15 @@ Trend time index; fixed Fourier (learnable \(\omega\) optional); four experts (T
 
 [Open PNG](paper_figures/fig_forecast_daily_binary_hol_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_binary_hol_recursive.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_binary_hol_recursive.png)
 
+## Figure 16. Daily one-step forecasts (country calendars + binary)
+
+![Daily one-step country holidays](paper_figures/fig_forecast_daily_country_hol_onestep.png)
+
+[Open PNG](paper_figures/fig_forecast_daily_country_hol_onestep.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_country_hol_onestep.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_country_hol_onestep.png)
+
+## Figure 17. Daily recursive forecasts (country calendars + binary)
+
+![Daily recursive country holidays](paper_figures/fig_forecast_daily_country_hol_recursive.png)
+
+[Open PNG](paper_figures/fig_forecast_daily_country_hol_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_country_hol_recursive.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_country_hol_recursive.png)
+

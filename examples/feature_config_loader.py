@@ -463,9 +463,9 @@ class FeatureConfig:
         features_df = pd.DataFrame(ordered)
 
         expected_holidays = self.holiday_names
-        holiday_encoding = str(
-            self.config.get("metadata", {}).get("holiday_encoding", "days_from")
-        )
+        meta = self.config.get("metadata", {}) or {}
+        holiday_encoding = str(meta.get("holiday_encoding", "days_from"))
+        holiday_calendar_mode = str(meta.get("holiday_calendar", "static")).lower()
         if expected_holidays:
             if holiday_encoding in ("month_has", "months_from"):
                 try:
@@ -486,20 +486,53 @@ class FeatureConfig:
                             f"{holiday_encoding} encoding expects names {prefix}*, got {name}"
                         )
                     keys.append(name.replace(prefix, "", 1))
+                country = str(meta.get("holiday_country", "US"))
                 if holiday_encoding == "months_from":
-                    built = months_from_holiday_features(df_sorted["ds"], holiday_keys=keys)
+                    built = months_from_holiday_features(
+                        df_sorted["ds"], holiday_keys=keys, country=country
+                    )
                 else:
-                    built = month_has_holiday_features(df_sorted["ds"], holiday_keys=keys)
+                    built = month_has_holiday_features(
+                        df_sorted["ds"], holiday_keys=keys, country=country
+                    )
                 holiday_subset = built[[f"{prefix}{k}" for k in keys]].reset_index(drop=True)
                 features_df = pd.concat([features_df, holiday_subset], axis=1)
             else:
-                actual_holidays = [
-                    c for c in holiday_sorted.columns if c.startswith("days_from_")
-                ]
-                missing = set(expected_holidays) - set(actual_holidays)
-                if missing:
-                    raise ValueError(f"Missing holiday features: {missing}")
-                holiday_subset = holiday_sorted[expected_holidays].reset_index(drop=True)
+                # days_from_*: either use precomputed frame, or rebuild from
+                # per-country calendars (sku_id prefix / country column).
+                if holiday_calendar_mode in ("country", "per_country", "country_aware"):
+                    try:
+                        from holiday_calendar import build_country_holiday_distances
+                    except ImportError:
+                        from examples.holiday_calendar import (  # type: ignore
+                            build_country_holiday_distances,
+                        )
+                    keys = [
+                        n.replace("days_from_", "", 1)
+                        if n.startswith("days_from_")
+                        else n
+                        for n in expected_holidays
+                    ]
+                    country_col = meta.get("holiday_country_column")
+                    built = build_country_holiday_distances(
+                        df_sorted,
+                        holiday_keys=keys,
+                        sku_col="id_var",
+                        date_col="ds",
+                        country_col=country_col if country_col in df_sorted.columns else None,
+                        default_country=str(meta.get("holiday_country_default", "US")),
+                    )
+                    holiday_subset = built[expected_holidays].reset_index(drop=True)
+                    # Keep holiday_sorted in sync for binary derivation below.
+                    holiday_sorted = built.reset_index(drop=True)
+                else:
+                    actual_holidays = [
+                        c for c in holiday_sorted.columns if c.startswith("days_from_")
+                    ]
+                    missing = set(expected_holidays) - set(actual_holidays)
+                    if missing:
+                        raise ValueError(f"Missing holiday features: {missing}")
+                    holiday_subset = holiday_sorted[expected_holidays].reset_index(drop=True)
                 features_df = pd.concat([features_df, holiday_subset], axis=1)
 
                 binary_holiday_names = self.binary_holiday_names
@@ -514,7 +547,6 @@ class FeatureConfig:
                             RETAIL_WINDOW_KEYS,
                             binary_holiday_features,
                         )
-                    meta = self.config.get("metadata", {}) or {}
                     window_days = int(meta.get("binary_holiday_window_days", 0))
                     window_keys = meta.get("binary_holiday_window_keys")
                     if window_keys is None and window_days > 0:
