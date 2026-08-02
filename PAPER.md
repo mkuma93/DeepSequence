@@ -476,6 +476,18 @@ Aggregation cuts zero rate by \(\approx 25\) percentage points overall; UK (563 
 
 *Figure W3. Direct-MH CumMAE at the same matched leads.*
 
+![Figure W4. Weekly Direct-MH one-step forecasts (per SKU).](paper_figures/fig_forecast_weekly_onestep.png)
+
+[Open PNG](paper_figures/fig_forecast_weekly_onestep.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_onestep.png)
+
+*Figure W4. Locked weekly panel, seed 42: per-SKU actual vs DeepSequence / TSB / LightGBM one-step (\(h=1\) head of Direct-MH) over the test weeks. Exemplars chosen for mid intermittency and visible week-to-week variation (not max sparsity): `United Kingdom_22047`, `United Kingdom_79000`, `United Kingdom_22710`, `United Kingdom_22594`. Test zero-rates on these series are \(\approx 0.17\)–\(0.42\), well below the daily panel’s \(\approx 0.90\) (pooled weekly locked-800 zero-rate \(\approx 0.65\); Figure W1). DeepSequence tracks a planning rate \(p\cdot b\) with mild week-to-week movement; TSB is smoother; LightGBM is more volatile and can overshoot spikes.*
+
+![Figure W5. Weekly Direct-MH short and long horizons (per SKU).](paper_figures/fig_forecast_weekly_direct.png)
+
+[Open PNG](paper_figures/fig_forecast_weekly_direct.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_direct.png)
+
+*Figure W5. Same SKUs and protocol: Direct-MH forecasts from the first test origin with \(\ge 8\) future weeks (\(h=1..4\) and \(h=1..8\)). DeepSequence / LightGBM are direct multi-horizon; TSB is classical recursive. Spikes remain largely unmatched—consistent with the planning-rate reading in Section 5.3b—while weekly grain still shows non-constant DS levels across horizons on several series.*
+
 **Reading.** Under **matched direct-MH protocol**, DeepSequence leads within-grain IWMAE at weekly \(h=1/4/8\) and at daily \(h\ge 7\) (seed 42); daily \(h=1\) still favors TSB slightly. Weekly flatness at \(h=1\): DeepSequence \(\mathrm{corr}(y,\hat y)\approx 0.48\), \(\mathrm{CV}(\hat y)\approx 2.55\), only \(\approx 2\%\) of forecasts within 10% of mean \(\hat y\), and 41 distinct rounded levels—**not** a constant mean-rate. Daily direct flatness at \(h=1\): \(\mathrm{CV}(\hat y)\approx 1.91\). Absolute weekly vs daily IWMAE must not be ranked against each other (different units). Gains relative to the recursive daily Table 1 story should not be attributed to aggregation alone without the direct-daily comparator: holding protocol fixed, DS remains competitive / leading on direct MH at both grains once \(h\gtrsim 7\) days or \(h\ge 1\) week.
 
 ### 5.4 Daily Prophet subset (protocol note)
@@ -732,6 +744,7 @@ Implementation and locked evaluation artifacts accompany this preprint:
 | Weekly zero-rate audit | `ab_runs/weekly/zero_rate_daily_vs_weekly_locked800.json` |
 | Weekly MH bake-off (seed 42; direct MH) | `python -m deepsequence_hierarchical_attention.eval.weekly_mh` → `ab_runs/weekly/weekly_mh8_locked800_s42.json` |
 | Daily Direct-MH bake-off (seed 42; like-for-like) | same runner `--dataset daily_direct_mh` → `ab_runs/weekly/daily_direct_mh60_locked800_s42.json` |
+| Weekly forecast plots (W4–W5) | `paper_figures/make_forecast_weekly_plots.py` → `fig_forecast_weekly_{onestep,direct}.*` |
 | Reproduce notebook | `examples/reproduce_paper_findings.ipynb` |
 | Synthetic demo | `examples/v16_deepsequence_example.ipynb` |
 | Training config sample | `deepsequence_hierarchical_attention/training/training_config.sample.json` |
@@ -805,6 +818,8 @@ For reliable local viewing when markdown preview fails: open [`paper_figures/VIE
 | `paper_figures/fig_zero_rate_daily_vs_weekly.png` | Figure W1 — zero rate daily vs weekly |
 | `paper_figures/fig_weekly_daily_direct_iwmae.png` | Figure W2 — direct MH IWMAE weekly vs daily |
 | `paper_figures/fig_weekly_daily_direct_cummae.png` | Figure W3 — direct MH CumMAE weekly vs daily |
+| `paper_figures/fig_forecast_weekly_onestep.png` | Figure W4 — weekly Direct-MH one-step per-SKU forecasts |
+| `paper_figures/fig_forecast_weekly_direct.png` | Figure W5 — weekly Direct-MH \(h=1..4/8\) per-SKU forecasts |
 | `paper_figures/fig3_daily_decision_pi_horizon.png` | Figure 7 — daily multi-seed mid-\(\pi\) vs horizon |
 | `paper_figures/fig2_carparts_iwmae_horizon.png` | Figure 8 — Car Parts IWMAE (+ Prophet bake-off panel) |
 | `paper_figures/fig4_novelty_ablation.png` | Figure 9 — novelty ablations |
@@ -815,6 +830,7 @@ For reliable local viewing when markdown preview fails: open [`paper_figures/VIE
 | `paper_figures/make_method_diagrams.py` | Regenerates Figures 1–5 |
 | `paper_figures/make_results_figures.py` | Regenerates Figures 6–9 from locked JSON |
 | `paper_figures/make_forecast_line_plots.py` | Regenerates Figures 10–13 (+ JSON dumps) |
+| `paper_figures/make_forecast_weekly_plots.py` | Regenerates Figures W4–W5 (weekly Direct-MH forecast dumps) |
 | `paper_figures/fig_architecture_ds.png` | Alias of Figure 5 |
 | `paper_figures/fig_hierarchical_attention_internals.png` | Prior combined L1/L2 schematic |
 | `paper_figures/fig_changepoint_monotone.png` | Prior combined changepoint/mono schematic |

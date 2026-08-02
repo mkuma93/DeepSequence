@@ -79,3 +79,12 @@ TF_USE_LEGACY_KERAS=1 .venv-test/bin/python -m deepsequence_hierarchical_attenti
 ```
 
 Figures: `paper_figures/make_weekly_daily_direct_compare.py` → `fig_zero_rate_daily_vs_weekly`, `fig_weekly_daily_direct_iwmae`, `fig_weekly_daily_direct_cummae`.
+
+Qualitative per-SKU forecasts (Direct-MH, seed 42):
+
+```bash
+TF_USE_LEGACY_KERAS=1 .venv-test/bin/python paper_figures/make_forecast_weekly_plots.py \
+  --epochs 15 --max_skus 800 --seed 42
+```
+
+→ `fig_forecast_weekly_onestep` / `fig_forecast_weekly_direct` (+ pdf/json).
