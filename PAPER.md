@@ -17,7 +17,7 @@
 
 Replenishment decisions on intermittent panels depend on **lead-time demand**—cumulative demand over a replenishment horizon \(H\)—more than on hitting every sparse sale spike. Classical intermittent methods (Croston, SBA, TSB) and temporal transformers are strong at short horizons; Prophet-style additive structure is trusted for single-series level forecasts but does not, out of the box, yield a shared multi-series model for intermittent retail and distribution panels. We propose **DeepSequence**, a lightweight architecture that carries Prophet’s structural vocabulary to the panel setting for **planning rates**: four Prophet-like expert trunks with optional SKU personalization, hierarchical attention inside and across experts, a context-aware component mixer conditioned on lag and intermittent regime features, an occurrence–magnitude gate \(\hat{y}=p\cdot b\), and softplus-monotone maps on trend, holiday distances, and regressor channels. The regressor expert is designed for promo / price / traffic covariates; current evaluation panels largely lack those drivers, so day-level spike timing is out of scope here.
 
-Under a locked protocol on an enterprise daily intermittent panel (800 series; five training seeds), we evaluate lead-time planning with pointwise **IWMAE**, lead-time **CumMAE** (error on \(\sum_{h=1}^{H} y\)), and loyalty-aware decision economics \(\pi\). DeepSequence is **not** best at short daily lead times—a temporal transformer often leads at \(h\le 14\)—but shows a stable long-lead advantage at \(h=28/60\) (IWMAE \(5/5\) vs the transformer; mid-margin \(\pi\) \(5/5\) at \(h=28/60\); CumMAE leads at \(h=60\)). On milder weekly grain under matched **Direct-MH**, DeepSequence leads both IWMAE and CumMAE; a like-for-like daily Direct-MH comparator confirms the same long-lead pattern. Zone strata favor DeepSequence in mid-volume / smoother bands, while high-volume cells often prefer LightGBM—suggesting a **planning portfolio by segment and lead time**. On public Monash Car Parts (monthly; domain mismatch), TSB remains strong at short horizons and on mid-margin \(\pi\); DeepSequence leads IWMAE at \(h=6\) across five seeds. We recommend structural multi-series planning rates for long replenishment lead times, not a universal spike-capture claim.
+**All primary results use Direct multi-horizon (Direct-MH) forecasts**—one multi-step head per model, not recursive one-step rollout. On a locked enterprise panel (800 series), we evaluate lead-time planning with pointwise **IWMAE**, lead-time **CumMAE** (error on \(\sum_{h=1}^{H} y\)), and train-zone strata. Under daily Direct-MH, DeepSequence leads IWMAE and CumMAE at \(h\ge 7\) (TSB edges \(h=1\)); under milder weekly Direct-MH, DeepSequence leads both metrics at \(h=1/4/8\). A like-for-like daily↔weekly Direct-MH comparison confirms the same within-grain pattern. Weekly zone strata favor DeepSequence broadly across mid/high volume and smoother bands. On public Monash Car Parts (monthly; domain mismatch), TSB remains strong at short horizons and on mid-margin \(\pi\); DeepSequence leads IWMAE at \(h=6\) across five seeds. Recursive one-step rollout is reported only as an **optional** protocol in the appendix (including multi-seed IWMAE / \(\pi\) stability under that protocol). We recommend structural multi-series planning rates for replenishment lead times, not a universal spike-capture claim.
 
 **Keywords:** intermittent demand; lead-time demand; multi-series forecasting; Prophet; hierarchical attention; decision economics; inventory planning
 
@@ -39,11 +39,11 @@ Retail and wholesale distribution panels are often **intermittent**: most days (
 
 2. **Context-aware component mixing.** Level-2 weights are conditioned on lag and intermittent **regime** features (optionally concatenated with a SKU embedding)—not SKU identity alone—so the same calendar can reweight experts after a recent sale versus a long zero run.
 
-3. **Occurrence–magnitude gate** \(\hat{y}=p\cdot b\) with a softplus magnitude head, separating “will demand occur?” from “how large given structural drivers?”—the planning-rate factorization used for lead-time rollouts.
+3. **Occurrence–magnitude gate** \(\hat{y}=p\cdot b\) with a softplus magnitude head, separating “will demand occur?” from “how large given structural drivers?”—the planning-rate factorization used for lead-time Direct-MH paths.
 
 4. **Monotone softplus structural maps** on trend time, holiday distances, and regressor channels—neuralized Prophet-like shape constraints inside a panel model.
 
-5. **Lead-time planning evidence** under a locked architecture and multi-seed evaluation: (i) daily recursive long-lead IWMAE and loyalty mid-\(\pi\) wins at \(h=28/60\) (\(5/5\) vs a temporal transformer); (ii) CumMAE as a first-class lead-time cumulative metric alongside IWMAE; (iii) weekly Direct-MH (lower zero rate) where DeepSequence leads IWMAE+CumMAE, with a fair daily Direct-MH comparator; (iv) zone strata showing a mid-volume / smoother DeepSequence edge and frequent LightGBM preference in high volume. Short lead times often favor the transformer (daily) or TSB (monthly / Car Parts mid-\(\pi\)). We do **not** claim universal day-level accuracy or spike capture.
+5. **Lead-time planning evidence under Direct-MH** (locked architecture): (i) daily Direct-MH IWMAE+CumMAE leadership at \(h\ge 7\) (seed 42; TSB at \(h=1\)); (ii) weekly Direct-MH (milder zeros) where DeepSequence leads IWMAE+CumMAE at \(h=1/4/8\), with a like-for-like daily Direct-MH comparator; (iii) CumMAE as a first-class lead-time cumulative metric alongside IWMAE; (iv) weekly zone strata favoring DeepSequence in mid/high volume and smoother bands. Short monthly / Car Parts lead times often favor TSB (including mid-\(\pi\)). Recursive rollout and its multi-seed IWMAE / \(\pi\) stability checks are appendix-only. We do **not** claim universal day-level accuracy or spike capture.
 
 Secondary design choices—softsign-bounded expert outputs and DCN-style cross-layers off by default—are supported by ablations but are not the headline claim.
 
@@ -190,7 +190,7 @@ p_{i,t}=\sigma\bigl(g(x_{i,t}, e_i)\bigr),\quad
 
 Interpretation: \(p\) is the predicted probability that demand occurs; \(b\) is the predicted magnitude given structural drivers; the product is a soft Bernoulli–magnitude expectation. Optional per-SKU zero-rate priors can bias gate logits from historical zero rates (secondary). DCN-style cross-network layers default **OFF** (optional ablation path in Figure 5).
 
-**Interpretable component readouts.** The software exposes a probe API (`build_component_readout_model` / `predict_with_components`) that returns, per forward pass, the four expert scalars \(e_T,e_S,e_H,e_R\) **after** Level-1 selection / softsign / SKU FiLM (the values mixed by Level-2), the Level-2 weights \(\alpha_k\), mixed contributions \(\alpha_k e_k\), and the gate heads \(p\), \(b\), \(\hat{y}=p\cdot b\). Recursive multi-horizon evaluation can record these at **each** one-step rollout call; a direct multi-horizon head exposes \(p/b/\hat{y}\) shaped \([B,H]\) but keeps shared one-step expert scalars—callers should document that limitation. Sample dumps: `deepsequence_hierarchical_attention.eval.dump_component_readout` → `ab_runs/reclaim/component_readout_sample.json`.
+**Interpretable component readouts.** The software exposes a probe API (`build_component_readout_model` / `predict_with_components`) that returns, per forward pass, the four expert scalars \(e_T,e_S,e_H,e_R\) **after** Level-1 selection / softsign / SKU FiLM (the values mixed by Level-2), the Level-2 weights \(\alpha_k\), mixed contributions \(\alpha_k e_k\), and the gate heads \(p\), \(b\), \(\hat{y}=p\cdot b\). A Direct-MH head exposes \(p/b/\hat{y}\) shaped \([B,H]\) (primary protocol) but keeps shared one-step expert scalars—callers should document that limitation. Optional recursive multi-horizon evaluation can also record readouts at each one-step rollout call (Appendix E). Sample dumps: `deepsequence_hierarchical_attention.eval.dump_component_readout` → `ab_runs/reclaim/component_readout_sample.json`.
 
 ![Figure 5. End-to-end DeepSequence architecture.](paper_figures/fig_m5_architecture.png)
 
@@ -215,7 +215,7 @@ An opt-in **spike-aware** recipe (``loss_recipe='spike_aware'``; Section 5.8) re
 
 ### 3.10 Multi-horizon and lead-time evaluation
 
-Primary daily tables use **one-step models with recursive rollout** to replenishment horizons of interest (daily maximum horizon \(H=60\), report \(h\in\{1,7,14,28,60\}\); monthly \(h\in\{1,2,6\}\)). A direct multi-horizon head exists in the software for planning; recursive daily tables (Section 5.1) remain the **primary** long-lead portfolio claim. Earlier drafts that emphasized direct multi-horizon wins at short horizons under a previous protocol are relegated to Appendix D and are not restated as primary evidence.
+**Primary protocol (Direct-MH).** All primary results in this preprint use **Direct multi-horizon** forecasts: DeepSequence and LightGBM emit an \(H\)-step path from a multi-output head (TSB remains classical recursive by method). Daily Direct-MH uses maximum horizon \(H=60\) and reports \(h\in\{1,7,14,28,56,60\}\); weekly Direct-MH uses \(H=8\) and reports \(h\in\{1,4,8\}\); monthly Car Parts reports \(h\in\{1,2,6\}\). Recursive one-step rollout is an **optional** evaluation protocol only (Appendix E), including the five-seed IWMAE / loyalty-\(\pi\) stability checks run under that protocol. Earlier drafts that mixed recursive headlines with a different Direct-MH feature/model protocol are relegated to Appendix D and are not restated as primary evidence.
 
 **Lead-time CumMAE (first-class planning metric).** Alongside pointwise IWMAE on the forecast path, multi-horizon eval reports lead-time **cumulative MAE**—error on the planning sum that inventory cares about:
 
@@ -223,9 +223,9 @@ Primary daily tables use **one-step models with recursive rollout** to replenish
 \mathrm{CumMAE}(H)=\mathrm{mean}\Bigl|\sum_{h=1}^{H}\hat{y}_{t+h}-\sum_{h=1}^{H}y_{t+h}\Bigr|,
 \]
 
-plus CumIWMAE on the same cumulative series (inverse-frequency weights by whether the \(H\)-step cumulative actual is nonzero). We treat **IWMAE and CumMAE as co-primary accuracy metrics** for lead-time planning; decision \(\pi\) supplies planning economics. Pointwise `iwmae_rounded` remains the locked ranking key in JSON artifacts for continuity with prior runs. JSON keys: `by_horizon_cum` / `comparison_cum` in `deepsequence_hierarchical_attention.eval.multihorizon_compare` and `deepsequence_hierarchical_attention.eval.public_carparts_mh_all`.
+plus CumIWMAE on the same cumulative series (inverse-frequency weights by whether the \(H\)-step cumulative actual is nonzero). We treat **IWMAE and CumMAE as co-primary accuracy metrics** for lead-time planning. Decision \(\pi\) is available primarily under the recursive appendix protocol (Appendix E); Direct-MH primary tables emphasize IWMAE, CumMAE, and zone strata. Pointwise `iwmae_rounded` remains the locked ranking key in JSON artifacts for continuity with prior runs. JSON keys: `by_horizon_cum` / `comparison_cum` in `deepsequence_hierarchical_attention.eval.multihorizon_compare`, `weekly_mh`, and `deepsequence_hierarchical_attention.eval.public_carparts_mh_all`.
 
-**Weekly grain + direct-MH comparator.** Section 5.3b reports weekly Direct-MH (DeepSequence / multi-output LightGBM; TSB classical recursive) and a matching **daily Direct-MH** bake-off on the same locked 800 SKUs (seed 42). The grain comparison is therefore **direct↔direct**; recursive daily Table 1 is kept as the historical primary protocol. Absolute IWMAE / CumMAE are still not cross-grain comparable (different demand scale).
+**Weekly grain + like-for-like Direct-MH.** Section 5.2 reports weekly Direct-MH and a matching **daily Direct-MH** bake-off on the same locked 800 SKUs (seed 42). The grain comparison is therefore **direct↔direct**. Absolute IWMAE / CumMAE are still not cross-grain comparable (different demand scale).
 
 ---
 
@@ -242,13 +242,16 @@ The enterprise panel cannot be released. Code, feature contracts, a synthetic de
 
 ### 4.2 Locked protocol
 
+**Forecasting protocol.** All primary results use Direct multi-horizon (Direct-MH) forecasts (Section 3.10). Recursive one-step rollout appears only in Appendix E.
+
 | Item | Specification |
 |------|----------------|
+| MH protocol (primary) | **Direct-MH** for DeepSequence / LightGBM; TSB classical recursive by method |
 | Architecture stack | Softsign expert outputs; monotone Level-1 maps; context-aware mixer; calendar FiLM off; cross-network layers **off** |
 | Features | Identical causal feature matrix for trees and neural models |
-| Sequence lookback | 14 (daily) / 12 (monthly) for DeepAR, temporal transformer, and TFT baselines |
-| Seeds | SKU panels locked once. Seed-42 full-baseline tables in Section 6.1–6.3; multi-seed means \(\pm\) standard deviation over training seeds \(\{42,\ldots,46\}\) |
-| Metrics | IWMAE + CumMAE (co-primary lead-time accuracy); occurrence F1; underforecast on sales; bias; decision \(\pi\) with loyalty scenarios |
+| Sequence lookback | 14 (daily) / 12 (monthly) for DeepAR, temporal transformer, and TFT baselines (appendix recursive bake-offs) |
+| Seeds | SKU panels locked once. Seed-42 Direct-MH tables in Section 5; multi-seed means \(\pm\) standard deviation over training seeds \(\{42,\ldots,46\}\) for Car Parts and for **recursive** appendix tables |
+| Metrics | IWMAE + CumMAE (co-primary lead-time accuracy); occurrence F1; underforecast on sales; bias; zone strata; decision \(\pi\) with loyalty scenarios (appendix recursive / Car Parts) |
 | Baselines | LightGBM; DeepAR-lite; temporal transformer (TST); TFT-lite; Croston / SBA / TSB on Car Parts; **Prophet (per-series)** |
 
 **Why not all-day MAE alone.** High zero rates reward near-zero predictors. IWMAE, CumMAE (lead-time demand), and sale-day underforecast better reflect intermittent planning risk.
@@ -297,102 +300,121 @@ with holding cost \(C_{\mathrm{hold}}=0.1\), margins \(m\in\{0.08,0.25,0.55\}\),
 
 ## 5. Results
 
-### 5.1 Daily recursive lead-time accuracy (IWMAE + CumMAE)
+**Protocol reminder.** All primary tables below use **Direct multi-horizon (Direct-MH)** forecasts (Section 3.10). Recursive daily DS/TST bake-offs, multi-seed IWMAE / \(\pi\), and recursive zone strata are in Appendix E only.
 
-Recursive rollout after origin \(t\); known-future calendar and holidays; demand predictions fed into lags and intermittent state. Seed-42 full bake-off: \(n=5538\) origins, 800 SKUs. Horizons are read as **replenishment lead times**.
+### 5.1 Daily Direct-MH lead-time accuracy (IWMAE + CumMAE)
 
-**Table 1.** Daily recursive IWMAE, seed 42 (locked stack). Bold = best in row.
+Locked 800 SKUs, seed 42; \(H=60\); 696 origins with \(\ge 60\) test days. Horizons are read as **replenishment lead times**. Artifact: `ab_runs/weekly/daily_direct_mh60_locked800_s42.json`. Runner: `python -m deepsequence_hierarchical_attention.eval.weekly_mh --dataset daily_direct_mh`.
 
-| Horizon | DeepSequence | TST | TFT | DeepAR | LightGBM | Best |
-|--------:|-------------:|----:|----:|-------:|---------:|:-----|
-| \(h=1\) | 4.035 | **3.860** | 4.010 | 4.154 | 4.451 | TST |
-| \(h=7\) | 4.381 | **4.323** | 4.566 | 5.169 | 4.688 | TST |
-| \(h=14\) | 4.211 | **4.177** | 4.589 | 5.006 | 4.615 | TST |
-| \(h=28\) | **6.417** | 6.877 | 6.891 | 7.212 | 6.866 | **DS** |
-| \(h=60\) | **3.891** | 4.495 | 4.308 | 4.696 | 4.375 | **DS** |
-| mean \(1..60\) | **4.374** | 4.666 | 4.736 | 5.103 | 4.790 | **DS** |
+**Table 1.** Daily **Direct-MH** bake-off, seed 42 (locked stack). Bold = best IWMAE in row among DeepSequence / TSB / LightGBM.
 
-**Year-scope holiday audit (seed 42, full 800).** Locked jubilant `holiday_features_{train,val,test}.csv` were rebuilt with US `days_from_*` and `distance_scope='year'` (same 15-key set as `feature_config.yaml`) under `ab_runs/reclaim/year_scope_800/`. Max abs vs locked CSVs is **0** on all splits (values identical; CSV bytes may differ by float formatting). Explicit `nearest` differs (sample max abs ≈ 365–385). Re-running DeepSequence / TST / LightGBM on the year-scope data dir with the locked stack reproduces Table 1 DeepSequence and LightGBM IWMAE **exactly** (\(\Delta=0\)); TST moves by at most ≈0.07 IWMAE (TF train noise), with the same short/long ranking. Loyalty mid-margin \(\pi\) at \(C_{\mathrm{loyalty}}=0.25\) still favors TST at \(h\le 7\) and DeepSequence at \(h=28/60\). Multi-seed \(43\)–\(46\) was **not** re-run (locked assets already year-scoped). Monthly Car Parts stays holiday-off.
+| Horizon | DeepSequence IWMAE | TSB | LightGBM | Best IWMAE | DS CumMAE | TSB CumMAE | LGBM CumMAE |
+|--------:|-------------------:|----:|---------:|:-----------|----------:|-----------:|------------:|
+| \(h=1\) | 5.60 | **5.32** | 5.85 | TSB | 2.35 | **1.66** | 2.84 |
+| \(h=7\) | **3.26** | 4.49 | 4.37 | DeepSequence | **10.86** | 17.42 | 15.92 |
+| \(h=14\) | **3.71** | 5.30 | 5.33 | DeepSequence | **19.91** | 43.94 | 34.99 |
+| \(h=28\) | **3.87** | 5.36 | 6.22 | DeepSequence | **38.34** | 99.62 | 75.53 |
+| \(h=56\) | **9.09** | 10.83 | 10.29 | DeepSequence | **76.86** | 210.89 | 142.50 |
+| \(h=60\) | **2.51** | 4.24 | 3.71 | DeepSequence | **81.74** | 226.36 | 148.83 |
 
-**Table 2.** Daily multi-seed IWMAE (mean \(\pm\) std over training seeds \(42\)–\(46\); locked SKU panel; DeepSequence / TST / LightGBM).
+**Reading (lead-time planning).** Under daily Direct-MH, TSB edges one-step (\(h=1\)); DeepSequence leads **IWMAE and CumMAE** at every reported lead time \(h\ge 7\). This is a Direct-MH planning-rate result on the locked panel—not a recursive DS-vs-TST headline. Recursive daily all-model bake-offs (including TST/TFT/DeepAR) and five-seed stability are Appendix E.
 
-| Horizon | DeepSequence | TST | LightGBM |
-|--------:|-------------:|----:|---------:|
-| \(h=1\) | \(4.023\pm0.257\) | \(\mathbf{3.912\pm0.273}\) | \(4.483\pm0.324\) |
-| \(h=7\) | \(4.299\pm0.500\) | \(\mathbf{4.139\pm0.523}\) | \(4.549\pm0.531\) |
-| \(h=14\) | \(5.494\pm0.935\) | \(\mathbf{5.454\pm0.890}\) | \(5.828\pm0.883\) |
-| \(h=28\) | \(\mathbf{4.823\pm0.970}\) | \(5.290\pm0.991\) | \(5.194\pm1.031\) |
-| \(h=60\) | \(\mathbf{4.345\pm0.619}\) | \(5.055\pm0.417\) | \(4.710\pm0.550\) |
+**Year-scope holiday audit (seed 42, full 800).** Locked jubilant `holiday_features_{train,val,test}.csv` were rebuilt with US `days_from_*` and `distance_scope='year'` (same 15-key set as `feature_config.yaml`) under `ab_runs/reclaim/year_scope_800/`. Max abs vs locked CSVs is **0** on all splits (values identical; CSV bytes may differ by float formatting). Explicit `nearest` differs (sample max abs ≈ 365–385). Re-running DeepSequence / TST / LightGBM on the year-scope data dir with the locked stack under the **recursive** protocol reproduces Appendix E Table E1 DeepSequence and LightGBM IWMAE **exactly** (\(\Delta=0\)); TST moves by at most ≈0.07 IWMAE (TF train noise). Multi-seed \(43\)–\(46\) was **not** re-run (locked assets already year-scoped). Monthly Car Parts stays holiday-off.
 
-**Reading (lead-time planning).** Short lead times favor the **temporal transformer** on path IWMAE; DeepSequence leads at **long lead times** (\(h=28/60\)) on both the seed-42 full bake-off and the five-seed mean. DeepSequence beats TST IWMAE at \(h=28\) and \(h=60\) in **\(5/5\)** seeds. This is a long-lead planning-rate result, not a claim that DeepSequence wins one-step spike timing. Figure 6 plots the multi-seed IWMAE curves from Table 2.
+### 5.2 Weekly Direct-MH and like-for-like grain comparison
 
-![Figure 6. Daily multi-seed IWMAE vs horizon.](paper_figures/fig1_daily_iwmae_horizon.png)
+**Motivation.** Daily intermittency on this panel is extreme (\(\approx 90\%\) zeros). Aggregating to ISO Monday-start weeks (sum `Quantity` by SKU-week) tests lead-time planning under milder zero rates—closer to a usable planning-rate grain. Panel builder: `deepsequence_hierarchical_attention.data.prepare_weekly_panel`; features: `feature_config_weekly.yaml` (lags \(\{1,2,4\}\), `gap_unit: weeks`). Primary daily evidence remains daily Direct-MH (Table 1).
 
-[Open PNG](paper_figures/fig1_daily_iwmae_horizon.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig1_daily_iwmae_horizon.png)
+**Protocol.** Weekly DeepSequence / LightGBM use **direct** multi-horizon (TSB remains classical recursive). Matched leads for grain discussion: weekly \(h=1/4/8\) \(\approx\) daily \(h=7/28/56\). Absolute IWMAE / CumMAE are **not** cross-grain comparable (weekly targets are week-sums). Runner: `python -m deepsequence_hierarchical_attention.eval.weekly_mh`.
 
-*Figure 6. Daily recursive IWMAE (mean ± std over training seeds \(42\)–\(46\)) for DeepSequence, TST, and LightGBM at lead times \(h\in\{1,7,14,28,60\}\). Short lead times favor TST; DeepSequence leads at \(h=28/60\).*
+**Table Z.** Zero rate and mean demand, locked 800 SKUs (all splits pooled). Artifact: `ab_runs/weekly/zero_rate_daily_vs_weekly_locked800.json`.
 
-**Table 1b.** Daily CumMAE (lead-time demand error), seed 42 (same locked MH origins as Table 1). Artifact: `ab_runs/reclaim/cummae_daily_s42.json` (full MH: `daily_mh_1_60_cummae_s42.json`).
+| Grain | \(n\) rows | Zero rate | Mean demand | Mean \(\mid y>0\) | SKU mean zero rate |
+|-------|----------:|----------:|------------:|------------------:|-------------------:|
+| Daily | 594{,}556 | 0.896 | 1.04 | 10.01 | 0.894 |
+| Weekly | 85{,}339 | **0.650** | 7.27 | 20.78 | 0.649 |
 
-| Horizon | DeepSequence | TST | TFT | DeepAR | LightGBM | Best CumMAE |
-|--------:|-------------:|----:|----:|-------:|---------:|:------------|
-| \(h=1\) | 1.685 | **1.433** | 1.753 | 2.050 | 1.639 | TST |
-| \(h=7\) | 9.866 | **8.621** | 12.079 | 17.152 | 9.085 | TST |
-| \(h=14\) | 18.529 | **17.037** | 26.151 | 35.603 | 17.439 | TST |
-| \(h=28\) | 35.954 | 42.505 | 56.119 | 71.642 | **34.262** | LightGBM |
-| \(h=60\) | **70.627** | 111.863 | 119.387 | 149.586 | 70.791 | **DS** |
+Aggregation cuts zero rate by \(\approx 25\) percentage points overall; UK (563 SKUs) drops \(0.869\to 0.587\). Country detail is in the JSON artifact.
 
-Pointwise IWMAE (Table 1) and CumMAE (Table 1b) agree that TST leads short lead times and DeepSequence leads at \(h=60\) on cumulative demand; at \(h=28\) LightGBM wins CumMAE while DeepSequence still wins IWMAE. Both metrics are reported for lead-time planning; path IWMAE remains the locked JSON ranking key.
+**Table W.** Weekly **Direct-MH** bake-off, seed 42, locked 800 (793 origins with \(\ge 8\) test weeks). Artifact: `ab_runs/weekly/weekly_mh8_locked800_s42.json`.
 
-**Stratified evaluation (train zones; planning portfolio by segment).** Locked recursive MH already records SKU bands from **train** statistics: primary = terciles of train \(\sum\) Quantity (low / mid / high volume; on this panel ranks correlate strongly with train mean demand). Artifacts: nested `low`/`mid`/`high` under `by_horizon` / `by_horizon_cum` in `ab_runs/reclaim/daily_mh_1_60_cummae_s42.json`; summary tables in `ab_runs/reclaim/strata_volume_s42.json`.
+| Horizon | DeepSequence IWMAE | TSB | LightGBM | Best IWMAE | DS CumMAE | TSB CumMAE | LGBM CumMAE |
+|--------:|-------------------:|----:|---------:|:-----------|----------:|-----------:|------------:|
+| \(h=1\) | **9.95** | 10.21 | 10.78 | DeepSequence | **6.41** | 7.41 | 8.50 |
+| \(h=4\) | **8.83** | 10.01 | 10.02 | DeepSequence | **18.93** | 20.75 | 21.77 |
+| \(h=8\) | **7.78** | 10.37 | 13.47 | DeepSequence | **42.78** | 43.28 | 49.84 |
 
-**Table 1c.** Daily recursive IWMAE by train volume zone, seed 42 (same origins as Table 1). Bold = best in row among DeepSequence / TST / LightGBM (full five-model numbers in the JSON).
+**Table L.** Like-for-like **Direct-MH↔Direct-MH** at matched leads (weekly weeks vs daily days). Within each grain, DeepSequence leads IWMAE at the matched horizons shown (except daily \(h=1\), where TSB edges DS; Table 1). Absolute levels remain grain-specific.
 
-| Horizon | Zone | DeepSequence | TST | LightGBM | Best |
+| Lead | Weekly \(h\) | Daily \(h\) | DS weekly IWMAE | DS daily IWMAE | DS weekly CumMAE | DS daily CumMAE |
+|------|------------:|-----------:|----------------:|---------------:|-----------------:|----------------:|
+| ≈1 week | 1 | 7 | **9.95** | **3.26** | **6.41** | **10.86** |
+| ≈4 weeks | 4 | 28 | **8.83** | **3.87** | **18.93** | **38.34** |
+| ≈8 weeks | 8 | 56 | **7.78** | **9.09** | **42.78** | **76.86** |
+
+![Figure W1. Zero rate daily vs weekly.](paper_figures/fig_zero_rate_daily_vs_weekly.png)
+
+[Open PNG](paper_figures/fig_zero_rate_daily_vs_weekly.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_zero_rate_daily_vs_weekly.png)
+
+*Figure W1. Pooled zero rate on the locked 800 SKUs: daily 0.896 → weekly 0.650.*
+
+![Figure W2. Direct MH IWMAE weekly vs daily.](paper_figures/fig_weekly_daily_direct_iwmae.png)
+
+[Open PNG](paper_figures/fig_weekly_daily_direct_iwmae.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_daily_direct_iwmae.png)
+
+*Figure W2. Direct-MH IWMAE (seed 42): weekly \(h=1/4/8\) vs daily \(h=7/28/56\). Scales differ by grain; compare within-panel rankings. Primary protocol for both grains.*
+
+![Figure W3. Direct MH CumMAE weekly vs daily.](paper_figures/fig_weekly_daily_direct_cummae.png)
+
+[Open PNG](paper_figures/fig_weekly_daily_direct_cummae.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_daily_direct_cummae.png)
+
+*Figure W3. Direct-MH CumMAE at the same matched leads.*
+
+![Figure W4. Weekly Direct-MH one-step forecasts (per SKU).](paper_figures/fig_forecast_weekly_onestep.png)
+
+[Open PNG](paper_figures/fig_forecast_weekly_onestep.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_onestep.png)
+
+*Figure W4. Locked weekly panel, seed 42: per-SKU actual vs DeepSequence / TSB / LightGBM one-step (\(h=1\) head of Direct-MH) over the test weeks. Exemplars chosen for mid intermittency and visible week-to-week variation (not max sparsity): `United Kingdom_22047`, `United Kingdom_79000`, `United Kingdom_22710`, `United Kingdom_22594`. Test zero-rates on these series are \(\approx 0.17\)–\(0.42\), well below the daily panel’s \(\approx 0.90\) (pooled weekly locked-800 zero-rate \(\approx 0.65\); Figure W1). DeepSequence tracks a planning rate \(p\cdot b\) with mild week-to-week movement; TSB is smoother; LightGBM is more volatile and can overshoot spikes.*
+
+![Figure W5. Weekly Direct-MH short and long horizons (per SKU).](paper_figures/fig_forecast_weekly_direct.png)
+
+[Open PNG](paper_figures/fig_forecast_weekly_direct.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_direct.png)
+
+*Figure W5. Same SKUs and protocol: Direct-MH forecasts from the first test origin with \(\ge 8\) future weeks (\(h=1..4\) and \(h=1..8\)). DeepSequence / LightGBM are direct multi-horizon; TSB is classical recursive. Spikes remain largely unmatched—consistent with the planning-rate reading in Section 5.2—while weekly grain still shows non-constant DS levels across horizons on several series.*
+
+**Reading.** Under **matched Direct-MH protocol**, DeepSequence leads within-grain **IWMAE and CumMAE** at weekly \(h=1/4/8\) and at daily \(h\ge 7\) (seed 42); daily \(h=1\) still favors TSB slightly. Weekly flatness at \(h=1\): DeepSequence \(\mathrm{corr}(y,\hat y)\approx 0.48\), \(\mathrm{CV}(\hat y)\approx 2.55\), only \(\approx 2\%\) of forecasts within 10% of mean \(\hat y\), and 41 distinct rounded levels—**not** a constant mean-rate, but a planning-rate trajectory rather than spike matching. Daily Direct-MH flatness at \(h=1\): \(\mathrm{CV}(\hat y)\approx 1.91\). Absolute weekly vs daily IWMAE must not be ranked against each other (different units).
+
+**Weekly strata (train mean-demand + zero-rate terciles).** Same locked 800 / seed-42 Direct-MH run, scored by SKU bands from **train** only. Primary: terciles of train **mean** demand (low / mid / high volume). Secondary: terciles of train **zero rate** (high-zero / mid / low-zero; high-zero = most intermittent). Artifacts: `ab_runs/weekly/weekly_mh8_locked800_s42.json` (`strata_mean_demand`, `strata_zero_rate`); `ab_runs/weekly/strata_weekly_direct_s42.json`.
+
+**Table W-S1.** Weekly Direct-MH IWMAE by train mean-demand zone (seed 42).
+
+| Horizon | Zone | DeepSequence | TSB | LightGBM | Best |
 |--------:|:-----|-------------:|----:|---------:|:-----|
-| \(h=1\) | Low | **1.326** | 1.443 | 1.503 | **DS** |
-| \(h=1\) | Mid | 2.811 | **2.746** | 2.948 | TST |
-| \(h=1\) | High | 5.355 | **5.010** | 5.223 | TST |
-| \(h=28\) | Low | 2.517 | **2.469** | 2.610 | TST |
-| \(h=28\) | Mid | **4.564** | 4.886 | 4.659 | **DS** |
-| \(h=28\) | High | 8.095 | 9.155 | **7.983** | LightGBM |
-| \(h=60\) | Low | **2.596** | 2.673 | 2.744 | **DS** |
-| \(h=60\) | Mid | **4.328** | 4.763 | 4.459 | **DS** |
-| \(h=60\) | High | 4.581 | 5.970 | **4.528** | LightGBM |
+| \(h=1\) | Low | 4.575 | **4.486** | 4.852 | TSB |
+| \(h=1\) | Mid | **5.907** | 5.927 | 6.784 | **DS** |
+| \(h=1\) | High | **13.703** | 16.045 | 17.586 | **DS** |
+| \(h=4\) | Low | **1.990** | 2.150 | 2.472 | **DS** |
+| \(h=4\) | Mid | **5.646** | 6.658 | 6.455 | **DS** |
+| \(h=4\) | High | **12.878** | 17.842 | 16.803 | **DS** |
+| \(h=8\) | Low | **2.046** | 2.380 | 2.953 | **DS** |
+| \(h=8\) | Mid | **5.401** | 7.228 | 8.105 | **DS** |
+| \(h=8\) | High | **11.158** | 18.494 | 25.266 | **DS** |
 
-**Reading (zones).** The long-lead planning story is **zone-heterogeneous**: TST leads short-horizon mid/high volume; DeepSequence’s long-lead edge is clearest in **mid** volume (and low at \(h=60\)); **high** volume at \(h=28/60\) often prefers LightGBM on IWMAE (and CumMAE). Low-volume cells are closer across models—supporting a **planning portfolio by segment**, not a single global winner.
+**Table W-S2.** Weekly Direct-MH IWMAE by train zero-rate zone (seed 42).
 
-### 5.2 Decision economics \(\pi\) as planning cost (daily)
+| Horizon | Zone | DeepSequence | TSB | LightGBM | Best |
+|--------:|:---------|-------------:|----:|---------:|:-----|
+| \(h=1\) | High-zero | 5.946 | **5.877** | 6.385 | TSB |
+| \(h=1\) | Mid | 13.280 | **12.034** | 12.582 | TSB |
+| \(h=1\) | Low-zero | **10.472** | 12.021 | 13.037 | **DS** |
+| \(h=4\) | High-zero | 6.934 | 7.075 | **6.741** | LightGBM |
+| \(h=4\) | Mid | 11.029 | 10.072 | **9.969** | LightGBM |
+| \(h=4\) | Low-zero | **9.444** | 11.848 | 13.231 | **DS** |
+| \(h=8\) | High-zero | **9.385** | 9.505 | 10.867 | **DS** |
+| \(h=8\) | Mid | **8.969** | 11.163 | 12.271 | **DS** |
+| \(h=8\) | Low-zero | **8.536** | 11.295 | 16.765 | **DS** |
 
-Without loyalty (\(C_{\mathrm{loyalty}}=0\)), **LightGBM** often wins **low-margin** \(\pi\): under-forecasting reduces holding \(H\) and looks cheap when lost sales are under-weighted. With the recommended scenario \(C_{\mathrm{loyalty}}=0.25\), that ranking flips—loyalty \(\pi\) is the planning-economics lens on the same lead times.
-
-**Table 3.** Seed-42 \(\pi\) winners by lead time (proxy = forecast horizon) and loyalty (low / mid / high margin).
-
-| Lead time | \(C_{\mathrm{loyalty}}=0\) | \(C_{\mathrm{loyalty}}=0.25\) |
-|-----------|--------------------------|-------------------------------|
-| 7 days | LGBM / TST / TST | **TST / TST / TST** |
-| 14 days | LGBM / DS / TST | DS / TST / TST |
-| 28 days | LGBM / DS / DS | **DS / DS / DS** |
-| 60 days | LGBM / DS / DS | **DS / DS / DS** |
-
-**Table 4.** Multi-seed mid-margin \(\pi\) at \(C_{\mathrm{loyalty}}=0.25\) (seeds \(42\)–\(46\); higher is better).
-
-| Horizon | DeepSequence | TST | LightGBM | Mid-\(\pi\) winner |
-|--------:|-------------:|----:|---------:|:-------------------|
-| \(h=7\) | \(-0.243\pm0.022\) | \(\mathbf{-0.218\pm0.024}\) | \(-0.262\pm0.023\) | TST \(4/5\) |
-| \(h=14\) | \(-0.291\pm0.046\) | \(-0.291\pm0.040\) | \(-0.313\pm0.034\) | TST \(3/5\), DS \(2/5\) |
-| \(h=28\) | \(\mathbf{-0.273\pm0.045}\) | \(-0.353\pm0.068\) | \(-0.308\pm0.051\) | **DS \(5/5\)** |
-| \(h=60\) | \(\mathbf{-0.255\pm0.042}\) | \(-0.373\pm0.046\) | \(-0.301\pm0.031\) | **DS \(5/5\)** |
-
-Loyalty collapses LightGBM’s low-margin win rate (\(h=7/14\): \(5/5\to0/5\); \(h=28\): \(5/5\to2/5\); \(h=60\): \(5/5\to1/5\)). Figure 7 shows the multi-seed mid-margin \(\pi\) curves from Table 4.
-
-![Figure 7. Daily multi-seed mid-margin pi vs horizon.](paper_figures/fig3_daily_decision_pi_horizon.png)
-
-[Open PNG](paper_figures/fig3_daily_decision_pi_horizon.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig3_daily_decision_pi_horizon.png)
-
-*Figure 7. Daily multi-seed mid-margin decision \(\pi\) at \(C_{\mathrm{loyalty}}=0.25\) (higher is better; mean ± std over seeds \(42\)–\(46\)). TST leads at short replenishment lead times; DeepSequence dominates \(h=28/60\).*
-
-**Portfolio takeaway.** Short replenishment → temporal transformer; long replenishment → DeepSequence—once a modest loyalty / switching cost prevents “always under-forecast” from winning on paper. The multi-seed mid-\(\pi\) pattern matches the seed-42 matrix and aligns with long-lead IWMAE / CumMAE.
+**Reading (weekly zones).** On milder weekly zeros, DeepSequence’s Direct-MH lead is **broad across volume**: mid/high mean-demand at all reported \(h\), and low volume once \(h\ge 4\). TSB still edges sparse one-step cells (low volume; high-zero / mid intermittency at \(h=1\)). Smoother SKUs (low-zero) favor DeepSequence at every reported horizon; longer \(H\) consolidates DS wins even in high-zero bands. Daily recursive volume zones (and LightGBM preference in high-volume recursive cells) are Appendix E only.
 
 ### 5.3 Public Car Parts (monthly; domain mismatch)
 
@@ -434,115 +456,9 @@ TSB is seed-invariant (classical). DeepSequence’s long-horizon (\(h=6\)) IWMAE
 
 Pointwise IWMAE ranking (TSB short / DS competitive at \(h=6\)) and CumMAE ranking diverge: LightGBM’s under-forecasting can look strong on cumulative absolute error even when IWMAE does not prefer it. Lead-time claims on this panel emphasize IWMAE + loyalty \(\pi\); CumMAE remains a planning-sum diagnostic (and here does not overturn TSB’s short-horizon / mid-\(\pi\) role).
 
-### 5.3b Weekly aggregation and like-for-like direct MH (same locked 800 SKUs)
-
-**Motivation.** Daily intermittency on this panel is extreme (\(\approx 90\%\) zeros). Aggregating to ISO Monday-start weeks (sum `Quantity` by SKU-week) tests lead-time planning under milder zero rates—closer to a usable planning-rate grain. Panel builder: `deepsequence_hierarchical_attention.data.prepare_weekly_panel`; features: `feature_config_weekly.yaml` (lags \(\{1,2,4\}\), `gap_unit: weeks`). Does **not** replace the locked **recursive** daily bake-off (Table 1).
-
-**Protocol.** Weekly DeepSequence / LightGBM use **direct** multi-horizon (TSB remains classical recursive). To hold MH protocol fixed when discussing grain, we also run **daily Direct-MH** on the same locked SKUs (seed 42; \(H=60\); report \(h\in\{1,7,14,28,56,60\}\); 696 origins with \(\ge 60\) test days). Matched leads for grain discussion: weekly \(h=1/4/8\) \(\approx\) daily \(h=7/28/56\). Absolute IWMAE / CumMAE are **not** cross-grain comparable (weekly targets are week-sums). Runner: `python -m deepsequence_hierarchical_attention.eval.weekly_mh`.
-
-**Table Z.** Zero rate and mean demand, locked 800 SKUs (all splits pooled). Artifact: `ab_runs/weekly/zero_rate_daily_vs_weekly_locked800.json`.
-
-| Grain | \(n\) rows | Zero rate | Mean demand | Mean \(\mid y>0\) | SKU mean zero rate |
-|-------|----------:|----------:|------------:|------------------:|-------------------:|
-| Daily | 594{,}556 | 0.896 | 1.04 | 10.01 | 0.894 |
-| Weekly | 85{,}339 | **0.650** | 7.27 | 20.78 | 0.649 |
-
-Aggregation cuts zero rate by \(\approx 25\) percentage points overall; UK (563 SKUs) drops \(0.869\to 0.587\). Country detail is in the JSON artifact.
-
-**Table W.** Weekly **direct** multi-horizon bake-off, seed 42, locked 800 (793 origins with \(\ge 8\) test weeks). Artifact: `ab_runs/weekly/weekly_mh8_locked800_s42.json`.
-
-| Horizon | DeepSequence IWMAE | TSB | LightGBM | Best IWMAE | DS CumMAE | TSB CumMAE | LGBM CumMAE |
-|--------:|-------------------:|----:|---------:|:-----------|----------:|-----------:|------------:|
-| \(h=1\) | **9.95** | 10.21 | 10.78 | DeepSequence | **6.41** | 7.41 | 8.50 |
-| \(h=4\) | **8.83** | 10.01 | 10.02 | DeepSequence | **18.93** | 20.75 | 21.77 |
-| \(h=8\) | **7.78** | 10.37 | 13.47 | DeepSequence | **42.78** | 43.28 | 49.84 |
-
-**Table D.** Daily **direct** multi-horizon bake-off, seed 42, locked 800 (696 origins with \(\ge 60\) test days). Artifact: `ab_runs/weekly/daily_direct_mh60_locked800_s42.json`. Recursive daily Table 1 remains primary for the portfolio narrative.
-
-| Horizon | DeepSequence IWMAE | TSB | LightGBM | Best IWMAE | DS CumMAE | TSB CumMAE | LGBM CumMAE |
-|--------:|-------------------:|----:|---------:|:-----------|----------:|-----------:|------------:|
-| \(h=1\) | 5.60 | **5.32** | 5.85 | TSB | 2.35 | **1.66** | 2.84 |
-| \(h=7\) | **3.26** | 4.49 | 4.37 | DeepSequence | **10.86** | 17.42 | 15.92 |
-| \(h=14\) | **3.71** | 5.30 | 5.33 | DeepSequence | **19.91** | 43.94 | 34.99 |
-| \(h=28\) | **3.87** | 5.36 | 6.22 | DeepSequence | **38.34** | 99.62 | 75.53 |
-| \(h=56\) | **9.09** | 10.83 | 10.29 | DeepSequence | **76.86** | 210.89 | 142.50 |
-| \(h=60\) | **2.51** | 4.24 | 3.71 | DeepSequence | **81.74** | 226.36 | 148.83 |
-
-**Table L.** Like-for-like **direct↔direct** at matched leads (weekly weeks vs daily days). Within each grain, DeepSequence leads IWMAE at the matched horizons shown (except daily \(h=1\), where TSB edges DS). Absolute levels remain grain-specific.
-
-| Lead | Weekly \(h\) | Daily \(h\) | DS weekly IWMAE | DS daily IWMAE | DS weekly CumMAE | DS daily CumMAE |
-|------|------------:|-----------:|----------------:|---------------:|-----------------:|----------------:|
-| ≈1 week | 1 | 7 | **9.95** | **3.26** | **6.41** | **10.86** |
-| ≈4 weeks | 4 | 28 | **8.83** | **3.87** | **18.93** | **38.34** |
-| ≈8 weeks | 8 | 56 | **7.78** | **9.09** | **42.78** | **76.86** |
-
-![Figure W1. Zero rate daily vs weekly.](paper_figures/fig_zero_rate_daily_vs_weekly.png)
-
-[Open PNG](paper_figures/fig_zero_rate_daily_vs_weekly.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_zero_rate_daily_vs_weekly.png)
-
-*Figure W1. Pooled zero rate on the locked 800 SKUs: daily 0.896 → weekly 0.650.*
-
-![Figure W2. Direct MH IWMAE weekly vs daily.](paper_figures/fig_weekly_daily_direct_iwmae.png)
-
-[Open PNG](paper_figures/fig_weekly_daily_direct_iwmae.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_daily_direct_iwmae.png)
-
-*Figure W2. Direct-MH IWMAE (seed 42): weekly \(h=1/4/8\) vs daily \(h=7/28/56\). Scales differ by grain; compare within-panel rankings.*
-
-![Figure W3. Direct MH CumMAE weekly vs daily.](paper_figures/fig_weekly_daily_direct_cummae.png)
-
-[Open PNG](paper_figures/fig_weekly_daily_direct_cummae.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_daily_direct_cummae.png)
-
-*Figure W3. Direct-MH CumMAE at the same matched leads.*
-
-![Figure W4. Weekly Direct-MH one-step forecasts (per SKU).](paper_figures/fig_forecast_weekly_onestep.png)
-
-[Open PNG](paper_figures/fig_forecast_weekly_onestep.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_onestep.png)
-
-*Figure W4. Locked weekly panel, seed 42: per-SKU actual vs DeepSequence / TSB / LightGBM one-step (\(h=1\) head of Direct-MH) over the test weeks. Exemplars chosen for mid intermittency and visible week-to-week variation (not max sparsity): `United Kingdom_22047`, `United Kingdom_79000`, `United Kingdom_22710`, `United Kingdom_22594`. Test zero-rates on these series are \(\approx 0.17\)–\(0.42\), well below the daily panel’s \(\approx 0.90\) (pooled weekly locked-800 zero-rate \(\approx 0.65\); Figure W1). DeepSequence tracks a planning rate \(p\cdot b\) with mild week-to-week movement; TSB is smoother; LightGBM is more volatile and can overshoot spikes.*
-
-![Figure W5. Weekly Direct-MH short and long horizons (per SKU).](paper_figures/fig_forecast_weekly_direct.png)
-
-[Open PNG](paper_figures/fig_forecast_weekly_direct.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_direct.png)
-
-*Figure W5. Same SKUs and protocol: Direct-MH forecasts from the first test origin with \(\ge 8\) future weeks (\(h=1..4\) and \(h=1..8\)). DeepSequence / LightGBM are direct multi-horizon; TSB is classical recursive. Spikes remain largely unmatched—consistent with the planning-rate reading in Section 5.3b—while weekly grain still shows non-constant DS levels across horizons on several series.*
-
-**Reading.** Under **matched direct-MH protocol**, DeepSequence leads within-grain **IWMAE and CumMAE** at weekly \(h=1/4/8\) and at daily \(h\ge 7\) (seed 42); daily \(h=1\) still favors TSB slightly. Weekly flatness at \(h=1\): DeepSequence \(\mathrm{corr}(y,\hat y)\approx 0.48\), \(\mathrm{CV}(\hat y)\approx 2.55\), only \(\approx 2\%\) of forecasts within 10% of mean \(\hat y\), and 41 distinct rounded levels—**not** a constant mean-rate, but a planning-rate trajectory rather than spike matching. Daily direct flatness at \(h=1\): \(\mathrm{CV}(\hat y)\approx 1.91\). Absolute weekly vs daily IWMAE must not be ranked against each other (different units). Gains relative to the recursive daily Table 1 story should not be attributed to aggregation alone without the direct-daily comparator: holding protocol fixed, DS remains competitive / leading on direct MH at both grains once \(h\gtrsim 7\) days or \(h\ge 1\) week.
-
-**Weekly strata (train mean-demand + zero-rate terciles).** Same locked 800 / seed-42 Direct-MH run, scored by SKU bands from **train** only. Primary: terciles of train **mean** demand (low / mid / high volume). Secondary: terciles of train **zero rate** (high-zero / mid / low-zero; high-zero = most intermittent). Artifacts: `ab_runs/weekly/weekly_mh8_locked800_s42.json` (`strata_mean_demand`, `strata_zero_rate`); `ab_runs/weekly/strata_weekly_direct_s42.json`.
-
-**Table W-S1.** Weekly Direct-MH IWMAE by train mean-demand zone (seed 42).
-
-| Horizon | Zone | DeepSequence | TSB | LightGBM | Best |
-|--------:|:-----|-------------:|----:|---------:|:-----|
-| \(h=1\) | Low | 4.575 | **4.486** | 4.852 | TSB |
-| \(h=1\) | Mid | **5.907** | 5.927 | 6.784 | **DS** |
-| \(h=1\) | High | **13.703** | 16.045 | 17.586 | **DS** |
-| \(h=4\) | Low | **1.990** | 2.150 | 2.472 | **DS** |
-| \(h=4\) | Mid | **5.646** | 6.658 | 6.455 | **DS** |
-| \(h=4\) | High | **12.878** | 17.842 | 16.803 | **DS** |
-| \(h=8\) | Low | **2.046** | 2.380 | 2.953 | **DS** |
-| \(h=8\) | Mid | **5.401** | 7.228 | 8.105 | **DS** |
-| \(h=8\) | High | **11.158** | 18.494 | 25.266 | **DS** |
-
-**Table W-S2.** Weekly Direct-MH IWMAE by train zero-rate zone (seed 42).
-
-| Horizon | Zone | DeepSequence | TSB | LightGBM | Best |
-|--------:|:---------|-------------:|----:|---------:|:-----|
-| \(h=1\) | High-zero | 5.946 | **5.877** | 6.385 | TSB |
-| \(h=1\) | Mid | 13.280 | **12.034** | 12.582 | TSB |
-| \(h=1\) | Low-zero | **10.472** | 12.021 | 13.037 | **DS** |
-| \(h=4\) | High-zero | 6.934 | 7.075 | **6.741** | LightGBM |
-| \(h=4\) | Mid | 11.029 | 10.072 | **9.969** | LightGBM |
-| \(h=4\) | Low-zero | **9.444** | 11.848 | 13.231 | **DS** |
-| \(h=8\) | High-zero | **9.385** | 9.505 | 10.867 | **DS** |
-| \(h=8\) | Mid | **8.969** | 11.163 | 12.271 | **DS** |
-| \(h=8\) | Low-zero | **8.536** | 11.295 | 16.765 | **DS** |
-
-**Reading (weekly zones).** On milder weekly zeros, DeepSequence’s Direct-MH lead is **broad across volume**: mid/high mean-demand at all reported \(h\), and low volume once \(h\ge 4\). TSB still edges sparse one-step cells (low volume; high-zero / mid intermittency at \(h=1\)). Smoother SKUs (low-zero) favor DeepSequence at every reported horizon; longer \(H\) consolidates DS wins even in high-zero bands.
-
 ### 5.4 Daily Prophet subset (protocol note)
 
-On a **150-SKU** evenly spaced subset of the locked daily list (at most four origins per SKU), per-series Prophet reports IWMAE \(h=1/28/60\) = **2.68 / 4.90 / 3.34**. These are **not** comparable to the 800-SKU global DeepSequence table (different panel slice and origin density). The run documents that a tractable daily Prophet protocol is available; a full 800-SKU daily Prophet bake-off remains future work.
+On a **150-SKU** evenly spaced subset of the locked daily list (at most four origins per SKU), per-series Prophet reports IWMAE \(h=1/28/60\) = **2.68 / 4.90 / 3.34**. These are **not** comparable to the 800-SKU global Direct-MH table (different panel slice and origin density). The run documents that a tractable daily Prophet protocol is available; a full 800-SKU daily Prophet bake-off remains future work.
 
 ### 5.5 Novelty ablations
 
@@ -557,39 +473,31 @@ On a **150-SKU** evenly spaced subset of the locked daily list (at most four ori
 | −gate | **4.578** | **+0.422** |
 | +cross | 4.097 | −0.059 |
 
-**Table 8.** Daily recursive multi-horizon IWMAE, DeepSequence-only, seed 42. Long horizons isolate the claimed novelties; Full wins \(h=28/60\).
+Recursive multi-horizon DeepSequence-only ablations (Full wins long \(h\) under that optional protocol) are in Appendix E (Table E8). One-step Table 7 motivates the locked stack for primary Direct-MH runs; ablations are single-seed and do not replace multi-seed appendix tables.
 
-| Arm | \(h=1\) | \(h=28\) | \(h=60\) |
-|-----|--------:|---------:|---------:|
-| **Full** | 4.088 | **6.451** | **3.930** |
-| −context mixer | **4.012** | 6.556 | 4.014 |
-| −Level-1 selection attn | 4.142 | 6.657 | 4.113 |
-| −mono | 4.046 | 6.535 | 3.999 |
-| +cross | 4.049 | 6.642 | 4.137 |
-
-**What each novelty buys (long horizons, single seed).**
+**What each novelty buys (one-step / appendix recursive long horizons, single seed).**
 
 | Novelty | Evidence |
 |---------|----------|
-| Level-1 selection attention | Removing it raises \(h=28/60\) by ≈0.21 / 0.18 |
-| Context mixer | Removing it raises \(h=28/60\) by ≈0.11 / 0.08 (helps long; short \(h=1\) can look better without it) |
-| Softplus mono maps | Removing them raises \(h=28/60\) by ≈0.08 / 0.07 |
-| Occurrence gate | One-step \(\Delta\) ≈ +0.42 IWMAE when removed |
-| Cross-network layers | Enabling them hurts long \(h\); keep off |
+| Occurrence gate | One-step \(\Delta\) ≈ +0.42 IWMAE when removed (Table 7) |
+| Level-1 selection attention | Appendix E recursive: removing it raises \(h=28/60\) by ≈0.21 / 0.18 |
+| Context mixer | Appendix E recursive: removing it raises \(h=28/60\) by ≈0.11 / 0.08 |
+| Softplus mono maps | Appendix E recursive: removing them raises \(h=28/60\) by ≈0.08 / 0.07 |
+| Cross-network layers | Enabling them hurts long recursive \(h\); keep off |
 
-Ablations are single-seed; they motivate the locked stack but do not replace multi-seed Tables 2 and 4. Figure 9 visualizes Tables 7–8 (gate at one step; long-horizon Full vs structural ablations).
+Ablations are single-seed; they motivate the locked stack. Figure 9 visualizes Table 7 (gate at one step) and the appendix recursive long-horizon arms.
 
 ![Figure 9. Novelty ablation IWMAE.](paper_figures/fig4_novelty_ablation.png)
 
 [Open PNG](paper_figures/fig4_novelty_ablation.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig4_novelty_ablation.png)
 
-*Figure 9. Left: one-step DeepSequence novelty ablation (seed 42); −gate dominates the IWMAE gap. Right: recursive \(h=28/60\) ablations (gate omitted; MH arms without gate). Full wins both long horizons.*
+*Figure 9. Left: one-step DeepSequence novelty ablation (seed 42); −gate dominates the IWMAE gap. Right: recursive \(h=28/60\) ablations under the optional Appendix E protocol (gate omitted; MH arms without gate). Full wins both long horizons on that protocol.*
 
 ### 5.6 Qualitative forecasts
 
-To illustrate intermittent shape (long zero runs, sparse spikes), we dump actual vs forecast traces for three locked intermittent SKUs on each panel after a dedicated small-panel retrain (seed 42; 40 SKUs drawn from the locked lists with the plot SKUs forced in; 8 epochs). These figures are **qualitative**—not a substitute for the locked 800-SKU tables above.
+To illustrate intermittent shape (long zero runs, sparse spikes), we dump actual vs forecast traces for three locked intermittent SKUs on each panel after a dedicated small-panel retrain (seed 42; 40 SKUs drawn from the locked lists with the plot SKUs forced in; 8 epochs). These figures are **qualitative**—not a substitute for the locked 800-SKU Direct-MH tables above.
 
-**Daily (DeepSequence vs TST).** Figure 10 shows one-step test-window forecasts; Figure 11 shows recursive rollout from a locked test origin for short (\(h{=}1..7\)) and longer (\(h{=}1..28\)) horizons.
+**Daily (DeepSequence vs TST).** Figure 10 shows one-step test-window forecasts; Figure 11 shows an optional recursive rollout from a locked test origin for short (\(h{=}1..7\)) and longer (\(h{=}1..28\)) horizons (illustrative only—not the primary Direct-MH protocol).
 
 ![Figure 10. Daily one-step forecasts (intermittent SKUs).](paper_figures/fig_forecast_daily_onestep.png)
 
@@ -597,11 +505,11 @@ To illustrate intermittent shape (long zero runs, sparse spikes), we dump actual
 
 *Figure 10. Daily enterprise panel: actual vs DeepSequence vs TST on the test window for three intermittent locked SKUs.*
 
-![Figure 11. Daily recursive forecasts (short and long).](paper_figures/fig_forecast_daily_recursive.png)
+![Figure 11. Daily recursive forecasts (short and long; optional protocol).](paper_figures/fig_forecast_daily_recursive.png)
 
 [Open PNG](paper_figures/fig_forecast_daily_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_recursive.png)
 
-*Figure 11. Daily recursive forecasts from one test origin per SKU (\(h{=}1..7\) and \(h{=}1..28\)).*
+*Figure 11. Optional recursive daily forecasts from one test origin per SKU (\(h{=}1..7\) and \(h{=}1..28\)). Primary quantitative claims use Direct-MH (Table 1).*
 
 **Car Parts (DeepSequence vs TSB).** Figure 12 shows one-step monthly test forecasts; Figure 13 shows recursive \(h{=}1..2\) and \(h{=}1..6\) from the pre-test origin (same origin convention as the Car Parts MH bake-off).
 
@@ -627,15 +535,15 @@ Locked bake-off features remain **distance-only** (`days_from_*`; v1.6). Separat
 
 *Figure 14. Same intermittent SKUs as Figure 10, with binary holiday features on and holiday markers. DeepSequence shows a weekly-scale oscillation (not a pure flat mean), but **no clear holiday bumps** at marker dates; correlation of \(\hat{y}\) with the binary holiday flag is near zero on these UK series under a **US** calendar (\(\mathrm{corr}\approx -0.08\) to \(0.00\)). TST remains near mean-rate.*
 
-![Figure 15. Daily recursive forecasts with binary holidays.](paper_figures/fig_forecast_daily_binary_hol_recursive.png)
+![Figure 15. Daily recursive forecasts with binary holidays (optional protocol).](paper_figures/fig_forecast_daily_binary_hol_recursive.png)
 
 [Open PNG](paper_figures/fig_forecast_daily_binary_hol_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_binary_hol_recursive.png)
 
-*Figure 15. Recursive \(h{=}1..7\) / \(h{=}1..28\) under the binary-holiday config. Forecasts stay near a constant mean rate and do not track sparse sale spikes or calendar events.*
+*Figure 15. Optional recursive \(h{=}1..7\) / \(h{=}1..28\) under the binary-holiday config. Forecasts stay near a constant mean rate and do not track sparse sale spikes or calendar events.*
 
 **Country calendars + year-scoped distances.** The locked panel’s `id_var` prefixes are multi-country (locked 800: UK 563, EIRE 73, France 59, Germany 49, Netherlands 25; full panel also has Australia 20 and a single USA SKU). Precomputed `holiday_features_*.csv` files are US-only. A gated forecast-only config (`feature_config_daily_country_holiday.yaml`) keeps the **same 15 shared holiday keys** (and binaries) but rebuilds `days_from_*` from per-country calendars parsed from the SKU prefix (UK bank holidays, AU public holidays, IE/FR/DE/NL, plus an EU retail fallback). N/A keys (e.g. US Thanksgiving on UK rows) use a large sentinel distance so `is_*` stays off.
 
-**Supersedes earlier nearest-scope country-holiday qualitative.** Commit `4e2ec63` made rebuilt calendars default to `distance_scope='year'` (signed distance to the holiday occurrence *in the observation’s calendar year*, so early-January dates are not measured from the prior December). Figures 16–17 and the correlations below are from a **year-scope retest** (seed 42, 30 epochs, additive Level-2, same three UK plot SKUs). Prior country-holiday qualitative dumps under nearest-across-years distances are **invalidated** for holiday-response claims. Locked bake-off US `days_from_*` CSVs already match year-scope regeneration (max abs 0); a full locked 800 seed-42 MH retest (`ab_runs/reclaim/year_scope_800/`) confirms Table 1 DeepSequence / LightGBM IWMAE unchanged and TST within TF noise (Section 5.1).
+**Supersedes earlier nearest-scope country-holiday qualitative.** Commit `4e2ec63` made rebuilt calendars default to `distance_scope='year'` (signed distance to the holiday occurrence *in the observation’s calendar year*, so early-January dates are not measured from the prior December). Figures 16–17 and the correlations below are from a **year-scope retest** (seed 42, 30 epochs, additive Level-2, same three UK plot SKUs). Prior country-holiday qualitative dumps under nearest-across-years distances are **invalidated** for holiday-response claims. Locked bake-off US `days_from_*` CSVs already match year-scope regeneration (max abs 0); a full locked 800 seed-42 MH retest (`ab_runs/reclaim/year_scope_800/`) confirms Appendix E recursive DeepSequence / LightGBM IWMAE unchanged and TST within TF noise (Section 5.1 audit note).
 
 ![Figure 16. Daily one-step forecasts with country calendars + binary holidays.](paper_figures/fig_forecast_daily_country_hol_onestep.png)
 
@@ -643,13 +551,13 @@ Locked bake-off features remain **distance-only** (`days_from_*`; v1.6). Separat
 
 *Figure 16. Year-scoped country calendars + binaries (retest). Markers still land on UK events. Forecasts remain mean-rate-like with mild week-scale variation—**still no clear holiday-driven spikes**. Correlation of \(\hat{y}\) with the binary holiday flag stays near zero (\(\mathrm{corr}\approx -0.05\) to \(0.01\); prior nearest-scope country run was \(\approx 0.01\)–\(0.06\)).*
 
-![Figure 17. Daily recursive forecasts with country calendars + binary holidays.](paper_figures/fig_forecast_daily_country_hol_recursive.png)
+![Figure 17. Daily recursive forecasts with country calendars + binary holidays (optional protocol).](paper_figures/fig_forecast_daily_country_hol_recursive.png)
 
 [Open PNG](paper_figures/fig_forecast_daily_country_hol_recursive.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_country_hol_recursive.png)
 
-*Figure 17. Recursive rollouts under year-scoped country calendars; qualitative conclusion unchanged vs Figure 15.*
+*Figure 17. Optional recursive rollouts under year-scoped country calendars; qualitative conclusion unchanged vs Figure 15.*
 
-**Takeaway (year-scope retest).** Enabling binary holiday indicators with **country-correct, year-scoped** distances still does **not**, on this qualitative panel, produce visible holiday-driven forecast spikes. Remaining limits: (i) intermittency dominated by lag/gate rather than calendar; (ii) HolidayComponent still maps channels through absolute-distance-style monotone hinges, so \(0/1\) binaries are a weak inductive fit; (iii) small qualitative SKU pool. Locked IWMAE tables are unchanged under the US year-scope audit (Section 5.1).
+**Takeaway (year-scope retest).** Enabling binary holiday indicators with **country-correct, year-scoped** distances still does **not**, on this qualitative panel, produce visible holiday-driven forecast spikes. Remaining limits: (i) intermittency dominated by lag/gate rather than calendar; (ii) HolidayComponent still maps channels through absolute-distance-style monotone hinges, so \(0/1\) binaries are a weak inductive fit; (iii) small qualitative SKU pool. Locked holiday CSVs are unchanged under the US year-scope audit (Section 5.1).
 
 **Monthly Car Parts (`months_from` + `month_has`).** Locked bake-off keeps `feature_config_monthly.yaml` with `holiday_encoding: none`. A gated forecast-only config (`feature_config_monthly_country_holiday.yaml`) now adds **year-scoped** `months_from_*` **and** `month_has_*` (30 holiday channels) rebuilt from the same country calendars as daily. Monash Car Parts `id_var`s are bare `T####` with **no country prefix**, so the run uses **`holiday_country_default: US`** (documented; configurable). Qualitative dump: same three plot SKUs, seed 42, 20 epochs. Compared with the prior **month_has-only** run on the same pool, one-step \(\hat{y}\) and IWMAE are essentially unchanged (still flat \(\hat{y}\approx 0.4\)–\(0.6\); `corr(\hat{y},\,\mathrm{month\_has\_any})` undefined because every month in the test window has ≥1 US holiday).
 
@@ -677,36 +585,35 @@ We selected **8 locked SKUs** with visible lumps in the test window (nonzero day
 
 *Figure 20. Daily test-window traces under spike-aware loss for lumpy locked SKUs. Secondary axis shows occurrence probability \(p\); red markers are country-calendar holiday days.*
 
-**What \(p\) vs \(b\) shows.** On this run, mean \(p\) on sale days is essentially flat vs quiet days (\(\bar p_{\mathrm{spike}}\approx 0.87\approx\bar p_{\mathrm{quiet}}\); \(\Delta p\approx 0\); \(\mathrm{corr}(p,z)\approx 0\)). The gate stays hot and does **not** peak on lump days; residual under-forecast of spikes lives in \(b\) / the product \(\hat{y}\). Spike-aware loss is therefore a useful **diagnostic / training-pressure** tool—not a claimed bake-off IWMAE win. Locked tables are unchanged.
-
----
+**What \(p\) vs \(b\) shows.** On this run, mean \(p\) on sale days is essentially flat vs quiet days (\(\bar p_{\mathrm{spike}}\approx 0.87\approx\bar p_{\mathrm{quiet}}\); \(\Delta p\approx 0\); \(\mathrm{corr}(p,z)\approx 0\)). The gate stays hot and does **not** peak on lump days; residual under-forecast of spikes lives in \(b\) / the product \(\hat{y}\). Spike-aware loss is therefore a useful **diagnostic / training-pressure** tool—not a claimed bake-off IWMAE win. Locked Direct-MH tables are unchanged.
 
 ## 6. Discussion
 
-**Framing: lead-time planning, not universal accuracy.** DeepSequence is a multi-series extension of Prophet-style decomposition aimed at intermittent **lead-time demand planning**: given replenishment horizon \(H\), support cumulative demand error (CumMAE), long-horizon planning rates (\(\hat{y}=p\cdot b\)), and loyalty-aware decision \(\pi\). Hierarchical attention, regime-aware mixing, gating, and monotone maps are the architectural payload—not a claim of first place on every short-horizon or spike-day metric. The per-series Prophet control (Section 5.3–5.4) makes the structural framing falsifiable; Figure 5 documents the shared-SKU / L1 / mixer / mono stack.
+**Framing: lead-time planning under Direct-MH, not universal accuracy.** DeepSequence is a multi-series extension of Prophet-style decomposition aimed at intermittent **lead-time demand planning**: given replenishment horizon \(H\), support cumulative demand error (CumMAE) and long-horizon planning rates (\(\hat{y}=p\cdot b\)) under a single clear forecasting protocol—**Direct multi-horizon**. Hierarchical attention, regime-aware mixing, gating, and monotone maps are the architectural payload—not a claim of first place on every short-horizon or spike-day metric. The per-series Prophet control (Section 5.3–5.4) makes the structural framing falsifiable; Figure 5 documents the shared-SKU / L1 / mixer / mono stack.
 
 **When to use what (planning portfolio by lead time and segment).**
 
 | Setting | Prefer |
 |---------|--------|
-| Daily, short lead time (\(h\lesssim 14\)) | Temporal transformer (IWMAE / \(\pi\)); check loyalty cost |
-| Daily, long lead time (\(h\gtrsim 28\)) | **DeepSequence** (IWMAE + CumMAE at long \(H\) + loyalty \(\pi\)) |
-| Daily mid-volume / smoother SKUs | **DeepSequence** edge clearest (zone strata) |
-| Daily high-volume | Often **LightGBM** on IWMAE / CumMAE—portfolio by segment |
-| Weekly Direct-MH (milder zeros) | **DeepSequence** leads IWMAE+CumMAE; fair vs daily Direct-MH |
+| Daily Direct-MH, \(h=1\) | **TSB** (slight edge on IWMAE / CumMAE) |
+| Daily Direct-MH, \(h\ge 7\) | **DeepSequence** (IWMAE + CumMAE) |
+| Weekly Direct-MH (milder zeros) | **DeepSequence** leads IWMAE+CumMAE at \(h=1/4/8\) |
+| Weekly mid/high volume / smoother SKUs | **DeepSequence** edge clearest (zone strata) |
+| Weekly sparse one-step cells | Often **TSB** at \(h=1\) (low volume / high-zero) |
 | Monthly short spare-parts, weak covariates | **TSB** (then SBA/Croston); Prophet alone is not enough |
 | Monthly longer horizon (\(h=6\)) path accuracy | DeepSequence competitive / best IWMAE; mid-\(\pi\) may still favor TSB |
-| Ranking protocol | IWMAE + CumMAE + underforecast + loyalty-aware \(\pi\); do not rank on all-day MAE alone |
+| Ranking protocol | IWMAE + CumMAE + underforecast (+ loyalty \(\pi\) where available); do not rank on all-day MAE alone |
+| Optional recursive daily rollout | Appendix E only (multi-seed IWMAE / \(\pi\) were measured under that protocol) |
 
-**Why loyalty \(\pi\) matters for planning.** LightGBM’s low holding from under-forecasting wins low-margin \(\pi\) when \(C_{\mathrm{loyalty}}=0\). A modest switching cost restores the cost of missed demand; long lead-time daily \(\pi\) then aligns with DeepSequence’s long-horizon IWMAE / CumMAE—stable across five training seeds on the daily panel. On Car Parts, loyalty does not overturn TSB’s mid-\(\pi\) dominance (honest domain mismatch).
+**Why Direct-MH as the primary story.** Like-for-like grain comparisons require a shared MH protocol; Direct-MH makes daily and weekly tables commensurate in method (not in units). Recursive one-step rollout remains useful software and an optional stress test, but mixing recursive DS-vs-TST headlines with Direct weekly/daily tables confused the planning narrative—hence Appendix E.
 
-**Structural inductive bias.** The long-lead pattern is consistent with the hypothesis that explicit trend / seasonality / holiday / regressor structure helps when recursive (or direct multi-horizon) forecasts must support a planning window, whereas short-lead intermittent accuracy often reduces to recent occurrence dynamics that classical methods and temporal transformers already capture well.
+**Structural inductive bias.** The Direct-MH long-lead pattern is consistent with the hypothesis that explicit trend / seasonality / holiday / regressor structure helps when a multi-horizon path must support a planning window, whereas one-step intermittent accuracy often reduces to recent occurrence dynamics that classical methods already capture well.
 
 ### 6.1 Planning rates, spikes, and holidays (honest scope)
 
 **Planning rates, not “hit every spike.”** DeepSequence’s gated product \(\hat{y}=p\cdot b\) is designed for intermittent **planning rates**—expected demand for replenishment over \(H\)—not for reproducing sparse high-amplitude **spikes** on these panels. Qualitative dumps (Section 5.6–5.8) show forecasts that track a near-constant or mildly weekly mean rate while sale spikes remain largely unmatched; spike-aware loss diagnostics improve \(p\) pressure in places but do not turn the model into a spike detector. That miss is **by design scope** given the available features, not a silent failure of the architecture claim.
 
-**Holidays ≠ spikes on these panels.** Year-scope US holiday retests on the locked 800 (`ab_runs/reclaim/year_scope_800/`) leave Table 1 IWMAE unchanged for DeepSequence / LightGBM (TST within train noise). Country+binary daily qualitative and monthly `month_has` / `months_from` country retests (Section 5.7; Figures 14–17, 22–23) likewise show **near-zero** correlation between \(\hat{y}\) and holiday flags and no visible holiday-driven bumps. Holidays remain useful structural covariates for *level* in Prophet-style models, but here they do not explain spike timing.
+**Holidays ≠ spikes on these panels.** Year-scope US holiday retests on the locked 800 (`ab_runs/reclaim/year_scope_800/`) leave recursive Appendix E DeepSequence / LightGBM IWMAE unchanged (TST within train noise). Country+binary daily qualitative and monthly `month_has` / `months_from` country retests (Section 5.7; Figures 14–17, 22–23) likewise show **near-zero** correlation between \(\hat{y}\) and holiday flags and no visible holiday-driven bumps. Holidays remain useful structural covariates for *level* in Prophet-style models, but here they do not explain spike timing.
 
 **When covariates arrive (regressor expert intent).** The **regressor** expert—softplus-monotone maps plus Level-1 selection attention over lag / state (and, by design, promo / price / traffic / availability channels)—is the intended home for event-driven demand shifters. Current enterprise and Car Parts panels largely lack those covariates, so day-level spike timing remains **future work** once promo calendars, price, and related drivers are wired into the same causal feature contract. Until then, attributing residual spike error to missing hierarchical attention would overclaim; attributing unmatched spikes to missing regressors is the honest reading.
 
@@ -716,17 +623,17 @@ We selected **8 locked SKUs** with visible lumps in the test window (nonzero day
 
 ## 7. Limitations and future work
 
-**Limitations.** Enterprise results are panel-specific and cannot be released as raw data. Novelty ablations are single-seed. Daily Prophet is a 150-SKU subset, not the locked 800-SKU panel. Sequence baselines are lite adaptations sharing the gated head where applicable. Car Parts is short monthly history without a rich retail calendar; mid-margin \(\pi\) remains TSB. Decision economics use error proxies, not full inventory simulation. Hierarchical product-tree reconciliation is out of scope. Prophet versus DeepSequence also differs in protocol (local per-series fit versus global multi-series training). Seed-42 bake-off tables and multi-seed summary tables may use different IWMAE field conventions on Car Parts (Section 5.3); rankings should be read within table. DeepSequence targets intermittent **lead-time planning rates** (\(p\cdot b\)) and **does not capture spikes** well on these panels without event regressors; holiday / calendar covariates show **no material relation** to spikes in year-scope and monthly retests (Section 6.1). Weekly vs daily grain comparisons in Section 5.3b use **matched direct-MH** (Tables W/D/L); recursive daily Table 1 remains primary. Absolute weekly IWMAE is not comparable to daily levels (different demand units); daily Direct-MH uses 696 origins with \(\ge 60\) test days (vs 793 weekly origins with \(\ge 8\) weeks). Short daily lead times often favor TST; that is part of the portfolio story, not a defect to hide.
+**Limitations.** Enterprise results are panel-specific and cannot be released as raw data. Novelty ablations are single-seed. Daily Prophet is a 150-SKU subset, not the locked 800-SKU panel. Sequence baselines are lite adaptations sharing the gated head where applicable. Car Parts is short monthly history without a rich retail calendar; mid-margin \(\pi\) remains TSB. Decision economics use error proxies, not full inventory simulation; daily loyalty \(\pi\) and five-seed daily IWMAE stability were measured under **recursive** rollout (Appendix E), not under primary Direct-MH. Hierarchical product-tree reconciliation is out of scope. Prophet versus DeepSequence also differs in protocol (local per-series fit versus global multi-series training). Seed-42 bake-off tables and multi-seed summary tables may use different IWMAE field conventions on Car Parts (Section 5.3); rankings should be read within table. DeepSequence targets intermittent **lead-time planning rates** (\(p\cdot b\)) and **does not capture spikes** well on these panels without event regressors; holiday / calendar covariates show **no material relation** to spikes in year-scope and monthly retests (Section 6.1). Weekly vs daily grain comparisons use **matched Direct-MH** (Tables 1/W/L). Absolute weekly IWMAE is not comparable to daily levels (different demand units); daily Direct-MH uses 696 origins with \(\ge 60\) test days (vs 793 weekly origins with \(\ge 8\) weeks).
 
-**Future work.** (i) Wire promo / price / traffic covariates into the regressor expert and re-test spike timing (“when covariates arrive”). (ii) Fuller daily Prophet on the locked 800-SKU panel under comparable origin density. (iii) Optional monthly evaluation at \(h=12\) where series length permits. (iv) Multi-seed novelty ablations. (v) Stronger inventory simulation and empirically calibrated loyalty costs. (vi) Hierarchical reconciliation across product trees. (vii) Multi-seed CumMAE summaries (seed-42 CumMAE tables are in Section 5.1 / 5.3). (viii) Multi-seed weekly Direct-MH and **recursive weekly** (protocol held to recursive) plus TST-weekly analogue.
+**Future work.** (i) Wire promo / price / traffic covariates into the regressor expert and re-test spike timing (“when covariates arrive”). (ii) Fuller daily Prophet on the locked 800-SKU panel under comparable origin density. (iii) Optional monthly evaluation at \(h=12\) where series length permits. (iv) Multi-seed novelty ablations and **multi-seed Direct-MH** (daily and weekly) plus Direct-MH decision \(\pi\). (v) Stronger inventory simulation and empirically calibrated loyalty costs. (vi) Hierarchical reconciliation across product trees. (vii) Multi-seed CumMAE summaries under Direct-MH. (viii) Optional recursive weekly analogue for Appendix E completeness.
 
 ---
 
 ## 8. Conclusion
 
-We reframed intermittent neural forecasting as **Prophet-style structure at panel scale for lead-time demand planning**. Given replenishment horizon \(H\), DeepSequence’s architectural contributions—hierarchical attention inside and across Prophet-like experts, a context-aware component mixer, an occurrence–magnitude gate \(\hat{y}=p\cdot b\), and monotone softplus structural maps—target shared multi-series **planning rates**, not universal day-level spike capture.
+We reframed intermittent neural forecasting as **Prophet-style structure at panel scale for lead-time demand planning**, evaluated under one clear protocol: **all primary results use Direct multi-horizon forecasts**. Given replenishment horizon \(H\), DeepSequence’s architectural contributions—hierarchical attention inside and across Prophet-like experts, a context-aware component mixer, an occurrence–magnitude gate \(\hat{y}=p\cdot b\), and monotone softplus structural maps—target shared multi-series **planning rates**, not universal day-level spike capture.
 
-Empirically, under locked defaults and five training seeds, DeepSequence occupies a stable **long-lead** role: daily recursive IWMAE and loyalty mid-\(\pi\) at \(h=28/60\) (\(5/5\)); CumMAE leadership at long daily \(H\); weekly Direct-MH wins on IWMAE+CumMAE with a fair daily Direct-MH comparator; and zone strata that favor DeepSequence in mid-volume / smoother bands while high-volume often prefers LightGBM. Short lead times often favor a temporal transformer or TSB; Car Parts mid-\(\pi\) remains TSB. Softsign expert outputs and cross-layers off are supporting defaults, not the headline claim. We recommend a **lead-time and segment portfolio**—structural multi-series planning rates for long replenishment, classical or transformer methods for short lead times—and metrics (IWMAE, CumMAE, loyalty \(\pi\)) that do not let under-forecasting or spike-miss narratives dominate by default.
+Empirically, under locked defaults, DeepSequence occupies a stable **Direct-MH planning** role: daily Direct-MH IWMAE+CumMAE leadership at \(h\ge 7\); weekly Direct-MH wins on IWMAE+CumMAE at \(h=1/4/8\) with a fair daily Direct-MH comparator; and weekly zone strata that favor DeepSequence in mid/high volume and smoother bands. Short monthly / Car Parts lead times often favor TSB (including mid-\(\pi\)). Softsign expert outputs and cross-layers off are supporting defaults, not the headline claim. Recursive rollout remains an optional appendix protocol (including multi-seed IWMAE / \(\pi\) under that protocol). We recommend a **lead-time and segment portfolio**—structural multi-series planning rates for replenishment windows under Direct-MH, classical methods for sparse one-step cells—and metrics (IWMAE, CumMAE) that do not let under-forecasting or spike-miss narratives dominate by default.
 
 ---
 
@@ -801,7 +708,7 @@ Implementation and locked evaluation artifacts accompany this preprint:
 | Reproduce notebook | `examples/reproduce_paper_findings.ipynb` |
 | Synthetic demo | `examples/v16_deepsequence_example.ipynb` |
 | Training config sample | `deepsequence_hierarchical_attention/training/training_config.sample.json` |
-| Locked daily multi-horizon (all models) | `ab_runs/reclaim/daily_mh_1_60_level1_cross_off_all_models.json` |
+| Locked daily multi-horizon (all models; optional recursive) | `ab_runs/reclaim/daily_mh_1_60_level1_cross_off_all_models.json` (Appendix E) |
 | CumMAE tables (seed 42) | `ab_runs/reclaim/cummae_daily_s42.json`, `ab_runs/reclaim/cummae_carparts_s42.json` |
 | Component readout sample | `ab_runs/reclaim/component_readout_sample.json` |
 | Prophet Car Parts (monthly) | `ab_runs/reclaim/prophet_carparts/carparts_mh_1_2_6.json` |
@@ -823,14 +730,20 @@ Repository: [https://github.com/mkuma93/DeepSequence](https://github.com/mkuma93
 pip install -e ".[dev]"
 export DEEPSEQUENCE_DATA_DIR=/path/to/local/panel
 
-# Locked daily recursive multi-horizon
-python -m deepsequence_hierarchical_attention.eval.multihorizon_compare \
-  --data_dir "$DEEPSEQUENCE_DATA_DIR" \
-  --max_skus 800 --epochs 10 --seed 42 --horizon 60
+# Primary: locked daily Direct-MH + weekly Direct-MH
+python -m deepsequence_hierarchical_attention.eval.weekly_mh \
+  --dataset daily_direct_mh --max_skus 800 --epochs 10 --seed 42 --horizon 60
+python -m deepsequence_hierarchical_attention.eval.weekly_mh \
+  --dataset weekly --max_skus 800 --epochs 10 --seed 42 --horizon 8
 
 # Public Car Parts
 python -m deepsequence_hierarchical_attention.data.prepare_carparts
 python -m deepsequence_hierarchical_attention.eval.public_carparts_mh_all --max_skus 800 --epochs 10 --seed 42
+
+# Optional: recursive daily multi-horizon (Appendix E)
+python -m deepsequence_hierarchical_attention.eval.multihorizon_compare \
+  --data_dir "$DEEPSEQUENCE_DATA_DIR" \
+  --max_skus 800 --epochs 10 --seed 42 --horizon 60
 ```
 
 Exact locked-stack settings (softsign outputs, monotone maps, context mixer, cross-layers off) match the `ds_stack` fields in the JSON artifacts above.
@@ -850,7 +763,7 @@ Exact locked-stack settings (softsign outputs, monotone maps, context mixer, cro
 | \(c_{i,t}\) | Lag / intermittent context for Level-2 mixer |
 | \(U, H\) | Underage / holding proxies in \(\pi\) (holding proxy \(H\); not lead time) |
 | \(C_{\mathrm{loyalty}}\) | Scenario switching / loyalty cost |
-| \(h\) | Forecast / replenishment lead-time index (recursive or direct MH steps) |
+| \(h\) | Forecast / replenishment lead-time index (primary: Direct-MH steps; optional recursive in Appendix E) |
 | \(\mathrm{CumMAE}(h)\) | MAE on cumulative lead-time demand \(\sum_{k=1}^{h} y\) |
 
 ---
@@ -868,21 +781,21 @@ For reliable local viewing when markdown preview fails: open [`paper_figures/VIE
 | `paper_figures/fig_m3_level1_attention.png` | Figure 3 — Level-1 selection attention |
 | `paper_figures/fig_m4_context_mixer.png` | Figure 4 — context-aware Level-2 mixer |
 | `paper_figures/fig_m5_architecture.png` | Figure 5 — end-to-end architecture (shared \(e_i\); DCN off; \(\hat{y}=p\cdot b\)) |
-| `paper_figures/fig1_daily_iwmae_horizon.png` | Figure 6 — daily multi-seed IWMAE vs horizon (recursive) |
+| `paper_figures/fig1_daily_iwmae_horizon.png` | Appendix E Figure E6 — daily multi-seed IWMAE vs horizon (**recursive**; optional protocol) |
 | `paper_figures/fig_zero_rate_daily_vs_weekly.png` | Figure W1 — zero rate daily vs weekly |
-| `paper_figures/fig_weekly_daily_direct_iwmae.png` | Figure W2 — direct MH IWMAE weekly vs daily |
-| `paper_figures/fig_weekly_daily_direct_cummae.png` | Figure W3 — direct MH CumMAE weekly vs daily |
+| `paper_figures/fig_weekly_daily_direct_iwmae.png` | Figure W2 — **primary** Direct-MH IWMAE weekly vs daily |
+| `paper_figures/fig_weekly_daily_direct_cummae.png` | Figure W3 — **primary** Direct-MH CumMAE weekly vs daily |
 | `paper_figures/fig_forecast_weekly_onestep.png` | Figure W4 — weekly Direct-MH one-step per-SKU forecasts |
 | `paper_figures/fig_forecast_weekly_direct.png` | Figure W5 — weekly Direct-MH \(h=1..4/8\) per-SKU forecasts |
-| `paper_figures/fig3_daily_decision_pi_horizon.png` | Figure 7 — daily multi-seed mid-\(\pi\) vs horizon |
+| `paper_figures/fig3_daily_decision_pi_horizon.png` | Appendix E Figure E7 — daily multi-seed mid-\(\pi\) vs horizon (**recursive**; optional protocol) |
 | `paper_figures/fig2_carparts_iwmae_horizon.png` | Figure 8 — Car Parts IWMAE (+ Prophet bake-off panel) |
 | `paper_figures/fig4_novelty_ablation.png` | Figure 9 — novelty ablations |
 | `paper_figures/fig_forecast_daily_onestep.png` | Figure 10 — daily qualitative one-step forecasts |
-| `paper_figures/fig_forecast_daily_recursive.png` | Figure 11 — daily qualitative recursive forecasts |
+| `paper_figures/fig_forecast_daily_recursive.png` | Figure 11 — daily qualitative recursive forecasts (optional protocol) |
 | `paper_figures/fig_forecast_carparts_onestep.png` | Figure 12 — Car Parts qualitative one-step forecasts |
 | `paper_figures/fig_forecast_carparts_recursive.png` | Figure 13 — Car Parts qualitative recursive forecasts |
 | `paper_figures/make_method_diagrams.py` | Regenerates Figures 1–5 |
-| `paper_figures/make_results_figures.py` | Regenerates Figures 6–9 from locked JSON |
+| `paper_figures/make_results_figures.py` | Regenerates Appendix E Figures E6–E7 and Figure 9 from locked JSON |
 | `paper_figures/make_forecast_line_plots.py` | Regenerates Figures 10–13 (+ JSON dumps) |
 | `paper_figures/make_forecast_weekly_plots.py` | Regenerates Figures W4–W5 (weekly Direct-MH forecast dumps) |
 | `paper_figures/fig_architecture_ds.png` | Alias of Figure 5 |
@@ -897,7 +810,112 @@ For reliable local viewing when markdown preview fails: open [`paper_figures/VIE
 
 ## Appendix D. Prior protocol (not primary claims)
 
-Earlier drafts emphasized **one-step DeepSequence IWMAE ≈ 4.004 as a headline #1 result** and **direct multi-horizon DeepSequence best at \(h=7/14\)** under a previous feature and model protocol. Those results remain in repository JSON artifacts and older `paper_figures/fig1`–`fig6` plots but are **not** primary claims of this preprint. The locked hierarchical-attention / cross-off recursive and Direct-MH tables in Section 5 supersede them for the **lead-time planning** narrative (IWMAE + CumMAE + loyalty \(\pi\); portfolio by lead time and segment).
+Earlier drafts emphasized **one-step DeepSequence IWMAE ≈ 4.004 as a headline #1 result** and **direct multi-horizon DeepSequence best at \(h=7/14\)** under a previous feature and model protocol, and/or treated **recursive daily DS-vs-TST** tables as the main long-lead claim. Those results remain in repository JSON artifacts and older `paper_figures/fig1`–`fig6` plots but are **not** primary claims of this preprint. The locked hierarchical-attention / cross-off **Direct-MH** tables in Section 5 supersede them for the **lead-time planning** narrative (IWMAE + CumMAE; portfolio by lead time and segment). Recursive rollout details that remain useful as an optional protocol are collected in Appendix E (not as competing headlines).
+
+---
+
+## Appendix E. Optional recursive rollout protocol (not primary)
+
+This appendix reports **one-step models with recursive rollout** on the locked daily panel. It is an optional evaluation path for software and stability checks. **It is not the primary forecasting protocol of this preprint** (Section 3.10; Section 5). In particular, the five-seed IWMAE and loyalty mid-\(\pi\) stability numbers below were measured under **recursive** rollout—not under Direct-MH.
+
+### E.1 Daily recursive lead-time accuracy (IWMAE + CumMAE)
+
+Recursive rollout after origin \(t\); known-future calendar and holidays; demand predictions fed into lags and intermittent state. Seed-42 full bake-off: \(n=5538\) origins, 800 SKUs.
+
+**Table E1.** Daily recursive IWMAE, seed 42 (locked stack). Bold = best in row.
+
+| Horizon | DeepSequence | TST | TFT | DeepAR | LightGBM | Best |
+|--------:|-------------:|----:|----:|-------:|---------:|:-----|
+| \(h=1\) | 4.035 | **3.860** | 4.010 | 4.154 | 4.451 | TST |
+| \(h=7\) | 4.381 | **4.323** | 4.566 | 5.169 | 4.688 | TST |
+| \(h=14\) | 4.211 | **4.177** | 4.589 | 5.006 | 4.615 | TST |
+| \(h=28\) | **6.417** | 6.877 | 6.891 | 7.212 | 6.866 | **DS** |
+| \(h=60\) | **3.891** | 4.495 | 4.308 | 4.696 | 4.375 | **DS** |
+| mean \(1..60\) | **4.374** | 4.666 | 4.736 | 5.103 | 4.790 | **DS** |
+
+**Table E2.** Daily multi-seed IWMAE (mean \(\pm\) std over training seeds \(42\)–\(46\); locked SKU panel; DeepSequence / TST / LightGBM). **Recursive protocol.**
+
+| Horizon | DeepSequence | TST | LightGBM |
+|--------:|-------------:|----:|---------:|
+| \(h=1\) | \(4.023\pm0.257\) | \(\mathbf{3.912\pm0.273}\) | \(4.483\pm0.324\) |
+| \(h=7\) | \(4.299\pm0.500\) | \(\mathbf{4.139\pm0.523}\) | \(4.549\pm0.531\) |
+| \(h=14\) | \(5.494\pm0.935\) | \(\mathbf{5.454\pm0.890}\) | \(5.828\pm0.883\) |
+| \(h=28\) | \(\mathbf{4.823\pm0.970}\) | \(5.290\pm0.991\) | \(5.194\pm1.031\) |
+| \(h=60\) | \(\mathbf{4.345\pm0.619}\) | \(5.055\pm0.417\) | \(4.710\pm0.550\) |
+
+Under this optional protocol, short lead times favor the temporal transformer on path IWMAE; DeepSequence leads at \(h=28/60\) and beats TST IWMAE at those horizons in **\(5/5\)** seeds. Do not mix these levels with primary Direct-MH Table 1.
+
+![Figure E6. Daily multi-seed recursive IWMAE vs horizon.](paper_figures/fig1_daily_iwmae_horizon.png)
+
+[Open PNG](paper_figures/fig1_daily_iwmae_horizon.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig1_daily_iwmae_horizon.png)
+
+*Figure E6. Daily **recursive** IWMAE (mean ± std over training seeds \(42\)–\(46\)) for DeepSequence, TST, and LightGBM. Optional protocol only.*
+
+**Table E1b.** Daily CumMAE (lead-time demand error), seed 42 (same locked MH origins as Table E1). Artifact: `ab_runs/reclaim/cummae_daily_s42.json`.
+
+| Horizon | DeepSequence | TST | TFT | DeepAR | LightGBM | Best CumMAE |
+|--------:|-------------:|----:|----:|-------:|---------:|:------------|
+| \(h=1\) | 1.685 | **1.433** | 1.753 | 2.050 | 1.639 | TST |
+| \(h=7\) | 9.866 | **8.621** | 12.079 | 17.152 | 9.085 | TST |
+| \(h=14\) | 18.529 | **17.037** | 26.151 | 35.603 | 17.439 | TST |
+| \(h=28\) | 35.954 | 42.505 | 56.119 | 71.642 | **34.262** | LightGBM |
+| \(h=60\) | **70.627** | 111.863 | 119.387 | 149.586 | 70.791 | **DS** |
+
+**Table E1c.** Daily recursive IWMAE by train volume zone, seed 42.
+
+| Horizon | Zone | DeepSequence | TST | LightGBM | Best |
+|--------:|:-----|-------------:|----:|---------:|:-----|
+| \(h=1\) | Low | **1.326** | 1.443 | 1.503 | **DS** |
+| \(h=1\) | Mid | 2.811 | **2.746** | 2.948 | TST |
+| \(h=1\) | High | 5.355 | **5.010** | 5.223 | TST |
+| \(h=28\) | Low | 2.517 | **2.469** | 2.610 | TST |
+| \(h=28\) | Mid | **4.564** | 4.886 | 4.659 | **DS** |
+| \(h=28\) | High | 8.095 | 9.155 | **7.983** | LightGBM |
+| \(h=60\) | Low | **2.596** | 2.673 | 2.744 | **DS** |
+| \(h=60\) | Mid | **4.328** | 4.763 | 4.459 | **DS** |
+| \(h=60\) | High | 4.581 | 5.970 | **4.528** | LightGBM |
+
+Under recursive rollout, the long-lead story is zone-heterogeneous: DeepSequence’s edge is clearest in mid volume; high volume often prefers LightGBM.
+
+### E.2 Decision economics \(\pi\) (recursive daily)
+
+Loyalty-aware \(\pi\) below uses the same recursive forecast paths as Section E.1. **Direct-MH decision \(\pi\) was not run for the primary tables**; treat these as optional-protocol economics only.
+
+**Table E3.** Seed-42 \(\pi\) winners by lead time and loyalty (low / mid / high margin); recursive.
+
+| Lead time | \(C_{\mathrm{loyalty}}=0\) | \(C_{\mathrm{loyalty}}=0.25\) |
+|-----------|--------------------------|-------------------------------|
+| 7 days | LGBM / TST / TST | **TST / TST / TST** |
+| 14 days | LGBM / DS / TST | DS / TST / TST |
+| 28 days | LGBM / DS / DS | **DS / DS / DS** |
+| 60 days | LGBM / DS / DS | **DS / DS / DS** |
+
+**Table E4.** Multi-seed mid-margin \(\pi\) at \(C_{\mathrm{loyalty}}=0.25\) (seeds \(42\)–\(46\); higher is better). **Recursive protocol.**
+
+| Horizon | DeepSequence | TST | LightGBM | Mid-\(\pi\) winner |
+|--------:|-------------:|----:|---------:|:-------------------|
+| \(h=7\) | \(-0.243\pm0.022\) | \(\mathbf{-0.218\pm0.024}\) | \(-0.262\pm0.023\) | TST \(4/5\) |
+| \(h=14\) | \(-0.291\pm0.046\) | \(-0.291\pm0.040\) | \(-0.313\pm0.034\) | TST \(3/5\), DS \(2/5\) |
+| \(h=28\) | \(\mathbf{-0.273\pm0.045}\) | \(-0.353\pm0.068\) | \(-0.308\pm0.051\) | **DS \(5/5\)** |
+| \(h=60\) | \(\mathbf{-0.255\pm0.042}\) | \(-0.373\pm0.046\) | \(-0.301\pm0.031\) | **DS \(5/5\)** |
+
+![Figure E7. Daily multi-seed mid-margin pi vs horizon (recursive).](paper_figures/fig3_daily_decision_pi_horizon.png)
+
+[Open PNG](paper_figures/fig3_daily_decision_pi_horizon.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig3_daily_decision_pi_horizon.png)
+
+*Figure E7. Daily multi-seed mid-margin decision \(\pi\) at \(C_{\mathrm{loyalty}}=0.25\) under **recursive** rollout (optional protocol).*
+
+### E.3 Recursive novelty ablations (DeepSequence-only)
+
+**Table E8.** Daily recursive multi-horizon IWMAE, DeepSequence-only, seed 42. Long horizons isolate the claimed novelties; Full wins \(h=28/60\).
+
+| Arm | \(h=1\) | \(h=28\) | \(h=60\) |
+|-----|--------:|---------:|---------:|
+| **Full** | 4.088 | **6.451** | **3.930** |
+| −context mixer | **4.012** | 6.556 | 4.014 |
+| −Level-1 selection attn | 4.142 | 6.657 | 4.113 |
+| −mono | 4.046 | 6.535 | 3.999 |
+| +cross | 4.049 | 6.642 | 4.137 |
 
 ---
 
