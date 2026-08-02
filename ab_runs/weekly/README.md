@@ -1,26 +1,29 @@
-# Weekly aggregation artifacts (ISO Monday-start)
+# Weekly / daily Direct-MH artifacts (ISO Monday weekly; locked 800)
 
-- Prepare script: `python -m deepsequence_hierarchical_attention.data.prepare_weekly_panel`
-- Feature config: `feature_config_weekly.yaml` (lags `{1,2,4}`, `gap_unit: weeks`)
-- Eval: `python -m deepsequence_hierarchical_attention.eval.weekly_mh` (DS **direct MH** + TSB recursive classical + LightGBM multi-output; CumMAE hooked)
-- Default smoke out: `ab_runs/weekly/panel*`
+- Panel prepare: `python -m deepsequence_hierarchical_attention.data.prepare_weekly_panel`
+- Feature config (weekly): `feature_config_weekly.yaml` (lags `{1,2,4}`, `gap_unit: weeks`)
+- Bake-off: `python -m deepsequence_hierarchical_attention.eval.weekly_mh`
+  - Weekly: DS **direct MH** + TSB recursive + LightGBM multi-output
+  - Daily like-for-like: same runner with `--dataset daily_direct_mh` + `feature_config.yaml`
 
-Week rule: `Timestamp.to_period("W-SUN").start_time` → **Monday**. Sum `Quantity` by `(id_var, week Monday)`. Country from SKU prefix.
+Week rule: `Timestamp.to_period("W-SUN").start_time` → **Monday**. Sum `Quantity` by `(id_var, week Monday)`.
 
-Does **not** change the locked daily bake-off.
+Does **not** change the locked **recursive** daily bake-off (`PAPER.md` Table 1).
 
-## Protocol caveat (read before citing)
+## Protocol (direct↔direct)
 
-Relative to the locked **daily recursive** MH bake-off (`PAPER.md` Table 1), this weekly experiment **jointly** changes:
+Grain comparisons in `PAPER.md` §5.3b hold MH protocol fixed:
 
-1. **Temporal grain / zero rate** (daily ≈90% zeros → weekly ≈65% zeros), and
-2. **Forecasting protocol** (daily DeepSequence = recursive one-step rollout; weekly DeepSequence = **direct** multi-horizon head).
+| Grain | DeepSequence | LightGBM | TSB | Artifact |
+|-------|--------------|----------|-----|----------|
+| Weekly | direct MH | multi-output | recursive classical | `weekly_mh8_locked800_s42.json` |
+| Daily (comparator) | direct MH | multi-output | recursive classical | `daily_direct_mh60_locked800_s42.json` |
 
-**Do not** attribute all weekly IWMAE / flatness improvement solely to aggregation or the drop in zero rate. Within-table weekly rankings (DS vs TSB vs LightGBM) are valid under the weekly protocol; cross-grain comparison to daily Table 1 is not like-for-like.
+Matched leads: weekly \(h=1/4/8\) ≈ daily \(h=7/28/56\). Absolute IWMAE is **not** cross-grain comparable (week-sums vs daily units). Recursive daily remains primary for the portfolio story.
 
-Ideal follow-up (not run here): **recursive weekly** and/or **direct daily** with protocol held fixed. See `PAPER.md` §3.10, §5.3b, §7.
+Ideal remaining follow-up: **recursive weekly** (protocol matched to Table 1).
 
-## Locked 800 zero-rate (same SKU list as daily)
+## Locked 800 zero-rate
 
 Artifact: `zero_rate_daily_vs_weekly_locked800.json`
 
@@ -29,9 +32,9 @@ Artifact: `zero_rate_daily_vs_weekly_locked800.json`
 | Daily  | 0.896     | 1.04        |
 | Weekly | 0.650     | 7.27        |
 
-## Weekly MH bake-off (seed 42, H=8, report 1/4/8)
+## Weekly Direct-MH (seed 42, H=8)
 
-Artifact: `weekly_mh8_locked800_s42.json` (793 origins with ≥8 test weeks). Protocol: DS direct MH (not recursive).
+793 origins with ≥8 test weeks.
 
 | Model        | h=1 IWMAE | h=4 | h=8 | h=1 CumMAE | h=4 | h=8 |
 |--------------|----------:|----:|----:|-----------:|----:|----:|
@@ -39,18 +42,25 @@ Artifact: `weekly_mh8_locked800_s42.json` (793 origins with ≥8 test weeks). Pr
 | TSB          | 10.21     | 10.01 | 10.37 | 7.41 | 20.75 | 43.28 |
 | LightGBM     | 10.78     | 10.02 | 13.47 | 8.50 | 21.77 | 49.84 |
 
-Rebuild panel::
+## Daily Direct-MH (seed 42, H=60)
+
+696 origins with ≥60 test days. Artifact: `daily_direct_mh60_locked800_s42.json`.
+
+| Model        | h=1 | h=7 | h=14 | h=28 | h=56 | h=60 | h=7 CumMAE | h=28 | h=56 |
+|--------------|----:|----:|-----:|-----:|-----:|-----:|-----------:|-----:|-----:|
+| DeepSequence | 5.60 | **3.26** | **3.71** | **3.87** | **9.09** | **2.51** | **10.86** | **38.34** | **76.86** |
+| TSB          | **5.32** | 4.49 | 5.30 | 5.36 | 10.83 | 4.24 | 17.42 | 99.62 | 210.89 |
+| LightGBM     | 5.85 | 4.37 | 5.33 | 6.22 | 10.29 | 3.71 | 15.92 | 75.53 | 142.50 |
+
+## Rebuild commands
 
 ```bash
+export DEEPSEQUENCE_DATA_DIR=/path/to/jubilant/data
 TF_USE_LEGACY_KERAS=1 .venv-test/bin/python -m deepsequence_hierarchical_attention.data.prepare_weekly_panel \
   --data_dir "$DEEPSEQUENCE_DATA_DIR" \
   --sku_list ab_runs/recompare/sku_list_daily_data42.json \
   --out_dir ab_runs/weekly/panel_locked800
-```
 
-Re-run bake-off::
-
-```bash
 TF_USE_LEGACY_KERAS=1 .venv-test/bin/python -m deepsequence_hierarchical_attention.eval.weekly_mh \
   --data_dir ab_runs/weekly/panel_locked800 \
   --feature_config feature_config_weekly.yaml \
@@ -58,4 +68,14 @@ TF_USE_LEGACY_KERAS=1 .venv-test/bin/python -m deepsequence_hierarchical_attenti
   --max_skus 800 --horizon 8 --report_horizons 1,4,8 \
   --models deepsequence,tsb,lightgbm --epochs 15 --seed 42 \
   --out_json ab_runs/weekly/weekly_mh8_locked800_s42.json
+
+TF_USE_LEGACY_KERAS=1 .venv-test/bin/python -m deepsequence_hierarchical_attention.eval.weekly_mh \
+  --data_dir "$DEEPSEQUENCE_DATA_DIR" \
+  --feature_config feature_config.yaml --dataset daily_direct_mh \
+  --sku_list ab_runs/recompare/sku_list_daily_data42.json \
+  --max_skus 800 --horizon 60 --report_horizons 1,7,14,28,56,60 \
+  --mase_season 7 --models deepsequence,tsb,lightgbm --epochs 15 --seed 42 \
+  --out_json ab_runs/weekly/daily_direct_mh60_locked800_s42.json
 ```
+
+Figures: `paper_figures/make_weekly_daily_direct_compare.py` → `fig_zero_rate_daily_vs_weekly`, `fig_weekly_daily_direct_iwmae`, `fig_weekly_daily_direct_cummae`.
