@@ -51,6 +51,7 @@ from deepsequence_hierarchical_attention.components_lightweight import (
 )
 from deepsequence_hierarchical_attention.eval.helpers import (
     add_panel_seed_args,
+    band_kpi_block,
     class_balance_pos_weight,
     cummae_from_rollout,
     filter_aligned,
@@ -60,7 +61,9 @@ from deepsequence_hierarchical_attention.eval.helpers import (
     select_eval_skus,
     split_components,
     train_mase_scale,
+    train_mean_demand_terciles,
     train_volume_terciles,
+    train_zero_rate_terciles,
 )
 from deepsequence_hierarchical_attention.data.feature_config_loader import load_feature_config
 from deepsequence_hierarchical_attention.training.adaptive_loss import AdaptiveWeightedModel, WeightedBCELoss
@@ -190,10 +193,45 @@ def build_mh_xy(X, y, skus, horizon: int, stride: int = 1):
     return np.asarray(xs, np.float32), np.asarray(ys, np.float32), np.asarray(ss)
 
 
-def mh_metrics(y_true, yhat, p, report_horizons=None, mase_scale=None):
+def _horizon_block(y_col, yh_col, p_col, skus, strata_maps, mase_scale):
+    """Overall KPIs + optional volume / zero-rate band nested strata."""
+    block = {
+        "overall": kpi_block(y_col, yh_col, p_col, mase_scale=mase_scale),
+    }
+    # Keep flat top-level keys for backward-compatible comparison readers.
+    block.update(block["overall"])
+    if not strata_maps or skus is None:
+        return block
+    for name, (band_map, bands) in strata_maps.items():
+        nested = band_kpi_block(
+            y_col, yh_col, p_col, skus, band_map, bands=bands, mase_scale=mase_scale
+        )
+        # Primary volume bands also exposed at top level (parity with daily MH).
+        if name == "mean_demand":
+            for band in bands:
+                block[band] = nested[band]
+        block[f"strata_{name}"] = nested
+    return block
+
+
+def mh_metrics(
+    y_true,
+    yhat,
+    p,
+    report_horizons=None,
+    mase_scale=None,
+    skus=None,
+    strata_maps=None,
+):
+    """Per-horizon KPIs; optional SKU-band strata via ``strata_maps``.
+
+    ``strata_maps``: ``{name: (sku→band dict, band_tuple)}``. Primary
+    ``mean_demand`` bands are also mirrored as top-level ``low``/``mid``/``high``.
+    """
     y_true = np.asarray(y_true, np.float32)
     yhat = np.maximum(np.asarray(yhat, np.float32), 0.0)
     p = None if p is None else np.asarray(p, np.float32)
+    skus = None if skus is None else np.asarray(skus).reshape(-1)
     H = y_true.shape[1]
     if report_horizons is None:
         report_horizons = list(range(1, H + 1))
@@ -211,16 +249,38 @@ def mh_metrics(y_true, yhat, p, report_horizons=None, mase_scale=None):
     for h in report_horizons:
         if 1 <= h <= H:
             col = h - 1
-            out["by_horizon"][str(h)] = kpi_block(
+            out["by_horizon"][str(h)] = _horizon_block(
                 y_true[:, col],
                 yhat[:, col],
                 None if p is None else p[:, col],
-                mase_scale=mase_scale,
+                skus,
+                strata_maps,
+                mase_scale,
             )
     cum = cummae_from_rollout(
         y_true, yhat, p, report_horizons=report_horizons, mase_scale=mase_scale
     )
-    out["by_horizon_cum"] = cum["by_horizon"]
+    # Nest CumMAE with the same band structure as pointwise.
+    for h_key, flat in cum["by_horizon"].items():
+        col = int(h_key) - 1
+        yt_c = np.cumsum(y_true, axis=1)[:, col]
+        yh_c = np.cumsum(yhat, axis=1)[:, col]
+        pp_h = None if p is None else p[:, col]
+        block = _horizon_block(yt_c, yh_c, pp_h, skus, strata_maps, mase_scale)
+        for key in ("overall", "low", "mid", "high"):
+            if key in block and isinstance(block[key], dict):
+                block[key]["cummae"] = block[key]["mae_all"]
+                block[key]["cummae_rounded"] = block[key]["mae_all_rounded"]
+                block[key]["cum_iwmae"] = block[key]["iwmae"]
+                block[key]["cum_iwmae_rounded"] = block[key]["iwmae_rounded"]
+        # Flat CumMAE aliases for comparison_cum readers.
+        block["cummae"] = flat.get("cummae", flat.get("mae_all"))
+        block["cummae_rounded"] = flat.get("cummae_rounded", flat.get("mae_all_rounded"))
+        block["cum_iwmae"] = flat.get("cum_iwmae", flat.get("iwmae"))
+        block["cum_iwmae_rounded"] = flat.get(
+            "cum_iwmae_rounded", flat.get("iwmae_rounded")
+        )
+        out["by_horizon_cum"][h_key] = block
 
     # Flat mean-rate diagnostic (planning-rate vs spike-tracking)
     flat = {}
@@ -367,6 +427,12 @@ def main():
         df.reset_index(drop=True, inplace=True)
 
     volume_map, volume_stats = train_volume_terciles(train_df)
+    mean_map, mean_stats = train_mean_demand_terciles(train_df)
+    zr_map, zr_stats = train_zero_rate_terciles(train_df)
+    strata_maps = {
+        "mean_demand": (mean_map, ("low", "mid", "high")),
+        "zero_rate": (zr_map, ("low_zero", "mid", "high_zero")),
+    }
     mase_scale = train_mase_scale(train_df, season=args.mase_season)
     # Include locked SKUs that appear only in val/test (no train weeks).
     all_ids = (
@@ -461,6 +527,16 @@ def main():
             "feature_config": str(args.feature_config),
             "feature_version": cfg.config["metadata"].get("version"),
             "volume_stats": volume_stats,
+            "mean_demand_stats": mean_stats,
+            "zero_rate_stats": zr_stats,
+            "zone_definition": {
+                "primary": "train_mean_demand_terciles",
+                "secondary": "train_zero_rate_terciles",
+                "legacy_volume_sum": "train_volume_terciles (sum Quantity)",
+                "no_test_leakage": True,
+                "labels_volume": ["low", "mid", "high"],
+                "labels_zero_rate": ["high_zero", "mid", "low_zero"],
+            },
             "models": sorted(selected),
             "use_sku_deepsequence": use_sku,
             "ds_stack": ds_stack,
@@ -483,7 +559,13 @@ def main():
             yhat = preds[name]
             p = np.clip(1.0 - np.exp(-yhat), 0, 1)
             metrics = mh_metrics(
-                y_true_mh, yhat, p, report_horizons=report_horizons, mase_scale=mase_scale
+                y_true_mh,
+                yhat,
+                p,
+                report_horizons=report_horizons,
+                mase_scale=mase_scale,
+                skus=sk_origin,
+                strata_maps=strata_maps,
             )
             results["models"][name] = {
                 "method": "recursive",
@@ -553,7 +635,13 @@ def main():
         if p.ndim == 1:
             p = p.reshape(-1, H)
         metrics = mh_metrics(
-            y_true_mh, yhat, p, report_horizons=report_horizons, mase_scale=mase_scale
+            y_true_mh,
+            yhat,
+            p,
+            report_horizons=report_horizons,
+            mase_scale=mase_scale,
+            skus=sk_origin,
+            strata_maps=strata_maps,
         )
         results["models"]["deepsequence"] = {
             "method": "direct_mh",
@@ -591,7 +679,13 @@ def main():
         yhat = np.maximum(model.predict(Xte), 0.0).astype(np.float32)
         p = np.clip(1.0 - np.exp(-yhat), 0, 1)
         metrics = mh_metrics(
-            y_true_mh, yhat, p, report_horizons=report_horizons, mase_scale=mase_scale
+            y_true_mh,
+            yhat,
+            p,
+            report_horizons=report_horizons,
+            mase_scale=mase_scale,
+            skus=sk_origin,
+            strata_maps=strata_maps,
         )
         results["models"]["lightgbm"] = {
             "method": "multi_output",

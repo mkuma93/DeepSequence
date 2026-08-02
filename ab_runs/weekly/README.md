@@ -32,6 +32,26 @@ Artifact: `zero_rate_daily_vs_weekly_locked800.json`
 | Daily  | 0.896     | 1.04        |
 | Weekly | 0.650     | 7.27        |
 
+## Stratified evaluation (train zones; seed 42)
+
+SKU bands from **train** only (no test leakage).
+
+| Protocol | Primary zones | Secondary | Artifact |
+|----------|---------------|-----------|----------|
+| Daily recursive (Table 1) | Train **volume-sum** terciles → low/mid/high (locked bake-off) | — | Nested in `../reclaim/daily_mh_1_60_cummae_s42.json`; summary `../reclaim/strata_volume_s42.json` |
+| Weekly Direct-MH | Train **mean-demand** terciles → low/mid/high | Train **zero-rate** terciles → high_zero / mid / low_zero | `weekly_mh8_locked800_s42.json` + `strata_weekly_direct_s42.json` |
+
+Extract / rebuild summary:
+
+```bash
+.venv-test/bin/python ab_runs/reclaim/extract_strata_tables.py \
+  --daily_json ab_runs/reclaim/daily_mh_1_60_cummae_s42.json \
+  --weekly_json ab_runs/weekly/weekly_mh8_locked800_s42.json \
+  --out_json ab_runs/reclaim/strata_volume_s42.json
+```
+
+**Weekly mean-demand IWMAE (headline):** DS wins mid/high at \(h=1/4/8\) and low at \(h\ge4\); TSB edges \(h=1\) low. See `PAPER.md` Tables W-S1 / W-S2.
+
 ## Weekly Direct-MH (seed 42, H=8)
 
 793 origins with ≥8 test weeks.

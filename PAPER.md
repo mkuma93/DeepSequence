@@ -344,6 +344,24 @@ Recursive rollout after origin \(t\); known-future calendar and holidays; demand
 
 Pointwise IWMAE (Table 1) and CumMAE agree that TST leads short horizons and DeepSequence leads at \(h=60\); at \(h=28\) LightGBM wins CumMAE while DeepSequence still wins IWMAE. Primary ranking remains IWMAE.
 
+**Stratified evaluation (train zones; no test leakage).** Locked recursive MH already records SKU bands from **train** statistics: primary = terciles of train \(\sum\) Quantity (low / mid / high volume; on this panel ranks correlate strongly with train mean demand). Artifacts: nested `low`/`mid`/`high` under `by_horizon` / `by_horizon_cum` in `ab_runs/reclaim/daily_mh_1_60_cummae_s42.json`; summary tables in `ab_runs/reclaim/strata_volume_s42.json`.
+
+**Table 1c.** Daily recursive IWMAE by train volume zone, seed 42 (same origins as Table 1). Bold = best in row among DeepSequence / TST / LightGBM (full five-model numbers in the JSON).
+
+| Horizon | Zone | DeepSequence | TST | LightGBM | Best |
+|--------:|:-----|-------------:|----:|---------:|:-----|
+| \(h=1\) | Low | **1.326** | 1.443 | 1.503 | **DS** |
+| \(h=1\) | Mid | 2.811 | **2.746** | 2.948 | TST |
+| \(h=1\) | High | 5.355 | **5.010** | 5.223 | TST |
+| \(h=28\) | Low | 2.517 | **2.469** | 2.610 | TST |
+| \(h=28\) | Mid | **4.564** | 4.886 | 4.659 | **DS** |
+| \(h=28\) | High | 8.095 | 9.155 | **7.983** | LightGBM |
+| \(h=60\) | Low | **2.596** | 2.673 | 2.744 | **DS** |
+| \(h=60\) | Mid | **4.328** | 4.763 | 4.459 | **DS** |
+| \(h=60\) | High | 4.581 | 5.970 | **4.528** | LightGBM |
+
+**Reading (zones).** The overall short/long portfolio story is **zone-heterogeneous**: TST leads short-horizon mid/high volume; DeepSequence’s long-horizon edge is clearest in **mid** volume (and low at \(h=60\)); **high** volume at \(h=28/60\) often prefers LightGBM on IWMAE (and CumMAE). Low-volume cells are closer across models.
+
 ### 5.2 Decision economics with loyalty (daily)
 
 Without loyalty (\(C_{\mathrm{loyalty}}=0\)), **LightGBM** often wins **low-margin** \(\pi\): under-forecasting reduces holding \(H\) and looks cheap when lost sales are under-weighted. With the recommended scenario \(C_{\mathrm{loyalty}}=0.25\), that ranking flips.
@@ -489,6 +507,38 @@ Aggregation cuts zero rate by \(\approx 25\) percentage points overall; UK (563 
 *Figure W5. Same SKUs and protocol: Direct-MH forecasts from the first test origin with \(\ge 8\) future weeks (\(h=1..4\) and \(h=1..8\)). DeepSequence / LightGBM are direct multi-horizon; TSB is classical recursive. Spikes remain largely unmatched—consistent with the planning-rate reading in Section 5.3b—while weekly grain still shows non-constant DS levels across horizons on several series.*
 
 **Reading.** Under **matched direct-MH protocol**, DeepSequence leads within-grain IWMAE at weekly \(h=1/4/8\) and at daily \(h\ge 7\) (seed 42); daily \(h=1\) still favors TSB slightly. Weekly flatness at \(h=1\): DeepSequence \(\mathrm{corr}(y,\hat y)\approx 0.48\), \(\mathrm{CV}(\hat y)\approx 2.55\), only \(\approx 2\%\) of forecasts within 10% of mean \(\hat y\), and 41 distinct rounded levels—**not** a constant mean-rate. Daily direct flatness at \(h=1\): \(\mathrm{CV}(\hat y)\approx 1.91\). Absolute weekly vs daily IWMAE must not be ranked against each other (different units). Gains relative to the recursive daily Table 1 story should not be attributed to aggregation alone without the direct-daily comparator: holding protocol fixed, DS remains competitive / leading on direct MH at both grains once \(h\gtrsim 7\) days or \(h\ge 1\) week.
+
+**Weekly strata (train mean-demand + zero-rate terciles).** Same locked 800 / seed-42 Direct-MH run, scored by SKU bands from **train** only. Primary: terciles of train **mean** demand (low / mid / high volume). Secondary: terciles of train **zero rate** (high-zero / mid / low-zero; high-zero = most intermittent). Artifacts: `ab_runs/weekly/weekly_mh8_locked800_s42.json` (`strata_mean_demand`, `strata_zero_rate`); `ab_runs/weekly/strata_weekly_direct_s42.json`.
+
+**Table W-S1.** Weekly Direct-MH IWMAE by train mean-demand zone (seed 42).
+
+| Horizon | Zone | DeepSequence | TSB | LightGBM | Best |
+|--------:|:-----|-------------:|----:|---------:|:-----|
+| \(h=1\) | Low | 4.575 | **4.486** | 4.852 | TSB |
+| \(h=1\) | Mid | **5.907** | 5.927 | 6.784 | **DS** |
+| \(h=1\) | High | **13.703** | 16.045 | 17.586 | **DS** |
+| \(h=4\) | Low | **1.990** | 2.150 | 2.472 | **DS** |
+| \(h=4\) | Mid | **5.646** | 6.658 | 6.455 | **DS** |
+| \(h=4\) | High | **12.878** | 17.842 | 16.803 | **DS** |
+| \(h=8\) | Low | **2.046** | 2.380 | 2.953 | **DS** |
+| \(h=8\) | Mid | **5.401** | 7.228 | 8.105 | **DS** |
+| \(h=8\) | High | **11.158** | 18.494 | 25.266 | **DS** |
+
+**Table W-S2.** Weekly Direct-MH IWMAE by train zero-rate zone (seed 42).
+
+| Horizon | Zone | DeepSequence | TSB | LightGBM | Best |
+|--------:|:---------|-------------:|----:|---------:|:-----|
+| \(h=1\) | High-zero | 5.946 | **5.877** | 6.385 | TSB |
+| \(h=1\) | Mid | 13.280 | **12.034** | 12.582 | TSB |
+| \(h=1\) | Low-zero | **10.472** | 12.021 | 13.037 | **DS** |
+| \(h=4\) | High-zero | 6.934 | 7.075 | **6.741** | LightGBM |
+| \(h=4\) | Mid | 11.029 | 10.072 | **9.969** | LightGBM |
+| \(h=4\) | Low-zero | **9.444** | 11.848 | 13.231 | **DS** |
+| \(h=8\) | High-zero | **9.385** | 9.505 | 10.867 | **DS** |
+| \(h=8\) | Mid | **8.969** | 11.163 | 12.271 | **DS** |
+| \(h=8\) | Low-zero | **8.536** | 11.295 | 16.765 | **DS** |
+
+**Reading (weekly zones).** On milder weekly zeros, DeepSequence’s Direct-MH lead is **broad across volume**: mid/high mean-demand at all reported \(h\), and low volume once \(h\ge 4\). TSB still edges sparse one-step cells (low volume; high-zero / mid intermittency at \(h=1\)). Smoother SKUs (low-zero) favor DeepSequence at every reported horizon; longer \(H\) consolidates DS wins even in high-zero bands.
 
 ### 5.4 Daily Prophet subset (protocol note)
 

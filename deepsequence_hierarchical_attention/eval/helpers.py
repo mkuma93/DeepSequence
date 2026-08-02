@@ -474,13 +474,21 @@ def split_components(X, cfg):
         X[:, cfg.regressor_indices].astype(np.float32),
     )
 
+def _sku_tercile_map(series: pd.Series, labels: tuple[str, str, str]) -> dict:
+    """Rank-then-qcut SKU scalar → band label (stable on ties)."""
+    ranks = series.rank(method="first")
+    return pd.qcut(ranks, 3, labels=list(labels)).to_dict()
+
+
 def train_volume_terciles(train_df: pd.DataFrame) -> dict:
-    """SKU → {low, mid, high} from train sum(Quantity) terciles."""
+    """SKU → {low, mid, high} from train sum(Quantity) terciles.
+
+    Legacy bake-off banding (daily recursive MH). Prefer
+    ``train_mean_demand_terciles`` for new stratified reporting when train
+    lengths vary across SKUs.
+    """
     vol = train_df.groupby("id_var")["Quantity"].sum().astype(np.float64)
-    # qcut can fail on ties; rank then cut
-    ranks = vol.rank(method="first")
-    labels = pd.qcut(ranks, 3, labels=["low", "mid", "high"])
-    mapping = labels.to_dict()
+    mapping = _sku_tercile_map(vol, ("low", "mid", "high"))
     stats = {}
     for band in ("low", "mid", "high"):
         skus = [s for s, b in mapping.items() if b == band]
@@ -495,6 +503,77 @@ def train_volume_terciles(train_df: pd.DataFrame) -> dict:
             ),
         }
     return mapping, stats
+
+
+def train_mean_demand_terciles(train_df: pd.DataFrame) -> tuple[dict, dict]:
+    """SKU → {low, mid, high} from train **mean** Quantity terciles (no test leakage)."""
+    mean = train_df.groupby("id_var")["Quantity"].mean().astype(np.float64)
+    zr = train_df.groupby("id_var")["Quantity"].apply(lambda s: float((s == 0).mean()))
+    n = train_df.groupby("id_var").size()
+    mapping = _sku_tercile_map(mean, ("low", "mid", "high"))
+    stats = {}
+    for band in ("low", "mid", "high"):
+        skus = [s for s, b in mapping.items() if b == band]
+        stats[band] = {
+            "n_skus": len(skus),
+            "train_mean_demand_mean": float(mean.loc[skus].mean()),
+            "train_mean_demand_min": float(mean.loc[skus].min()),
+            "train_mean_demand_max": float(mean.loc[skus].max()),
+            "train_zero_rate_mean_sku": float(zr.loc[skus].mean()),
+            "train_n_obs_mean": float(n.loc[skus].mean()),
+        }
+    return mapping, stats
+
+
+def train_zero_rate_terciles(train_df: pd.DataFrame) -> tuple[dict, dict]:
+    """SKU → {low_zero, mid, high_zero} from train zero-rate terciles.
+
+    ``high_zero`` = most intermittent (high train zero rate / low activity);
+    ``low_zero`` = smoothest. No test leakage.
+    """
+    zr = (
+        train_df.groupby("id_var")["Quantity"]
+        .apply(lambda s: float((s == 0).mean()))
+        .astype(np.float64)
+    )
+    mean = train_df.groupby("id_var")["Quantity"].mean().astype(np.float64)
+    mapping = _sku_tercile_map(zr, ("low_zero", "mid", "high_zero"))
+    stats = {}
+    for band in ("low_zero", "mid", "high_zero"):
+        skus = [s for s, b in mapping.items() if b == band]
+        stats[band] = {
+            "n_skus": len(skus),
+            "train_zero_rate_mean": float(zr.loc[skus].mean()),
+            "train_zero_rate_min": float(zr.loc[skus].min()),
+            "train_zero_rate_max": float(zr.loc[skus].max()),
+            "train_mean_demand_mean": float(mean.loc[skus].mean()),
+        }
+    return mapping, stats
+
+
+def band_kpi_block(
+    y,
+    yhat,
+    p,
+    skus,
+    band_map: dict,
+    bands: tuple[str, ...] = ("low", "mid", "high"),
+    mase_scale: float | None = None,
+) -> dict:
+    """Overall + per-band ``kpi_block`` for a single horizon column / flat vector."""
+    y = np.asarray(y, np.float64).reshape(-1)
+    yhat = np.asarray(yhat, np.float64).reshape(-1)
+    skus = np.asarray(skus).reshape(-1)
+    p = None if p is None else np.asarray(p, np.float64).reshape(-1)
+    bands_arr = np.array([band_map.get(s, "unk") for s in skus])
+    out = {"overall": kpi_block(y, yhat, p, mase_scale=mase_scale)}
+    for band in bands:
+        m = bands_arr == band
+        out[band] = kpi_block(
+            y[m], yhat[m], None if p is None else p[m], mase_scale=mase_scale
+        )
+        out[band]["n_skus_in_pred"] = int(len(set(skus[m].tolist())))
+    return out
 
 
 def cummae_from_rollout(

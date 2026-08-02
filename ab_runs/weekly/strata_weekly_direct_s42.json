@@ -1,0 +1,814 @@
+{
+  "zone_definition": {
+    "primary": "train_mean_demand_terciles",
+    "secondary": "train_zero_rate_terciles",
+    "legacy_volume_sum": "train_volume_terciles (sum Quantity)",
+    "no_test_leakage": true,
+    "labels_volume": [
+      "low",
+      "mid",
+      "high"
+    ],
+    "labels_zero_rate": [
+      "high_zero",
+      "mid",
+      "low_zero"
+    ]
+  },
+  "mean_demand_stats": {
+    "low": {
+      "n_skus": 264,
+      "train_mean_demand_mean": 0.7866373104463502,
+      "train_mean_demand_min": 0.0,
+      "train_mean_demand_max": 1.6363636363636365,
+      "train_zero_rate_mean_sku": 0.8240351951258051,
+      "train_n_obs_mean": 84.20833333333333
+    },
+    "mid": {
+      "n_skus": 264,
+      "train_mean_demand_mean": 3.2432888955022317,
+      "train_mean_demand_min": 1.6363636363636365,
+      "train_mean_demand_max": 5.711342592592593,
+      "train_zero_rate_mean_sku": 0.6860264675034432,
+      "train_n_obs_mean": 86.11742424242425
+    },
+    "high": {
+      "n_skus": 264,
+      "train_mean_demand_mean": 16.40403130335511,
+      "train_mean_demand_min": 5.820209973753281,
+      "train_mean_demand_max": 122.65040650406505,
+      "train_zero_rate_mean_sku": 0.49692945816276,
+      "train_n_obs_mean": 92.77651515151516
+    }
+  },
+  "zero_rate_stats": {
+    "low_zero": {
+      "n_skus": 264,
+      "train_zero_rate_mean": 0.4024061624739011,
+      "train_zero_rate_min": 0.0,
+      "train_zero_rate_max": 0.5972222222222222,
+      "train_mean_demand_mean": 13.45123052732717
+    },
+    "mid": {
+      "n_skus": 264,
+      "train_zero_rate_mean": 0.7251180326664702,
+      "train_zero_rate_min": 0.5984251968503937,
+      "train_zero_rate_max": 0.8157894736842105,
+      "train_mean_demand_mean": 4.932479175558914
+    },
+    "high_zero": {
+      "n_skus": 264,
+      "train_zero_rate_mean": 0.8794669256516371,
+      "train_zero_rate_min": 0.8181818181818182,
+      "train_zero_rate_max": 1.0,
+      "train_mean_demand_mean": 2.0502478064176066
+    }
+  },
+  "weekly_direct_mean_demand_table_iwmae": [
+    {
+      "horizon": 1,
+      "zone": "low",
+      "deepsequence": 4.57510729613734,
+      "tsb": 4.486432230375191,
+      "lightgbm": 4.8519313304721035,
+      "best": "tsb"
+    },
+    {
+      "horizon": 1,
+      "zone": "mid",
+      "deepsequence": 5.906795347519956,
+      "tsb": 5.927308265165232,
+      "lightgbm": 6.783875672399424,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 1,
+      "zone": "high",
+      "deepsequence": 13.702872867965038,
+      "tsb": 16.044539531320336,
+      "lightgbm": 17.586264059527057,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 4,
+      "zone": "low",
+      "deepsequence": 1.9902384337744727,
+      "tsb": 2.1504156185059613,
+      "lightgbm": 2.47224652739801,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 4,
+      "zone": "mid",
+      "deepsequence": 5.64614956780885,
+      "tsb": 6.658006144013874,
+      "lightgbm": 6.455145716546541,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 4,
+      "zone": "high",
+      "deepsequence": 12.877610986658214,
+      "tsb": 17.842481733556475,
+      "lightgbm": 16.803327284858664,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "low",
+      "deepsequence": 2.045555863983823,
+      "tsb": 2.380250589167265,
+      "lightgbm": 2.9531288930423436,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "mid",
+      "deepsequence": 5.401080054622806,
+      "tsb": 7.2277968319708314,
+      "lightgbm": 8.104685104611859,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "high",
+      "deepsequence": 11.157928053074668,
+      "tsb": 18.493828877340096,
+      "lightgbm": 25.265696282660553,
+      "best": "deepsequence"
+    }
+  ],
+  "weekly_direct_mean_demand_table_cummae": [
+    {
+      "horizon": 1,
+      "zone": "low",
+      "deepsequence": 1.1893939393939394,
+      "tsb": 1.5265151515151516,
+      "lightgbm": 2.4431818181818183,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 1,
+      "zone": "mid",
+      "deepsequence": 3.340593439159971,
+      "tsb": 4.058396469463002,
+      "lightgbm": 5.150568181818182,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 1,
+      "zone": "high",
+      "deepsequence": 14.718285552931555,
+      "tsb": 16.669043125076726,
+      "lightgbm": 17.94334867099921,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 4,
+      "zone": "low",
+      "deepsequence": 2.9242424242424243,
+      "tsb": 4.367424242424242,
+      "lightgbm": 6.0227272727272725,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 4,
+      "zone": "mid",
+      "deepsequence": 11.168686920946294,
+      "tsb": 13.723611134471316,
+      "lightgbm": 14.814520196481185,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 4,
+      "zone": "high",
+      "deepsequence": 42.44970545263001,
+      "tsb": 43.96207909150557,
+      "lightgbm": 44.25217647263498,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "low",
+      "deepsequence": 8.290025276668144,
+      "tsb": 10.950378810817545,
+      "lightgbm": 19.043181841120575,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "mid",
+      "deepsequence": 29.183044768644102,
+      "tsb": 32.66688317512021,
+      "lightgbm": 40.46621564933748,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "high",
+      "deepsequence": 90.57105399803682,
+      "tsb": 86.00472408171856,
+      "lightgbm": 89.7509633681991,
+      "best": "tsb"
+    }
+  ],
+  "weekly_direct_zero_rate_table_iwmae": [
+    {
+      "horizon": 1,
+      "zone": "high_zero",
+      "deepsequence": 5.945833333333333,
+      "tsb": 5.877083333333332,
+      "lightgbm": 6.385416666666667,
+      "best": "tsb"
+    },
+    {
+      "horizon": 1,
+      "zone": "mid",
+      "deepsequence": 13.279958078523585,
+      "tsb": 12.033708396347127,
+      "lightgbm": 12.582017563937004,
+      "best": "tsb"
+    },
+    {
+      "horizon": 1,
+      "zone": "low_zero",
+      "deepsequence": 10.47160708314438,
+      "tsb": 12.02122114277688,
+      "lightgbm": 13.037440053852203,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 4,
+      "zone": "high_zero",
+      "deepsequence": 6.933997844827586,
+      "tsb": 7.074622844827586,
+      "lightgbm": 6.740571120689656,
+      "best": "lightgbm"
+    },
+    {
+      "horizon": 4,
+      "zone": "mid",
+      "deepsequence": 11.029079379278517,
+      "tsb": 10.071936524254935,
+      "lightgbm": 9.968867732709048,
+      "best": "lightgbm"
+    },
+    {
+      "horizon": 4,
+      "zone": "low_zero",
+      "deepsequence": 9.443850265767264,
+      "tsb": 11.847654604523076,
+      "lightgbm": 13.230670927529749,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "high_zero",
+      "deepsequence": 9.384747583243824,
+      "tsb": 9.504726100966701,
+      "lightgbm": 10.866595059076262,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "mid",
+      "deepsequence": 8.969152045528793,
+      "tsb": 11.162643019340132,
+      "lightgbm": 12.2708810047736,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "low_zero",
+      "deepsequence": 8.53610828242527,
+      "tsb": 11.295250189821722,
+      "lightgbm": 16.765023195048443,
+      "best": "deepsequence"
+    }
+  ],
+  "weekly_direct_zero_rate_table_cummae": [
+    {
+      "horizon": 1,
+      "zone": "high_zero",
+      "deepsequence": 1.0946969696969697,
+      "tsb": 2.196969696969697,
+      "lightgbm": 3.7007575757575757,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 1,
+      "zone": "mid",
+      "deepsequence": 6.102335872072162,
+      "tsb": 6.909154053890344,
+      "lightgbm": 8.084659099578857,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 1,
+      "zone": "low_zero",
+      "deepsequence": 12.051240089716334,
+      "tsb": 13.14783099519484,
+      "lightgbm": 13.751681995662777,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 4,
+      "zone": "high_zero",
+      "deepsequence": 5.403409090909091,
+      "tsb": 11.017045454545455,
+      "lightgbm": 9.979166666666666,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 4,
+      "zone": "mid",
+      "deepsequence": 21.13150253801635,
+      "tsb": 19.28983587207216,
+      "lightgbm": 21.4691287243005,
+      "best": "tsb"
+    },
+    {
+      "horizon": 4,
+      "zone": "low_zero",
+      "deepsequence": 30.007723168893293,
+      "tsb": 31.746233141783513,
+      "lightgbm": 33.64112855087627,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "high_zero",
+      "deepsequence": 16.026073267965607,
+      "tsb": 24.523800546472724,
+      "lightgbm": 25.387436910109088,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 8,
+      "zone": "mid",
+      "deepsequence": 46.609758395137206,
+      "tsb": 41.29031380017599,
+      "lightgbm": 50.65441902478536,
+      "best": "tsb"
+    },
+    {
+      "horizon": 8,
+      "zone": "low_zero",
+      "deepsequence": 65.40829238024625,
+      "tsb": 63.80787172100761,
+      "lightgbm": 73.2185049237627,
+      "best": "tsb"
+    }
+  ],
+  "winners_mean_demand": {
+    "1": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 9.949343694055894,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 9.949343694055894
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 10.212957182208633
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 10.780704958221076
+          }
+        ]
+      },
+      "low": {
+        "best": "tsb",
+        "best_iwmae_rounded": 4.486432230375191,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.486432230375191
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 4.57510729613734
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 4.8519313304721035
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 5.906795347519956,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 5.906795347519956
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.927308265165232
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 6.783875672399424
+          }
+        ]
+      },
+      "high": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 13.702872867965038,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 13.702872867965038
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 16.044539531320336
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 17.586264059527057
+          }
+        ]
+      }
+    },
+    "4": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 8.834752366590829,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 8.834752366590829
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 10.006107034348128
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 10.019696785795832
+          }
+        ]
+      },
+      "low": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 1.9902384337744727,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 1.9902384337744727
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 2.1504156185059613
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 2.47224652739801
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 5.64614956780885,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 5.64614956780885
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 6.455145716546541
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 6.658006144013874
+          }
+        ]
+      },
+      "high": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 12.877610986658214,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 12.877610986658214
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 16.803327284858664
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 17.842481733556475
+          }
+        ]
+      }
+    },
+    "8": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 7.782468409303299,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 7.782468409303299
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 10.369549701272547
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 13.469588895290324
+          }
+        ]
+      },
+      "low": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 2.045555863983823,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 2.045555863983823
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 2.380250589167265
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 2.9531288930423436
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 5.401080054622806,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 5.401080054622806
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 7.2277968319708314
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 8.104685104611859
+          }
+        ]
+      },
+      "high": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 11.157928053074668,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 11.157928053074668
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 18.493828877340096
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 25.265696282660553
+          }
+        ]
+      }
+    }
+  },
+  "winners_zero_rate": {
+    "1": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 9.949343694055894,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 9.949343694055894
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 10.212957182208633
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 10.780704958221076
+          }
+        ]
+      },
+      "high_zero": {
+        "best": "tsb",
+        "best_iwmae_rounded": 5.877083333333332,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.877083333333332
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 5.945833333333333
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 6.385416666666667
+          }
+        ]
+      },
+      "mid": {
+        "best": "tsb",
+        "best_iwmae_rounded": 12.033708396347127,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 12.033708396347127
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 12.582017563937004
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 13.279958078523585
+          }
+        ]
+      },
+      "low_zero": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 10.47160708314438,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 10.47160708314438
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 12.02122114277688
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 13.037440053852203
+          }
+        ]
+      }
+    },
+    "4": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 8.834752366590829,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 8.834752366590829
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 10.006107034348128
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 10.019696785795832
+          }
+        ]
+      },
+      "high_zero": {
+        "best": "lightgbm",
+        "best_iwmae_rounded": 6.740571120689656,
+        "ranking": [
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 6.740571120689656
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 6.933997844827586
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 7.074622844827586
+          }
+        ]
+      },
+      "mid": {
+        "best": "lightgbm",
+        "best_iwmae_rounded": 9.968867732709048,
+        "ranking": [
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 9.968867732709048
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 10.071936524254935
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 11.029079379278517
+          }
+        ]
+      },
+      "low_zero": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 9.443850265767264,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 9.443850265767264
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 11.847654604523076
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 13.230670927529749
+          }
+        ]
+      }
+    },
+    "8": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 7.782468409303299,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 7.782468409303299
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 10.369549701272547
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 13.469588895290324
+          }
+        ]
+      },
+      "high_zero": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 9.384747583243824,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 9.384747583243824
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 9.504726100966701
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 10.866595059076262
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 8.969152045528793,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 8.969152045528793
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 11.162643019340132
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 12.2708810047736
+          }
+        ]
+      },
+      "low_zero": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 8.53610828242527,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 8.53610828242527
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 11.295250189821722
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 16.765023195048443
+          }
+        ]
+      }
+    }
+  },
+  "finding": "Zones are SKU terciles from train-only statistics on the locked panel (no test leakage). Daily recursive primary bands are train volume-sum terciles (locked bake-off; \u2248 mean-demand ranks). Weekly Direct-MH primary bands are train mean-demand terciles; secondary are train zero-rate terciles (high_zero = most intermittent). Daily: overall portfolio story holds but is zone-heterogeneous\u2014TST leads short-horizon mid/high volume; DeepSequence leads long-horizon mid volume and h=60 low; high-volume long horizons often favor LightGBM on IWMAE/CumMAE. Weekly Direct-MH: DeepSequence wins mean-demand mid/high at all reported horizons and low volume at h\u22654; TSB edges h=1 low-volume and some high-zero/mid intermittent one-step cells; DS dominates smoother (low_zero) weeks and longer H.",
+  "source_json": "ab_runs/weekly/weekly_mh8_locked800_s42.json",
+  "combined_summary": "ab_runs/reclaim/strata_volume_s42.json"
+}
