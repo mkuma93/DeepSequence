@@ -1,6 +1,8 @@
 import numpy as np
 import logging
 
+from . import _tf_compat  # noqa: F401  # before TensorFlow / tfrs
+
 import tensorflow as tf
 from tensorflow.keras.layers import (
     Input, Dense, Embedding, Concatenate, Add, Multiply, Dropout,

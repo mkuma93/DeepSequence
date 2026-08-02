@@ -10,6 +10,8 @@ Product surface (v1.6):
 6. Optional hybrid temporal trunk (`hybrid_temporal`)
 """
 
+from . import _tf_compat  # noqa: F401  # before any TensorFlow import
+
 from .losses import (
     composite_loss,
     weighted_composite_loss,

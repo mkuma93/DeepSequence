@@ -30,6 +30,9 @@ from typing import Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+
+from . import _tf_compat  # noqa: F401  # before TensorFlow
+
 import tensorflow as tf
 
 DEFAULT_SEQUENCE_CHANNELS = (

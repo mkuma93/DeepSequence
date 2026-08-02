@@ -4,6 +4,8 @@ Custom loss functions for DeepSequence Hierarchical Attention.
 Includes composite loss optimized for intermittent demand forecasting.
 """
 
+from . import _tf_compat  # noqa: F401  # before TensorFlow
+
 import tensorflow as tf
 
 

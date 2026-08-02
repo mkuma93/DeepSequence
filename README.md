@@ -90,7 +90,8 @@ Optional **residual causal transformer** (`residual_transformer.py`) can refine 
 git clone https://github.com/mkuma93/DeepSequence.git
 cd DeepSequence
 
-python -m venv .venv
+# Use Python 3.9–3.12 (TensorFlow wheels; system python3.14 often has none)
+python3.11 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
 pip install -e .
@@ -110,7 +111,13 @@ pip install dist/deepsequence_hierarchical_attention-1.6.0-py3-none-any.whl
 pip install "git+https://github.com/mkuma93/DeepSequence.git"
 ```
 
-Requires **Python ≥ 3.9**, **TensorFlow ≥ 2.13**, and **tensorflow-recommenders** (cross layers).
+Requires **Python ≥ 3.9** (3.9–3.12 recommended), **TensorFlow ≥ 2.13**, and **tensorflow-recommenders** (cross layers).
+
+**TensorFlow 2.16+ / Keras:** `tensorflow-recommenders` needs the Keras 2 API. The package sets `TF_USE_LEGACY_KERAS=1` on import. For CLI scripts that import TensorFlow before the package, export it yourself:
+
+```bash
+export TF_USE_LEGACY_KERAS=1
+```
 
 ---
 

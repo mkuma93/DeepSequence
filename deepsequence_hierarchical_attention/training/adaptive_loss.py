@@ -20,6 +20,9 @@ import sys
 import time
 import numpy as np
 import pandas as pd
+
+from deepsequence_hierarchical_attention import _tf_compat  # noqa: F401  # before TensorFlow
+
 import tensorflow as tf
 from tensorflow import keras
 import joblib
