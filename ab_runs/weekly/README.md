@@ -38,8 +38,9 @@ SKU bands from **train** only (no test leakage).
 
 | Protocol | Primary zones | Secondary | Artifact |
 |----------|---------------|-----------|----------|
-| Daily recursive (Table 1) | Train **volume-sum** terciles → low/mid/high (locked bake-off) | — | Nested in `../reclaim/daily_mh_1_60_cummae_s42.json`; summary `../reclaim/strata_volume_s42.json` |
+| Daily Direct-MH (Table 1 / D-S1) | Train **mean-demand** terciles → low/mid/high | Train **zero-rate** terciles → high_zero / mid / low_zero | `daily_direct_mh60_locked800_s42.json` + `strata_daily_direct_s42.json` |
 | Weekly Direct-MH | Train **mean-demand** terciles → low/mid/high | Train **zero-rate** terciles → high_zero / mid / low_zero | `weekly_mh8_locked800_s42.json` + `strata_weekly_direct_s42.json` |
+| Daily recursive (Appendix E) | Train **volume-sum** terciles → low/mid/high (locked bake-off) | — | Nested in `../reclaim/daily_mh_1_60_cummae_s42.json`; summary `../reclaim/strata_volume_s42.json` |
 
 Extract / rebuild summary:
 
@@ -47,8 +48,11 @@ Extract / rebuild summary:
 .venv-test/bin/python ab_runs/reclaim/extract_strata_tables.py \
   --daily_json ab_runs/reclaim/daily_mh_1_60_cummae_s42.json \
   --weekly_json ab_runs/weekly/weekly_mh8_locked800_s42.json \
+  --daily_direct_json ab_runs/weekly/daily_direct_mh60_locked800_s42.json \
   --out_json ab_runs/reclaim/strata_volume_s42.json
 ```
+
+**Daily Direct mean-demand IWMAE (headline):** DS wins mid/high from \(h=7\) and all zones by \(h\ge 28\); TSB edges \(h=1\) mid/high. See `PAPER.md` Table D-S1.
 
 **Weekly mean-demand IWMAE (headline):** DS wins mid/high at \(h=1/4/8\) and low at \(h\ge4\); TSB edges \(h=1\) low. See `PAPER.md` Tables W-S1 / W-S2.
 
@@ -99,6 +103,8 @@ TF_USE_LEGACY_KERAS=1 .venv-test/bin/python -m deepsequence_hierarchical_attenti
 ```
 
 Figures: `paper_figures/make_weekly_daily_direct_compare.py` → `fig_zero_rate_daily_vs_weekly`, `fig_weekly_daily_direct_iwmae`, `fig_weekly_daily_direct_cummae`.
+Daily Direct horizon: `paper_figures/make_daily_direct_horizon_figures.py` → `fig_daily_direct_iwmae_horizon`, `fig_daily_direct_cummae_horizon`.
+Zone strata: `paper_figures/make_direct_strata_figures.py` → `fig_daily_direct_strata_iwmae`, `fig_weekly_direct_strata_iwmae`.
 
 Qualitative per-SKU forecasts (Direct-MH, seed 42):
 

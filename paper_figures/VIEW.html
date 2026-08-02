@@ -11,6 +11,7 @@
       --muted: #555;
       --line: #ddd6c8;
       --accent: #0b5fff;
+      --appendix: #8a5a00;
     }
     * { box-sizing: border-box; }
     body {
@@ -41,6 +42,9 @@
       border: 1px solid #c9d7ff; background: #fff; padding: 0.15rem 0.5rem; border-radius: 4px;
     }
     nav a:hover { background: #eef3ff; }
+    nav a.appendix {
+      color: var(--appendix); border-color: #e6d2a8; background: #fffaf0;
+    }
     main { max-width: 1100px; margin: 0 auto; padding: 1rem 1.25rem 3rem; }
     .card {
       margin: 1.25rem 0 2rem;
@@ -50,6 +54,18 @@
     .card h2 { font-size: 1.05rem; margin: 0 0 0.35rem; }
     .meta { margin: 0 0 0.75rem; font-size: 0.88rem; color: var(--muted); }
     .meta a { color: var(--accent); }
+    .badge {
+      display: inline-block; font-size: 0.75rem; font-weight: 600;
+      padding: 0.1rem 0.45rem; border-radius: 3px; margin-right: 0.35rem;
+      vertical-align: middle;
+    }
+    .badge.primary { background: #e8f0ff; color: #0b5fff; }
+    .badge.appendix { background: #fff3e0; color: var(--appendix); }
+    h3.section-label {
+      margin: 2rem 0 0.5rem; font-size: 0.95rem; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--muted); border-bottom: 1px solid var(--line);
+      padding-bottom: 0.35rem;
+    }
     img {
       display: block; width: 100%; height: auto;
       background: #fff; border: 1px solid var(--line); border-radius: 6px;
@@ -61,13 +77,21 @@
   <header>
     <h1>DeepSequence — paper figures</h1>
     <p>Local gallery for reliable viewing when Cursor / Google Drive markdown preview fails to embed images.
-       Open this file in Chrome/Safari (File → Open), or from the repo: <code>open paper_figures/VIEW.html</code>.</p>
+       Open this file in Chrome/Safari (File → Open), or from the repo: <code>open paper_figures/VIEW.html</code>.
+       <strong>Primary Results</strong> use Direct-MH; recursive multi-seed plots are Appendix E only.</p>
     <nav>
-      <a href="#fig1">Fig 1</a><a href="#fig2">Fig 2</a><a href="#fig3">Fig 3</a><a href="#fig4">Fig 4</a><a href="#fig5">Fig 5</a><a href="#fig6">Fig 6</a><a href="#fig7">Fig 7</a><a href="#fig8">Fig 8</a><a href="#fig9">Fig 9</a><a href="#fig10">Fig 10</a><a href="#fig11">Fig 11</a><a href="#fig12">Fig 12</a><a href="#fig13">Fig 13</a><a href="#figw1">W1</a><a href="#figw2">W2</a><a href="#figw3">W3</a>
+      <a href="#fig1">Fig 1</a><a href="#fig2">Fig 2</a><a href="#fig3">Fig 3</a><a href="#fig4">Fig 4</a><a href="#fig5">Fig 5</a>
+      <a href="#figd1">D1</a><a href="#figd2">D2</a><a href="#figd3">D3</a>
+      <a href="#figw1">W1</a><a href="#figw2">W2</a><a href="#figw3">W3</a><a href="#figw4">W4</a><a href="#figw5">W5</a><a href="#figw6">W6</a>
+      <a href="#fig8">Fig 8</a><a href="#fig9">Fig 9</a>
+      <a class="appendix" href="#fige6">E6</a><a class="appendix" href="#fige7">E7</a>
+      <a class="appendix" href="#fig11">Fig 11*</a>
     </nav>
   </header>
   <main>
-    
+
+<h3 class="section-label">Architecture (Figures 1–5)</h3>
+
 <section id="fig1" class="card">
   <h2>Figure 1. Changepoint selection (Trend)</h2>
   <p class="meta"><a href="fig_m1_changepoint_selection.png">fig_m1_changepoint_selection.png</a>
@@ -104,20 +128,74 @@
     · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_m5_architecture.png">raw</a></p>
   <img src="fig_m5_architecture.png" alt="Figure 5. End-to-end DeepSequence architecture" loading="lazy" />
 </section>
-<section id="fig6" class="card">
-  <h2>Figure 6. Daily multi-seed IWMAE vs horizon</h2>
-  <p class="meta"><a href="fig1_daily_iwmae_horizon.png">fig1_daily_iwmae_horizon.png</a>
-    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig1_daily_iwmae_horizon.png">GitHub</a>
-    · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig1_daily_iwmae_horizon.png">raw</a></p>
-  <img src="fig1_daily_iwmae_horizon.png" alt="Figure 6. Daily multi-seed IWMAE vs horizon" loading="lazy" />
+
+<h3 class="section-label">Primary Results — Daily Direct-MH (Figures D1–D3)</h3>
+
+<section id="figd1" class="card">
+  <h2><span class="badge primary">PRIMARY</span> Figure D1. Daily Direct-MH IWMAE vs horizon</h2>
+  <p class="meta">Seed-42 locked 800; next to Table 1.
+    <a href="fig_daily_direct_iwmae_horizon.png">fig_daily_direct_iwmae_horizon.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_daily_direct_iwmae_horizon.png">GitHub</a>
+    · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_daily_direct_iwmae_horizon.png">raw</a></p>
+  <img src="fig_daily_direct_iwmae_horizon.png" alt="Figure D1. Daily Direct-MH IWMAE vs horizon" loading="lazy" />
 </section>
-<section id="fig7" class="card">
-  <h2>Figure 7. Daily multi-seed mid-margin π vs horizon</h2>
-  <p class="meta"><a href="fig3_daily_decision_pi_horizon.png">fig3_daily_decision_pi_horizon.png</a>
-    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig3_daily_decision_pi_horizon.png">GitHub</a>
-    · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig3_daily_decision_pi_horizon.png">raw</a></p>
-  <img src="fig3_daily_decision_pi_horizon.png" alt="Figure 7. Daily multi-seed mid-margin π vs horizon" loading="lazy" />
+<section id="figd2" class="card">
+  <h2><span class="badge primary">PRIMARY</span> Figure D2. Daily Direct-MH CumMAE vs horizon</h2>
+  <p class="meta"><a href="fig_daily_direct_cummae_horizon.png">fig_daily_direct_cummae_horizon.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_daily_direct_cummae_horizon.png">GitHub</a>
+    · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_daily_direct_cummae_horizon.png">raw</a></p>
+  <img src="fig_daily_direct_cummae_horizon.png" alt="Figure D2. Daily Direct-MH CumMAE vs horizon" loading="lazy" />
 </section>
+<section id="figd3" class="card">
+  <h2><span class="badge primary">PRIMARY</span> Figure D3. Daily Direct-MH IWMAE by train mean-demand zone</h2>
+  <p class="meta">Low / mid / high terciles from train only (Table D-S1).
+    <a href="fig_daily_direct_strata_iwmae.png">fig_daily_direct_strata_iwmae.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_daily_direct_strata_iwmae.png">GitHub</a>
+    · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_daily_direct_strata_iwmae.png">raw</a></p>
+  <img src="fig_daily_direct_strata_iwmae.png" alt="Figure D3. Daily Direct-MH zone strata" loading="lazy" />
+</section>
+
+<h3 class="section-label">Primary Results — Weekly Direct-MH (Figures W1–W6)</h3>
+
+<section id="figw1" class="card">
+  <h2><span class="badge primary">PRIMARY</span> Figure W1. Zero rate daily vs weekly</h2>
+  <p class="meta"><a href="fig_zero_rate_daily_vs_weekly.png">fig_zero_rate_daily_vs_weekly.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_zero_rate_daily_vs_weekly.png">GitHub</a></p>
+  <img src="fig_zero_rate_daily_vs_weekly.png" alt="Figure W1. Zero rate daily vs weekly" loading="lazy" />
+</section>
+<section id="figw2" class="card">
+  <h2><span class="badge primary">PRIMARY</span> Figure W2. Direct-MH IWMAE weekly vs daily</h2>
+  <p class="meta"><a href="fig_weekly_daily_direct_iwmae.png">fig_weekly_daily_direct_iwmae.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_daily_direct_iwmae.png">GitHub</a></p>
+  <img src="fig_weekly_daily_direct_iwmae.png" alt="Figure W2. Direct MH IWMAE weekly vs daily" loading="lazy" />
+</section>
+<section id="figw3" class="card">
+  <h2><span class="badge primary">PRIMARY</span> Figure W3. Direct-MH CumMAE weekly vs daily</h2>
+  <p class="meta"><a href="fig_weekly_daily_direct_cummae.png">fig_weekly_daily_direct_cummae.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_daily_direct_cummae.png">GitHub</a></p>
+  <img src="fig_weekly_daily_direct_cummae.png" alt="Figure W3. Direct MH CumMAE weekly vs daily" loading="lazy" />
+</section>
+<section id="figw4" class="card">
+  <h2><span class="badge primary">PRIMARY</span> Figure W4. Weekly Direct-MH one-step forecasts</h2>
+  <p class="meta"><a href="fig_forecast_weekly_onestep.png">fig_forecast_weekly_onestep.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_onestep.png">GitHub</a></p>
+  <img src="fig_forecast_weekly_onestep.png" alt="Figure W4. Weekly Direct-MH one-step forecasts" loading="lazy" />
+</section>
+<section id="figw5" class="card">
+  <h2><span class="badge primary">PRIMARY</span> Figure W5. Weekly Direct-MH horizon forecasts</h2>
+  <p class="meta"><a href="fig_forecast_weekly_direct.png">fig_forecast_weekly_direct.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_direct.png">GitHub</a></p>
+  <img src="fig_forecast_weekly_direct.png" alt="Figure W5. Weekly Direct-MH horizon forecasts" loading="lazy" />
+</section>
+<section id="figw6" class="card">
+  <h2><span class="badge primary">PRIMARY</span> Figure W6. Weekly Direct-MH IWMAE by train mean-demand zone</h2>
+  <p class="meta"><a href="fig_weekly_direct_strata_iwmae.png">fig_weekly_direct_strata_iwmae.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_direct_strata_iwmae.png">GitHub</a></p>
+  <img src="fig_weekly_direct_strata_iwmae.png" alt="Figure W6. Weekly Direct-MH zone strata" loading="lazy" />
+</section>
+
+<h3 class="section-label">Car Parts &amp; ablations</h3>
+
 <section id="fig8" class="card">
   <h2>Figure 8. Car Parts IWMAE vs horizon</h2>
   <p class="meta"><a href="fig2_carparts_iwmae_horizon.png">fig2_carparts_iwmae_horizon.png</a>
@@ -133,18 +211,11 @@
   <img src="fig4_novelty_ablation.png" alt="Figure 9. Novelty ablation IWMAE" loading="lazy" />
 </section>
 <section id="fig10" class="card">
-  <h2>Figure 10. Daily one-step forecasts</h2>
+  <h2>Figure 10. Daily one-step forecasts (qualitative)</h2>
   <p class="meta"><a href="fig_forecast_daily_onestep.png">fig_forecast_daily_onestep.png</a>
     · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_onestep.png">GitHub</a>
     · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_onestep.png">raw</a></p>
   <img src="fig_forecast_daily_onestep.png" alt="Figure 10. Daily one-step forecasts" loading="lazy" />
-</section>
-<section id="fig11" class="card">
-  <h2>Figure 11. Daily recursive forecasts</h2>
-  <p class="meta"><a href="fig_forecast_daily_recursive.png">fig_forecast_daily_recursive.png</a>
-    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_recursive.png">GitHub</a>
-    · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_recursive.png">raw</a></p>
-  <img src="fig_forecast_daily_recursive.png" alt="Figure 11. Daily recursive forecasts" loading="lazy" />
 </section>
 <section id="fig12" class="card">
   <h2>Figure 12. Car Parts one-step forecasts</h2>
@@ -152,6 +223,31 @@
     · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_carparts_onestep.png">GitHub</a>
     · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_carparts_onestep.png">raw</a></p>
   <img src="fig_forecast_carparts_onestep.png" alt="Figure 12. Car Parts one-step forecasts" loading="lazy" />
+</section>
+
+<h3 class="section-label">Appendix E — Optional recursive protocol (not primary)</h3>
+
+<section id="fige6" class="card">
+  <h2><span class="badge appendix">APPENDIX E</span> Figure E6. Daily multi-seed IWMAE vs horizon (recursive)</h2>
+  <p class="meta">File <code>fig1_daily_iwmae_horizon.png</code> — <strong>not</strong> the primary Direct-MH Results figure (see D1).
+    <a href="fig1_daily_iwmae_horizon.png">fig1_daily_iwmae_horizon.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig1_daily_iwmae_horizon.png">GitHub</a>
+    · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig1_daily_iwmae_horizon.png">raw</a></p>
+  <img src="fig1_daily_iwmae_horizon.png" alt="Figure E6. Daily multi-seed recursive IWMAE vs horizon" loading="lazy" />
+</section>
+<section id="fige7" class="card">
+  <h2><span class="badge appendix">APPENDIX E</span> Figure E7. Daily multi-seed mid-margin π vs horizon (recursive)</h2>
+  <p class="meta"><a href="fig3_daily_decision_pi_horizon.png">fig3_daily_decision_pi_horizon.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig3_daily_decision_pi_horizon.png">GitHub</a>
+    · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig3_daily_decision_pi_horizon.png">raw</a></p>
+  <img src="fig3_daily_decision_pi_horizon.png" alt="Figure E7. Daily multi-seed mid-margin pi vs horizon (recursive)" loading="lazy" />
+</section>
+<section id="fig11" class="card">
+  <h2><span class="badge appendix">APPENDIX / QUALITATIVE</span> Figure 11. Daily recursive forecasts (optional protocol)</h2>
+  <p class="meta"><a href="fig_forecast_daily_recursive.png">fig_forecast_daily_recursive.png</a>
+    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_recursive.png">GitHub</a>
+    · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_recursive.png">raw</a></p>
+  <img src="fig_forecast_daily_recursive.png" alt="Figure 11. Daily recursive forecasts" loading="lazy" />
 </section>
 <section id="fig13" class="card">
   <h2>Figure 13. Car Parts recursive forecasts</h2>
@@ -168,7 +264,7 @@
   <img src="fig_forecast_daily_binary_hol_onestep.png" alt="Figure 14. Daily one-step binary holidays" loading="lazy" />
 </section>
 <section id="fig15" class="card">
-  <h2>Figure 15. Daily recursive forecasts (binary holidays ON)</h2>
+  <h2><span class="badge appendix">OPTIONAL</span> Figure 15. Daily recursive forecasts (binary holidays ON)</h2>
   <p class="meta"><a href="fig_forecast_daily_binary_hol_recursive.png">fig_forecast_daily_binary_hol_recursive.png</a>
     · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_binary_hol_recursive.png">GitHub</a>
     · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_binary_hol_recursive.png">raw</a></p>
@@ -182,7 +278,7 @@
   <img src="fig_forecast_daily_country_hol_onestep.png" alt="Figure 16. Daily one-step country holidays" loading="lazy" />
 </section>
 <section id="fig17" class="card">
-  <h2>Figure 17. Daily recursive forecasts (country calendars + binary)</h2>
+  <h2><span class="badge appendix">OPTIONAL</span> Figure 17. Daily recursive forecasts (country calendars + binary)</h2>
   <p class="meta"><a href="fig_forecast_daily_country_hol_recursive.png">fig_forecast_daily_country_hol_recursive.png</a>
     · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_daily_country_hol_recursive.png">GitHub</a>
     · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_daily_country_hol_recursive.png">raw</a></p>
@@ -202,36 +298,7 @@
     · <a href="https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_forecast_carparts_country_hol_recursive.png">raw</a></p>
   <img src="fig_forecast_carparts_country_hol_recursive.png" alt="Figure 23. Car Parts country month_has recursive" loading="lazy" />
 </section>
-<section id="figw1" class="card">
-  <h2>Figure W1. Zero rate daily vs weekly</h2>
-  <p class="meta"><a href="fig_zero_rate_daily_vs_weekly.png">fig_zero_rate_daily_vs_weekly.png</a>
-    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_zero_rate_daily_vs_weekly.png">GitHub</a></p>
-  <img src="fig_zero_rate_daily_vs_weekly.png" alt="Figure W1. Zero rate daily vs weekly" loading="lazy" />
-</section>
-<section id="figw2" class="card">
-  <h2>Figure W2. Direct MH IWMAE weekly vs daily</h2>
-  <p class="meta"><a href="fig_weekly_daily_direct_iwmae.png">fig_weekly_daily_direct_iwmae.png</a>
-    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_daily_direct_iwmae.png">GitHub</a></p>
-  <img src="fig_weekly_daily_direct_iwmae.png" alt="Figure W2. Direct MH IWMAE weekly vs daily" loading="lazy" />
-</section>
-<section id="figw3" class="card">
-  <h2>Figure W3. Direct MH CumMAE weekly vs daily</h2>
-  <p class="meta"><a href="fig_weekly_daily_direct_cummae.png">fig_weekly_daily_direct_cummae.png</a>
-    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_daily_direct_cummae.png">GitHub</a></p>
-  <img src="fig_weekly_daily_direct_cummae.png" alt="Figure W3. Direct MH CumMAE weekly vs daily" loading="lazy" />
-</section>
-<section id="figw4" class="card">
-  <h2>Figure W4. Weekly Direct-MH one-step forecasts</h2>
-  <p class="meta"><a href="fig_forecast_weekly_onestep.png">fig_forecast_weekly_onestep.png</a>
-    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_onestep.png">GitHub</a></p>
-  <img src="fig_forecast_weekly_onestep.png" alt="Figure W4. Weekly Direct-MH one-step forecasts" loading="lazy" />
-</section>
-<section id="figw5" class="card">
-  <h2>Figure W5. Weekly Direct-MH horizon forecasts</h2>
-  <p class="meta"><a href="fig_forecast_weekly_direct.png">fig_forecast_weekly_direct.png</a>
-    · <a href="https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_direct.png">GitHub</a></p>
-  <img src="fig_forecast_weekly_direct.png" alt="Figure W5. Weekly Direct-MH horizon forecasts" loading="lazy" />
-</section>
+
     <footer>
       Source paper: <code>../PAPER.md</code> ·
       GitHub tree: <a href="https://github.com/mkuma93/DeepSequence/tree/main/paper_figures">paper_figures/</a>

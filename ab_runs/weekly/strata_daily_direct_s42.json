@@ -1,0 +1,1398 @@
+{
+  "zone_definition": {
+    "primary": "train_mean_demand_terciles",
+    "secondary": "train_zero_rate_terciles",
+    "legacy_volume_sum": "train_volume_terciles (sum Quantity)",
+    "no_test_leakage": true,
+    "labels_volume": [
+      "low",
+      "mid",
+      "high"
+    ],
+    "labels_zero_rate": [
+      "high_zero",
+      "mid",
+      "low_zero"
+    ]
+  },
+  "mean_demand_stats": {
+    "low": {
+      "n_skus": 267,
+      "train_mean_demand_mean": 0.11645690903431387,
+      "train_mean_demand_min": 0.0,
+      "train_mean_demand_max": 0.24410029498525074,
+      "train_zero_rate_mean_sku": 0.9684996256620869,
+      "train_n_obs_mean": 507.1647940074906
+    },
+    "mid": {
+      "n_skus": 266,
+      "train_mean_demand_mean": 0.48828270742703433,
+      "train_mean_demand_min": 0.2459439528023599,
+      "train_mean_demand_max": 0.8574712643678161,
+      "train_zero_rate_mean_sku": 0.9204251636736828,
+      "train_n_obs_mean": 523.9924812030075
+    },
+    "high": {
+      "n_skus": 267,
+      "train_mean_demand_mean": 2.6127520795556607,
+      "train_mean_demand_min": 0.857981220657277,
+      "train_mean_demand_max": 30.333333333333336,
+      "train_zero_rate_mean_sku": 0.80618928510781,
+      "train_n_obs_mean": 527.9363295880149
+    }
+  },
+  "zero_rate_stats": {
+    "low_zero": {
+      "n_skus": 267,
+      "train_zero_rate_mean": 0.770793615223023,
+      "train_zero_rate_min": 0.18181818181818182,
+      "train_zero_rate_max": 0.9047619047619048,
+      "train_mean_demand_mean": 2.1975603235138723
+    },
+    "mid": {
+      "n_skus": 266,
+      "train_zero_rate_mean": 0.9442285328195844,
+      "train_zero_rate_min": 0.9053084648493543,
+      "train_zero_rate_max": 0.9693877551020408,
+      "train_mean_demand_mean": 0.6830742997077675
+    },
+    "high_zero": {
+      "n_skus": 267,
+      "train_zero_rate_mean": 0.9801810775962754,
+      "train_zero_rate_min": 0.9694019471488178,
+      "train_zero_rate_max": 1.0,
+      "train_mean_demand_mean": 0.33758662932076505
+    }
+  },
+  "daily_direct_mean_demand_table_iwmae": [
+    {
+      "horizon": 1,
+      "zone": "low",
+      "deepsequence": 1.202092511013216,
+      "tsb": 1.238160792951542,
+      "lightgbm": 1.2822136563876652,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 1,
+      "zone": "mid",
+      "deepsequence": 3.50079416660649,
+      "tsb": 3.3047424307317446,
+      "lightgbm": 3.6675742891388246,
+      "best": "tsb"
+    },
+    {
+      "horizon": 1,
+      "zone": "high",
+      "deepsequence": 7.7968916513270115,
+      "tsb": 6.780246011417787,
+      "lightgbm": 8.598090143615803,
+      "best": "tsb"
+    },
+    {
+      "horizon": 7,
+      "zone": "low",
+      "deepsequence": 5.159752547307132,
+      "tsb": 5.04730713245997,
+      "lightgbm": 4.828238719068413,
+      "best": "lightgbm"
+    },
+    {
+      "horizon": 7,
+      "zone": "mid",
+      "deepsequence": 2.0548286572572225,
+      "tsb": 3.4629594983787175,
+      "lightgbm": 2.4102492180048865,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 7,
+      "zone": "high",
+      "deepsequence": 4.706411609726569,
+      "tsb": 6.866391448436247,
+      "lightgbm": 7.379989124498062,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 14,
+      "zone": "low",
+      "deepsequence": 0.9782608695652171,
+      "tsb": 1.3586956521739126,
+      "lightgbm": 1.034782608695652,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 14,
+      "zone": "mid",
+      "deepsequence": 4.007658270932607,
+      "tsb": 4.76140231449966,
+      "lightgbm": 3.9916609938733827,
+      "best": "lightgbm"
+    },
+    {
+      "horizon": 14,
+      "zone": "high",
+      "deepsequence": 4.969191897999158,
+      "tsb": 8.100252546445288,
+      "lightgbm": 8.500757554564814,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 28,
+      "zone": "low",
+      "deepsequence": 1.2755555555555558,
+      "tsb": 1.784444444444445,
+      "lightgbm": 1.3255555555555558,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 28,
+      "zone": "mid",
+      "deepsequence": 5.144431148343489,
+      "tsb": 5.756472615648113,
+      "lightgbm": 6.386376921868209,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 28,
+      "zone": "high",
+      "deepsequence": 4.686283322143212,
+      "tsb": 8.070829593481935,
+      "lightgbm": 9.272886099948181,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 56,
+      "zone": "low",
+      "deepsequence": 2.087053571428571,
+      "tsb": 2.42491883116883,
+      "lightgbm": 3.5535714285714275,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 56,
+      "zone": "mid",
+      "deepsequence": 1.4595919448860621,
+      "tsb": 2.611022787493375,
+      "lightgbm": 2.0688924218335973,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 56,
+      "zone": "high",
+      "deepsequence": 14.773762913460752,
+      "tsb": 18.036786406821324,
+      "lightgbm": 16.314110206617034,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 60,
+      "zone": "low",
+      "deepsequence": 1.0891304347826085,
+      "tsb": 1.5782608695652172,
+      "lightgbm": 1.4913043478260868,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 60,
+      "zone": "mid",
+      "deepsequence": 2.124371596145789,
+      "tsb": 3.1790427314620864,
+      "lightgbm": 2.938049853372434,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 60,
+      "zone": "high",
+      "deepsequence": 3.9071089383580784,
+      "tsb": 7.361417275835152,
+      "lightgbm": 5.328914075095106,
+      "best": "deepsequence"
+    }
+  ],
+  "daily_direct_mean_demand_table_cummae": [
+    {
+      "horizon": 1,
+      "zone": "low",
+      "deepsequence": 0.225531914893617,
+      "tsb": 0.17872340425531916,
+      "lightgbm": 0.26382978723404255,
+      "best": "tsb"
+    },
+    {
+      "horizon": 1,
+      "zone": "mid",
+      "deepsequence": 1.0906555064053716,
+      "tsb": 0.6513249624723171,
+      "lightgbm": 1.337517431091564,
+      "best": "tsb"
+    },
+    {
+      "horizon": 1,
+      "zone": "high",
+      "deepsequence": 5.949024026995307,
+      "tsb": 4.305630633959899,
+      "lightgbm": 7.194519525712675,
+      "best": "tsb"
+    },
+    {
+      "horizon": 7,
+      "zone": "low",
+      "deepsequence": 2.174468085106383,
+      "tsb": 6.412765957446808,
+      "lightgbm": 3.0170212765957447,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 7,
+      "zone": "mid",
+      "deepsequence": 5.988145047151892,
+      "tsb": 14.073221754329474,
+      "lightgbm": 8.218270570164446,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 7,
+      "zone": "high",
+      "deepsequence": 25.28408053436795,
+      "tsb": 32.68017661786294,
+      "lightgbm": 37.85435078058157,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 14,
+      "zone": "low",
+      "deepsequence": 3.9859574459968727,
+      "tsb": 16.69914893698185,
+      "lightgbm": 6.482127660386106,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 14,
+      "zone": "mid",
+      "deepsequence": 11.484658299130874,
+      "tsb": 36.42608089327313,
+      "lightgbm": 23.359135286578574,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 14,
+      "zone": "high",
+      "deepsequence": 45.83220362448478,
+      "tsb": 80.86298436517114,
+      "lightgbm": 77.67854282447884,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 28,
+      "zone": "low",
+      "deepsequence": 7.8693617029392975,
+      "tsb": 39.499148936981854,
+      "lightgbm": 14.082127660386107,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 28,
+      "zone": "mid",
+      "deepsequence": 23.006276172574093,
+      "tsb": 83.32705717805041,
+      "lightgbm": 62.10390516105556,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 28,
+      "zone": "high",
+      "deepsequence": 87.09218321619807,
+      "tsb": 180.7946362452464,
+      "lightgbm": 155.02948131217613,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 56,
+      "zone": "low",
+      "deepsequence": 14.360851064641425,
+      "tsb": 83.56510638379036,
+      "lightgbm": 39.016170213577595,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 56,
+      "zone": "mid",
+      "deepsequence": 46.104532784497884,
+      "tsb": 177.9497210690167,
+      "lightgbm": 125.27189680123429,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 56,
+      "zone": "high",
+      "deepsequence": 176.1249746089583,
+      "tsb": 381.14486629629994,
+      "lightgbm": 270.5879169901212,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 60,
+      "zone": "low",
+      "deepsequence": 15.60978723485419,
+      "tsb": 89.73744680932228,
+      "lightgbm": 43.039574468896745,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 60,
+      "zone": "mid",
+      "deepsequence": 49.561645760197024,
+      "tsb": 191.48912134230386,
+      "lightgbm": 132.10209205360093,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 60,
+      "zone": "high",
+      "deepsequence": 186.38747219352035,
+      "tsb": 408.52632284379223,
+      "lightgbm": 278.8329620253932,
+      "best": "deepsequence"
+    }
+  ],
+  "daily_direct_zero_rate_table_iwmae": [
+    {
+      "horizon": 1,
+      "zone": "high_zero",
+      "deepsequence": 4.186063218390804,
+      "tsb": 4.338362068965516,
+      "lightgbm": 3.813218390804597,
+      "best": "lightgbm"
+    },
+    {
+      "horizon": 1,
+      "zone": "mid",
+      "deepsequence": 2.973019400198898,
+      "tsb": 2.355306395714593,
+      "lightgbm": 3.1270552746383595,
+      "best": "tsb"
+    },
+    {
+      "horizon": 1,
+      "zone": "low_zero",
+      "deepsequence": 7.190167553735998,
+      "tsb": 6.238227519093366,
+      "lightgbm": 7.485141104386176,
+      "best": "tsb"
+    },
+    {
+      "horizon": 7,
+      "zone": "high_zero",
+      "deepsequence": 15.775423728813555,
+      "tsb": 13.98516949152542,
+      "lightgbm": 15.830508474576265,
+      "best": "tsb"
+    },
+    {
+      "horizon": 7,
+      "zone": "mid",
+      "deepsequence": 5.191721132897604,
+      "tsb": 5.3631535947712425,
+      "lightgbm": 5.227805010893247,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 7,
+      "zone": "low_zero",
+      "deepsequence": 3.672960896867107,
+      "tsb": 3.7778024934305576,
+      "lightgbm": 5.719031144163573,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 14,
+      "zone": "high_zero",
+      "deepsequence": 3.3609929078014207,
+      "tsb": 3.9609929078014208,
+      "lightgbm": 3.2602836879432644,
+      "best": "lightgbm"
+    },
+    {
+      "horizon": 14,
+      "zone": "mid",
+      "deepsequence": 3.8392041521140805,
+      "tsb": 5.589204197527142,
+      "lightgbm": 4.5818656002549805,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 14,
+      "zone": "low_zero",
+      "deepsequence": 4.567999992370606,
+      "tsb": 4.992000007629395,
+      "lightgbm": 7.355499992370605,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 28,
+      "zone": "high_zero",
+      "deepsequence": 16.125751072961375,
+      "tsb": 15.158798283261806,
+      "lightgbm": 15.658798283261806,
+      "best": "tsb"
+    },
+    {
+      "horizon": 28,
+      "zone": "mid",
+      "deepsequence": 3.6224168912848174,
+      "tsb": 4.780772686433066,
+      "lightgbm": 4.495170709793353,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 28,
+      "zone": "low_zero",
+      "deepsequence": 4.2060957071278215,
+      "tsb": 4.411079912112027,
+      "lightgbm": 8.329940333036676,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 56,
+      "zone": "high_zero",
+      "deepsequence": 3.5323275862068964,
+      "tsb": 4.9590517241379315,
+      "lightgbm": 3.8635057471264367,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 56,
+      "zone": "mid",
+      "deepsequence": 1.3741258741258744,
+      "tsb": 3.3461538461538467,
+      "lightgbm": 3.115384615384616,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 56,
+      "zone": "low_zero",
+      "deepsequence": 12.616327826968405,
+      "tsb": 12.871812688749891,
+      "lightgbm": 13.684724053383503,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 60,
+      "zone": "high_zero",
+      "deepsequence": 3.538626609442061,
+      "tsb": 3.982403433476396,
+      "lightgbm": 3.3991416309012887,
+      "best": "lightgbm"
+    },
+    {
+      "horizon": 60,
+      "zone": "mid",
+      "deepsequence": 4.464168714168715,
+      "tsb": 5.4846437346437344,
+      "lightgbm": 4.9498361998361995,
+      "best": "deepsequence"
+    },
+    {
+      "horizon": 60,
+      "zone": "low_zero",
+      "deepsequence": 3.1918970808455467,
+      "tsb": 3.68294930364679,
+      "lightgbm": 4.380145928771814,
+      "best": "deepsequence"
+    }
+  ],
+  "winners_mean_demand": {
+    "1": {
+      "overall": {
+        "best": "tsb",
+        "best_iwmae_rounded": 5.319510323503668,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.319510323503668
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 5.603388691860476
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 5.852209039821341
+          }
+        ]
+      },
+      "low": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 1.202092511013216,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 1.202092511013216
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 1.238160792951542
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 1.2822136563876652
+          }
+        ]
+      },
+      "mid": {
+        "best": "tsb",
+        "best_iwmae_rounded": 3.3047424307317446,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 3.3047424307317446
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.50079416660649
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.6675742891388246
+          }
+        ]
+      },
+      "high": {
+        "best": "tsb",
+        "best_iwmae_rounded": 6.780246011417787,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 6.780246011417787
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 7.7968916513270115
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 8.598090143615803
+          }
+        ]
+      }
+    },
+    "7": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.2574704549531077,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.2574704549531077
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 4.366605785776536
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.486540160190363
+          }
+        ]
+      },
+      "low": {
+        "best": "lightgbm",
+        "best_iwmae_rounded": 4.828238719068413,
+        "ranking": [
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 4.828238719068413
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.04730713245997
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 5.159752547307132
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 2.0548286572572225,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 2.0548286572572225
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 2.4102492180048865
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 3.4629594983787175
+          }
+        ]
+      },
+      "high": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 4.706411609726569,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 4.706411609726569
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 6.866391448436247
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 7.379989124498062
+          }
+        ]
+      }
+    },
+    "14": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.706396522038678,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.706396522038678
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.301576391897539
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 5.327846937067073
+          }
+        ]
+      },
+      "low": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 0.9782608695652171,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 0.9782608695652171
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 1.034782608695652
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 1.3586956521739126
+          }
+        ]
+      },
+      "mid": {
+        "best": "lightgbm",
+        "best_iwmae_rounded": 3.9916609938733827,
+        "ranking": [
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.9916609938733827
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 4.007658270932607
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.76140231449966
+          }
+        ]
+      },
+      "high": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 4.969191897999158,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 4.969191897999158
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 8.100252546445288
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 8.500757554564814
+          }
+        ]
+      }
+    },
+    "28": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.8687205648497964,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.8687205648497964
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.358512473689168
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 6.2168871484697235
+          }
+        ]
+      },
+      "low": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 1.2755555555555558,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 1.2755555555555558
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 1.3255555555555558
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 1.784444444444445
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 5.144431148343489,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 5.144431148343489
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.756472615648113
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 6.386376921868209
+          }
+        ]
+      },
+      "high": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 4.686283322143212,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 4.686283322143212
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 8.070829593481935
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 9.272886099948181
+          }
+        ]
+      }
+    },
+    "56": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 9.094046773245703,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 9.094046773245703
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 10.291162157861086
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 10.828555320254248
+          }
+        ]
+      },
+      "low": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 2.087053571428571,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 2.087053571428571
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 2.42491883116883
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.5535714285714275
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 1.4595919448860621,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 1.4595919448860621
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 2.0688924218335973
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 2.611022787493375
+          }
+        ]
+      },
+      "high": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 14.773762913460752,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 14.773762913460752
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 16.314110206617034
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 18.036786406821324
+          }
+        ]
+      }
+    },
+    "60": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 2.506636802181232,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 2.506636802181232
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.7132132413729977
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.241002664541498
+          }
+        ]
+      },
+      "low": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 1.0891304347826085,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 1.0891304347826085
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 1.4913043478260868
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 1.5782608695652172
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 2.124371596145789,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 2.124371596145789
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 2.938049853372434
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 3.1790427314620864
+          }
+        ]
+      },
+      "high": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.9071089383580784,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.9071089383580784
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 5.328914075095106
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 7.361417275835152
+          }
+        ]
+      }
+    }
+  },
+  "winners_zero_rate": {
+    "1": {
+      "overall": {
+        "best": "tsb",
+        "best_iwmae_rounded": 5.319510323503668,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.319510323503668
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 5.603388691860476
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 5.852209039821341
+          }
+        ]
+      },
+      "high_zero": {
+        "best": "lightgbm",
+        "best_iwmae_rounded": 3.813218390804597,
+        "ranking": [
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.813218390804597
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 4.186063218390804
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.338362068965516
+          }
+        ]
+      },
+      "mid": {
+        "best": "tsb",
+        "best_iwmae_rounded": 2.355306395714593,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 2.355306395714593
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 2.973019400198898
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.1270552746383595
+          }
+        ]
+      },
+      "low_zero": {
+        "best": "tsb",
+        "best_iwmae_rounded": 6.238227519093366,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 6.238227519093366
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 7.190167553735998
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 7.485141104386176
+          }
+        ]
+      }
+    },
+    "7": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.2574704549531077,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.2574704549531077
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 4.366605785776536
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.486540160190363
+          }
+        ]
+      },
+      "high_zero": {
+        "best": "tsb",
+        "best_iwmae_rounded": 13.98516949152542,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 13.98516949152542
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 15.775423728813555
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 15.830508474576265
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 5.191721132897604,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 5.191721132897604
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 5.227805010893247
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.3631535947712425
+          }
+        ]
+      },
+      "low_zero": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.672960896867107,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.672960896867107
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 3.7778024934305576
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 5.719031144163573
+          }
+        ]
+      }
+    },
+    "14": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.706396522038678,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.706396522038678
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.301576391897539
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 5.327846937067073
+          }
+        ]
+      },
+      "high_zero": {
+        "best": "lightgbm",
+        "best_iwmae_rounded": 3.2602836879432644,
+        "ranking": [
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.2602836879432644
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.3609929078014207
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 3.9609929078014208
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.8392041521140805,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.8392041521140805
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 4.5818656002549805
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.589204197527142
+          }
+        ]
+      },
+      "low_zero": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 4.567999992370606,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 4.567999992370606
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.992000007629395
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 7.355499992370605
+          }
+        ]
+      }
+    },
+    "28": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.8687205648497964,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.8687205648497964
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.358512473689168
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 6.2168871484697235
+          }
+        ]
+      },
+      "high_zero": {
+        "best": "tsb",
+        "best_iwmae_rounded": 15.158798283261806,
+        "ranking": [
+          {
+            "model": "tsb",
+            "iwmae_rounded": 15.158798283261806
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 15.658798283261806
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 16.125751072961375
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.6224168912848174,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.6224168912848174
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 4.495170709793353
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.780772686433066
+          }
+        ]
+      },
+      "low_zero": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 4.2060957071278215,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 4.2060957071278215
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.411079912112027
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 8.329940333036676
+          }
+        ]
+      }
+    },
+    "56": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 9.094046773245703,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 9.094046773245703
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 10.291162157861086
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 10.828555320254248
+          }
+        ]
+      },
+      "high_zero": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.5323275862068964,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.5323275862068964
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.8635057471264367
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.9590517241379315
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 1.3741258741258744,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 1.3741258741258744
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.115384615384616
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 3.3461538461538467
+          }
+        ]
+      },
+      "low_zero": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 12.616327826968405,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 12.616327826968405
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 12.871812688749891
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 13.684724053383503
+          }
+        ]
+      }
+    },
+    "60": {
+      "overall": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 2.506636802181232,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 2.506636802181232
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.7132132413729977
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 4.241002664541498
+          }
+        ]
+      },
+      "high_zero": {
+        "best": "lightgbm",
+        "best_iwmae_rounded": 3.3991416309012887,
+        "ranking": [
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 3.3991416309012887
+          },
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.538626609442061
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 3.982403433476396
+          }
+        ]
+      },
+      "mid": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 4.464168714168715,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 4.464168714168715
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 4.9498361998361995
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 5.4846437346437344
+          }
+        ]
+      },
+      "low_zero": {
+        "best": "deepsequence",
+        "best_iwmae_rounded": 3.1918970808455467,
+        "ranking": [
+          {
+            "model": "deepsequence",
+            "iwmae_rounded": 3.1918970808455467
+          },
+          {
+            "model": "tsb",
+            "iwmae_rounded": 3.68294930364679
+          },
+          {
+            "model": "lightgbm",
+            "iwmae_rounded": 4.380145928771814
+          }
+        ]
+      }
+    }
+  },
+  "source_json": "ab_runs/weekly/daily_direct_mh60_locked800_s42.json"
+}

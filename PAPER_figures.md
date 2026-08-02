@@ -40,13 +40,35 @@ Trend time index; fixed Fourier (learnable \(\omega\) optional); four experts (T
 
 [Open PNG](paper_figures/fig_m5_architecture.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_m5_architecture.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_m5_architecture.png)
 
-## Figure 6. Daily multi-seed IWMAE vs horizon
+## Figure D1. Daily Direct-MH IWMAE vs horizon (PRIMARY)
 
-![Daily multi-seed IWMAE vs horizon](paper_figures/fig1_daily_iwmae_horizon.png)
+Seed-42 locked 800 — primary Results figure for Table 1 (not the recursive multi-seed plot).
+
+![Daily Direct-MH IWMAE vs horizon](paper_figures/fig_daily_direct_iwmae_horizon.png)
+
+[Open PNG](paper_figures/fig_daily_direct_iwmae_horizon.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_daily_direct_iwmae_horizon.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_daily_direct_iwmae_horizon.png)
+
+## Figure D2. Daily Direct-MH CumMAE vs horizon (PRIMARY)
+
+![Daily Direct-MH CumMAE vs horizon](paper_figures/fig_daily_direct_cummae_horizon.png)
+
+[Open PNG](paper_figures/fig_daily_direct_cummae_horizon.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_daily_direct_cummae_horizon.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_daily_direct_cummae_horizon.png)
+
+## Figure D3. Daily Direct-MH IWMAE by train mean-demand zone (PRIMARY)
+
+![Daily Direct-MH zone strata](paper_figures/fig_daily_direct_strata_iwmae.png)
+
+[Open PNG](paper_figures/fig_daily_direct_strata_iwmae.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_daily_direct_strata_iwmae.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_daily_direct_strata_iwmae.png)
+
+## Figure E6. Daily multi-seed IWMAE vs horizon (APPENDIX E — recursive)
+
+**Not primary.** Optional recursive protocol; file still named `fig1_daily_iwmae_horizon.png`.
+
+![Daily multi-seed recursive IWMAE vs horizon](paper_figures/fig1_daily_iwmae_horizon.png)
 
 [Open PNG](paper_figures/fig1_daily_iwmae_horizon.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig1_daily_iwmae_horizon.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig1_daily_iwmae_horizon.png)
 
-## Figure 7. Daily multi-seed mid-margin π vs horizon
+## Figure E7. Daily multi-seed mid-margin π vs horizon (APPENDIX E — recursive)
 
 ![Daily multi-seed mid-margin π vs horizon](paper_figures/fig3_daily_decision_pi_horizon.png)
 
@@ -148,3 +170,39 @@ Qualitative only (seed 42; additive stack; country holidays; ~30 epochs). Opt-in
 
 [Open PNG](paper_figures/fig_spike_diag_panel.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_spike_diag_panel.png) · [raw](https://raw.githubusercontent.com/mkuma93/DeepSequence/main/paper_figures/fig_spike_diag_panel.png)
 
+
+## Figure W1. Zero rate daily vs weekly (PRIMARY)
+
+![Zero rate daily vs weekly](paper_figures/fig_zero_rate_daily_vs_weekly.png)
+
+[Open PNG](paper_figures/fig_zero_rate_daily_vs_weekly.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_zero_rate_daily_vs_weekly.png)
+
+## Figure W2. Direct-MH IWMAE weekly vs daily (PRIMARY)
+
+![Direct-MH IWMAE weekly vs daily](paper_figures/fig_weekly_daily_direct_iwmae.png)
+
+[Open PNG](paper_figures/fig_weekly_daily_direct_iwmae.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_daily_direct_iwmae.png)
+
+## Figure W3. Direct-MH CumMAE weekly vs daily (PRIMARY)
+
+![Direct-MH CumMAE weekly vs daily](paper_figures/fig_weekly_daily_direct_cummae.png)
+
+[Open PNG](paper_figures/fig_weekly_daily_direct_cummae.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_daily_direct_cummae.png)
+
+## Figure W4. Weekly Direct-MH one-step forecasts (PRIMARY)
+
+![Weekly Direct-MH one-step](paper_figures/fig_forecast_weekly_onestep.png)
+
+[Open PNG](paper_figures/fig_forecast_weekly_onestep.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_onestep.png)
+
+## Figure W5. Weekly Direct-MH horizon forecasts (PRIMARY)
+
+![Weekly Direct-MH horizons](paper_figures/fig_forecast_weekly_direct.png)
+
+[Open PNG](paper_figures/fig_forecast_weekly_direct.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_forecast_weekly_direct.png)
+
+## Figure W6. Weekly Direct-MH IWMAE by train mean-demand zone (PRIMARY)
+
+![Weekly Direct-MH zone strata](paper_figures/fig_weekly_direct_strata_iwmae.png)
+
+[Open PNG](paper_figures/fig_weekly_direct_strata_iwmae.png) · [GitHub](https://github.com/mkuma93/DeepSequence/blob/main/paper_figures/fig_weekly_direct_strata_iwmae.png)
