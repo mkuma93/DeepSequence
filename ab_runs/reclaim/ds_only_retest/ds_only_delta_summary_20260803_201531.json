@@ -1,0 +1,237 @@
+{
+  "created_utc": "2026-08-03T14:55:35.427228+00:00",
+  "run_ts": "20260803_201531",
+  "protocol": {
+    "daily": "Direct-MH locked 800 seed 42 horizons 1,7,14,28,56,60 via eval.weekly_mh --models deepsequence",
+    "carparts": "Direct-MH locked 800 seed 42 horizons 1,2,6 via eval.public_carparts_mh_all --models deepsequence",
+    "stack": "softsign + mono + L1 + mixer on + cross off + additive (builder defaults)"
+  },
+  "baselines": {
+    "daily": "ab_runs/weekly/daily_direct_mh60_locked800_s42.json",
+    "carparts": "ab_runs/reclaim/carparts_mh_1_2_6_cummae_s42.json"
+  },
+  "artifacts": {
+    "daily": "ab_runs/reclaim/ds_only_retest/daily_direct_mh60_ds_only_s42_20260803_201531.json",
+    "carparts": "ab_runs/reclaim/ds_only_retest/carparts_mh_1_2_6_ds_only_s42_20260803_201531.json"
+  },
+  "daily": {
+    "prior": {
+      "1": {
+        "iwmae": 5.65203719366333,
+        "iwmae_rounded": 5.603388691860476,
+        "cummae": 2.4296933251340076,
+        "cummae_rounded": 2.3482040230227614
+      },
+      "7": {
+        "iwmae": 3.312310944996094,
+        "iwmae_rounded": 3.2574704549531077,
+        "cummae": 10.846199923452364,
+        "cummae_rounded": 10.855219166511777
+      },
+      "14": {
+        "iwmae": 3.722563621876953,
+        "iwmae_rounded": 3.706396522038678,
+        "cummae": 19.910931611986765,
+        "cummae_rounded": 19.90845192322272
+      },
+      "28": {
+        "iwmae": 3.9123090142421635,
+        "iwmae_rounded": 3.8687205648497964,
+        "cummae": 38.33354941709067,
+        "cummae_rounded": 38.33658718690276
+      },
+      "56": {
+        "iwmae": 9.117136375985893,
+        "iwmae_rounded": 9.094046773245703,
+        "cummae": 76.85593535266592,
+        "cummae_rounded": 76.85851690023281
+      },
+      "60": {
+        "iwmae": 2.5221713514754898,
+        "iwmae_rounded": 2.506636802181232,
+        "cummae": 81.73826554503049,
+        "cummae_rounded": 81.74073616351033
+      }
+    },
+    "new": {
+      "1": {
+        "iwmae": 5.65203719366333,
+        "iwmae_rounded": 5.603388691860476,
+        "cummae": 2.4296933251340076,
+        "cummae_rounded": 2.3482040230227614
+      },
+      "7": {
+        "iwmae": 3.312310944996094,
+        "iwmae_rounded": 3.2574704549531077,
+        "cummae": 10.846199923452364,
+        "cummae_rounded": 10.855219166511777
+      },
+      "14": {
+        "iwmae": 3.722563621876953,
+        "iwmae_rounded": 3.706396522038678,
+        "cummae": 19.910931611986765,
+        "cummae_rounded": 19.90845192322272
+      },
+      "28": {
+        "iwmae": 3.9123090142421635,
+        "iwmae_rounded": 3.8687205648497964,
+        "cummae": 38.33354941709067,
+        "cummae_rounded": 38.33658718690276
+      },
+      "56": {
+        "iwmae": 9.117136375985893,
+        "iwmae_rounded": 9.094046773245703,
+        "cummae": 76.85593535266592,
+        "cummae_rounded": 76.85851690023281
+      },
+      "60": {
+        "iwmae": 2.5221713514754898,
+        "iwmae_rounded": 2.506636802181232,
+        "cummae": 81.73826554503049,
+        "cummae_rounded": 81.74073616351033
+      }
+    },
+    "delta": {
+      "1": {
+        "old_iwmae": 5.65203719366333,
+        "new_iwmae": 5.65203719366333,
+        "delta_iwmae": 0.0,
+        "old_iwmae_rounded": 5.603388691860476,
+        "new_iwmae_rounded": 5.603388691860476,
+        "old_cummae": 2.4296933251340076,
+        "new_cummae": 2.4296933251340076,
+        "delta_cummae": 0.0
+      },
+      "7": {
+        "old_iwmae": 3.312310944996094,
+        "new_iwmae": 3.312310944996094,
+        "delta_iwmae": 0.0,
+        "old_iwmae_rounded": 3.2574704549531077,
+        "new_iwmae_rounded": 3.2574704549531077,
+        "old_cummae": 10.846199923452364,
+        "new_cummae": 10.846199923452364,
+        "delta_cummae": 0.0
+      },
+      "14": {
+        "old_iwmae": 3.722563621876953,
+        "new_iwmae": 3.722563621876953,
+        "delta_iwmae": 0.0,
+        "old_iwmae_rounded": 3.706396522038678,
+        "new_iwmae_rounded": 3.706396522038678,
+        "old_cummae": 19.910931611986765,
+        "new_cummae": 19.910931611986765,
+        "delta_cummae": 0.0
+      },
+      "28": {
+        "old_iwmae": 3.9123090142421635,
+        "new_iwmae": 3.9123090142421635,
+        "delta_iwmae": 0.0,
+        "old_iwmae_rounded": 3.8687205648497964,
+        "new_iwmae_rounded": 3.8687205648497964,
+        "old_cummae": 38.33354941709067,
+        "new_cummae": 38.33354941709067,
+        "delta_cummae": 0.0
+      },
+      "56": {
+        "old_iwmae": 9.117136375985893,
+        "new_iwmae": 9.117136375985893,
+        "delta_iwmae": 0.0,
+        "old_iwmae_rounded": 9.094046773245703,
+        "new_iwmae_rounded": 9.094046773245703,
+        "old_cummae": 76.85593535266592,
+        "new_cummae": 76.85593535266592,
+        "delta_cummae": 0.0
+      },
+      "60": {
+        "old_iwmae": 2.5221713514754898,
+        "new_iwmae": 2.5221713514754898,
+        "delta_iwmae": 0.0,
+        "old_iwmae_rounded": 2.506636802181232,
+        "new_iwmae_rounded": 2.506636802181232,
+        "old_cummae": 81.73826554503049,
+        "new_cummae": 81.73826554503049,
+        "delta_cummae": 0.0
+      }
+    },
+    "max_abs_delta_iwmae": 0.0,
+    "max_abs_delta_cummae": 0.0,
+    "material_change": false
+  },
+  "carparts": {
+    "prior": {
+      "1": {
+        "iwmae": 0.8824519898482864,
+        "iwmae_rounded": 0.8410031941322609,
+        "cummae": 0.5743209991697222,
+        "cummae_rounded": 0.5725
+      },
+      "2": {
+        "iwmae": 0.7779601433005682,
+        "iwmae_rounded": 0.7340336134453782,
+        "cummae": 0.9189257348328829,
+        "cummae_rounded": 0.86
+      },
+      "6": {
+        "iwmae": 0.8335521733578052,
+        "iwmae_rounded": 0.7708870755461964,
+        "cummae": 2.139081744775176,
+        "cummae_rounded": 2.0675
+      }
+    },
+    "new": {
+      "1": {
+        "iwmae": 0.8824519898482864,
+        "iwmae_rounded": 0.8410031941322609,
+        "cummae": 0.5743209991697222,
+        "cummae_rounded": 0.5725
+      },
+      "2": {
+        "iwmae": 0.7779601433005682,
+        "iwmae_rounded": 0.7340336134453782,
+        "cummae": 0.9189257348328829,
+        "cummae_rounded": 0.86
+      },
+      "6": {
+        "iwmae": 0.8335521733578052,
+        "iwmae_rounded": 0.7708870755461964,
+        "cummae": 2.139081744775176,
+        "cummae_rounded": 2.0675
+      }
+    },
+    "delta": {
+      "1": {
+        "old_iwmae": 0.8824519898482864,
+        "new_iwmae": 0.8824519898482864,
+        "delta_iwmae": 0.0,
+        "old_iwmae_rounded": 0.8410031941322609,
+        "new_iwmae_rounded": 0.8410031941322609,
+        "old_cummae": 0.5743209991697222,
+        "new_cummae": 0.5743209991697222,
+        "delta_cummae": 0.0
+      },
+      "2": {
+        "old_iwmae": 0.7779601433005682,
+        "new_iwmae": 0.7779601433005682,
+        "delta_iwmae": 0.0,
+        "old_iwmae_rounded": 0.7340336134453782,
+        "new_iwmae_rounded": 0.7340336134453782,
+        "old_cummae": 0.9189257348328829,
+        "new_cummae": 0.9189257348328829,
+        "delta_cummae": 0.0
+      },
+      "6": {
+        "old_iwmae": 0.8335521733578052,
+        "new_iwmae": 0.8335521733578052,
+        "delta_iwmae": 0.0,
+        "old_iwmae_rounded": 0.7708870755461964,
+        "new_iwmae_rounded": 0.7708870755461964,
+        "old_cummae": 2.139081744775176,
+        "new_cummae": 2.139081744775176,
+        "delta_cummae": 0.0
+      }
+    },
+    "max_abs_delta_iwmae": 0.0,
+    "max_abs_delta_cummae": 0.0,
+    "material_change": false
+  }
+}
